@@ -15,9 +15,7 @@ jobs:
       run: npm install
       working-directory: ./  # This ensures it runs in the root directory where package.json is located
 
-    - name: Build
-      run: npm run build  # Adjust this if you have a build script
-      working-directory: ./  # Adjust if your build context is different
+    # Removed build step here because it is not needed for your project
 
     - name: Deploy to Firebase
       uses: w9jds/firebase-action@master
