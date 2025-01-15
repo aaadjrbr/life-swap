@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LifeSwap - Explore</title>
+  <link rel="stylesheet" href="./css/explore.css" />
+</head>
+<body>
+  <div class="navbar">
+    <h1>LifeSwap - Explore</h1>
+
+     <!-- Show new message notifications -->
+     <span id="newMessageBadge" style="color:red; font-weight: bold; margin-left:1rem;"></span>
+    
+    <!-- Edit Profile Button -->
+    <button id="editProfileBtn" style="margin-left: 1rem;">Edit Profile</button>
+
+      <!-- 
+    EDIT PROFILE SECTION
+    It's hidden by default; we show it when "Edit Profile" is clicked 
+  -->
+  <div id="editProfileSection" style="display: none; margin: 1rem; border: 1px solid #ccc; padding: 1rem;">
+    <h2>Edit Profile</h2>
+    <form id="editProfileForm">
+      <label for="profileName">Name:</label>
+      <input type="text" id="profileName" placeholder="Your Name" required />
+
+      <label for="profileLocation">Location:</label>
+      <input type="text" id="profileLocation" placeholder="Your City/State/etc." required />
+
+      <label for="profilePhoto">Profile Photo:</label>
+      <input type="file" id="profilePhoto" accept="image/*" />
+
+      <button type="submit">Save Profile</button>
+    </form>
+  </div>
+    
+    <div class="your-products" style="margin-top: 1rem;">
+      <a id="interestsLink" href="interests.html" style="margin-left:1rem;">Interests</a>
+      <h2>Your Products</h2>
+      <div class="pagination">
+        <button id="prevPageProductsBtn" disabled>Previous</button>
+        <span id="productsPageIndicator">Page 1</span>
+        <button id="nextPageProductsBtn" disabled>Next</button>
+      </div>
+      <div class="your-products-container" id="yourProductsContainer">
+        <!-- User's products will be dynamically inserted here -->
+      </div>
+    </div>
+  </div>
+
+  <!-- SEARCH BAR -->
+  <div class="search-bar" style="margin: 1rem;">
+    <input type="text" id="searchInput" placeholder="Search by keyword..." style="width: 200px; padding: 0.4rem;" />
+    <button id="searchBtn">Search</button>
+    <button id="clearSearchBtn">Clear</button>
+  </div>
+
+  <div class="filters">
+    <button id="filterAll" class="active">All</button>
+    <button id="filterItems">Items</button>
+    <button id="filterSkills">Skills</button>
+    <button id="filterTime">Time</button>
+  </div>
+
+  <div class="swaps-list">
+    <div class="pagination">
+      <button id="prevPageBtn" disabled>Previous</button>
+      <span id="pageIndicator">Page 1</span>
+      <button id="nextPageBtn" disabled>Next</button>
+    </div>
+
+    <div id="swapsContainer"><!-- Swaps go here --></div>
+
+    <div class="pagination">
+      <button id="prevPageBtnBottom" disabled>Previous</button>
+      <span id="pageIndicatorBottom">Page 1</span>
+      <button id="nextPageBtnBottom" disabled>Next</button>
+    </div>
+  </div>
+
+  <!-- Add Swap Form -->
+  <div class="add-swap-form">
+    <h2>Add a Swap</h2>
+    <form id="addSwapForm">
+      <label for="swapType">Type:</label>
+      <select id="swapType" required>
+        <option value="item">Item</option>
+        <option value="skill">Skill</option>
+        <option value="time">Time</option>
+      </select>
+
+      <label for="swapTitle">Title:</label>
+      <input type="text" id="swapTitle" placeholder="e.g., Air Fryer for Weights" required />
+
+      <label for="swapDescription">Description:</label>
+      <textarea
+        id="swapDescription"
+        placeholder="Describe your swap..."
+        required
+      ></textarea>
+
+      <label for="swapValue">Value (points):</label>
+      <input type="number" id="swapValue" placeholder="e.g., 50" required />
+
+      <label for="swapPhotos">Upload Photos (up to 5):</label>
+      <input type="file" id="swapPhotos" accept="image/*" multiple />
+
+      <button type="submit">Add Swap</button>
+    </form>
+  </div>
+
+  <!-- Import Firebase and JS -->
+  <script type="module" src="./js/explore.js"></script>
+</body>
+</html>
