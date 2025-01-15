@@ -13,7 +13,7 @@ jobs:
 
     - name: Install Dependencies
       run: npm install
-      working-directory: ./  # Adjust if your npm context is different
+      working-directory: ./functions  # Ensure dependencies for functions are installed
 
     - name: Deploy to Firebase
       uses: w9jds/firebase-action@master
