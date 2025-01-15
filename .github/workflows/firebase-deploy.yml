@@ -2,17 +2,23 @@ name: Deploy to Firebase Hosting
 on:
   push:
     branches:
-      - main  # Set this to your default branch
+      - main  # or your default branch
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout Repo
       uses: actions/checkout@v2
+
     - name: Install Dependencies
       run: npm install
+      working-directory: ./  # This ensures it runs in the root directory where package.json is located
+
     - name: Build
-      run: npm run build  # Your build command; remove if not needed
+      run: npm run build  # Adjust this if you have a build script
+      working-directory: ./  # Adjust if your build context is different
+
     - name: Deploy to Firebase
       uses: w9jds/firebase-action@master
       with:
