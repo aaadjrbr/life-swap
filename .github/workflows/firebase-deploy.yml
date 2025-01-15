@@ -1,8 +1,8 @@
-name: Deploy to Firebase Hosting
+name: Deploy to Firebase
 on:
   push:
     branches:
-      - main  # or your default branch
+      - main  # Adjust this as necessary
 
 jobs:
   deploy:
@@ -13,13 +13,11 @@ jobs:
 
     - name: Install Dependencies
       run: npm install
-      working-directory: ./  # This ensures it runs in the root directory where package.json is located
-
-    # Removed build step here because it is not needed for your project
+      working-directory: ./  # Adjust if your npm context is different
 
     - name: Deploy to Firebase
       uses: w9jds/firebase-action@master
       with:
-        args: deploy --only hosting
+        args: deploy --only hosting,functions  # Deploy both hosting and functions
       env:
         FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
