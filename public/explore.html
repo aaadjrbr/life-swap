@@ -1,117 +1,204 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>LifeSwap - Explore</title>
-  <link rel="stylesheet" href="./css/explore.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Life Swap Explore</title>
+  <script type="module" src="./js/explore.js"></script>
+  <link rel="stylesheet" href="./css/explore.css">
 </head>
 <body>
-  <div class="navbar">
-    <h1>LifeSwap - Explore</h1>
+  <header>
+    <h1><a href="./explore.html">Life Swap Explore</a></h1>
+    <button onclick="openProfileEditor()">Edit Profile</button>
+    <button onclick="logout()">Logout</button>
+  </header>
 
-     <!-- Show new message notifications -->
-     <span id="newMessageBadge" style="color:red; font-weight: bold; margin-left:1rem;"></span>
+  <main>
+    <div id="notificationBell" onclick="viewNotifications()">
+      🔔<span id="notificationCount" class="hidden"></span>
+    </div>
     
-    <!-- Edit Profile Button -->
-    <button id="editProfileBtn" style="margin-left: 1rem;">Edit Profile</button>
-
-      <!-- 
-    EDIT PROFILE SECTION
-    It's hidden by default; we show it when "Edit Profile" is clicked 
-  -->
-  <div id="editProfileSection" style="display: none; margin: 1rem; border: 1px solid #ccc; padding: 1rem;">
-    <h2>Edit Profile</h2>
-    <form id="editProfileForm">
-      <label for="profileName">Name:</label>
-      <input type="text" id="profileName" placeholder="Your Name" required />
-
-      <label for="profileLocation">Location:</label>
-      <input type="text" id="profileLocation" placeholder="Your City/State/etc." required />
-
-      <label for="profilePhoto">Profile Photo:</label>
-      <input type="file" id="profilePhoto" accept="image/*" />
-
-      <button type="submit">Save Profile</button>
-    </form>
-  </div>
+    <div id="notificationList" class="notification-list hidden">
+      <!-- The button and notifications will be dynamically added here -->
+    </div>
     
-    <div class="your-products" style="margin-top: 1rem;">
-      <a id="interestsLink" href="interests.html" style="margin-left:1rem;">Interests</a>
-      <h2>Your Products</h2>
-      <div class="pagination">
-        <button id="prevPageProductsBtn" disabled>Previous</button>
-        <span id="productsPageIndicator">Page 1</span>
-        <button id="nextPageProductsBtn" disabled>Next</button>
-      </div>
-      <div class="your-products-container" id="yourProductsContainer">
-        <!-- User's products will be dynamically inserted here -->
-      </div>
-    </div>
-  </div>
 
-  <!-- SEARCH BAR -->
-  <div class="search-bar" style="margin: 1rem;">
-    <input type="text" id="searchInput" placeholder="Search by keyword..." style="width: 200px; padding: 0.4rem;" />
-    <button id="searchBtn">Search</button>
-    <button id="clearSearchBtn">Clear</button>
-  </div>
 
-  <div class="filters">
-    <button id="filterAll" class="active">All</button>
-    <button id="filterItems">Items</button>
-    <button id="filterSkills">Skills</button>
-    <button id="filterTime">Time</button>
-  </div>
+<!-- Your Posts Section -->
+<section id="yourPostsContainer" class="hidden">
+  <h3>Your Posts</h3>
+  <div id="yourPosts"></div>
+</section>
+<button id="toggleYourPostsBtn" onclick="toggleYourPosts()">See Your Posts</button>
 
-  <div class="swaps-list">
-    <div class="pagination">
-      <button id="prevPageBtn" disabled>Previous</button>
-      <span id="pageIndicator">Page 1</span>
-      <button id="nextPageBtn" disabled>Next</button>
-    </div>
 
-    <div id="swapsContainer"><!-- Swaps go here --></div>
+    <section id="offers">
+      <h3>Your Offers</h3>
+      <div id="yourOffers"></div>
+      <h3>Offers You Received</h3>
+      <div id="offersReceived"></div>
+    </section>
+    
+    <!-- Post Creation Section -->
+    <section id="createPost">
+      <h3>Create a Post</h3>
+      <form id="postForm">
+        <input type="text" id="title" placeholder="Post title" required />
+        <textarea id="description" placeholder="Post description" required></textarea>
+        
+        <!-- New Field: What You Need -->
+        <textarea id="desiredTrade" placeholder="What are you looking for in return?" required></textarea>
+        
+        <!-- Post Type -->
+        <select id="postType" required>
+          <option value="" disabled selected>Select Type</option>
+          <option value="item">Item</option>
+          <option value="skill">Skill</option>
+          <option value="time">Time</option>
+        </select>
+        
+        <!-- Category -->
+        <select id="category" required>
+          <option value="" disabled selected>Select Category</option>
+          <option value="clothing">Clothing</option>
+          <option value="electronics">Electronics</option>
+          <option value="fitness">Fitness</option>
+        </select>
+        
+        <!-- City and Distance -->
+        <div class="city-autocomplete">
+          <input type="text" id="city" placeholder="Type to search city" required />
+          <div id="citySuggestions" class="suggestions-container"></div>
+        </div>        
+        <input type="number" id="distance" placeholder="Distance from city (miles)" />
+        
+        <!-- Hashtags -->
+        <div>
+          <input type="text" 
+          id="hashtags" 
+          placeholder="Type hashtags" 
+          oninput="debouncedSuggestHashtags(this.value)" />
+          <div id="hashtagSuggestions" class="suggestions-container"></div>
+        </div>
+    
+        <!-- Images -->
+        <input type="file" id="images" accept="image/*" multiple required />
+        
+        <button type="submit">Post</button>
+      </form>
+    </section>    
 
-    <div class="pagination">
-      <button id="prevPageBtnBottom" disabled>Previous</button>
-      <span id="pageIndicatorBottom">Page 1</span>
-      <button id="nextPageBtnBottom" disabled>Next</button>
-    </div>
-  </div>
+    <!-- Recommendations Section -->
+    <section id="recommendationsContainer">
+      <h3>Recommended for You</h3>
+      <button id="recommendationsBtn">Get Recommendations</button>
+      <div id="recommendationGrid"></div>
+    </section>
 
-  <!-- Add Swap Form -->
-  <div class="add-swap-form">
-    <h2>Add a Swap</h2>
-    <form id="addSwapForm">
-      <label for="swapType">Type:</label>
-      <select id="swapType" required>
+    <div id="filters">
+      <select id="filterType">
+        <option value="">All Types</option>
         <option value="item">Item</option>
         <option value="skill">Skill</option>
         <option value="time">Time</option>
       </select>
+      
+      <div class="city-autocomplete">
+        <input type="text" id="filterCity" placeholder="Type to search city" />
+        <div id="filterCitySuggestions" class="suggestions-container"></div>
+      </div>
+      
+      <input type="number" id="filterDistance" placeholder="Distance from city (miles)" />
+      
+      <input type="text" id="filterHashtag" placeholder="Filter by hashtag" />
+      <button onclick="applyFilters()">Apply Filters</button>
+    </div>   
 
-      <label for="swapTitle">Title:</label>
-      <input type="text" id="swapTitle" placeholder="e.g., Air Fryer for Weights" required />
+    <!-- Posts Section -->
+    <section id="postsContainer">
+      <h3>Explore Listings</h3>
+      <div id="postGrid"></div>
+    </section>
 
-      <label for="swapDescription">Description:</label>
-      <textarea
-        id="swapDescription"
-        placeholder="Describe your swap..."
-        required
-      ></textarea>
+    <!-- Modal for Post Details -->
+    <section id="modal" class="hidden">
+      <div id="modalContent"></div>
+    </section>
 
-      <label for="swapValue">Value (points):</label>
-      <input type="number" id="swapValue" placeholder="e.g., 50" required />
+<!-- Profile Editing Modal -->
+<section id="profileEditor" class="hidden">
+  <h3>Edit Profile</h3>
+  <form id="profileForm">
+    <input type="text" id="userName" placeholder="Your Name" required />
+    <textarea id="userBio" placeholder="Short Bio"></textarea>
+    
+    <!-- City Input with Suggestions -->
+    <div class="city-autocomplete">
+      <input 
+        type="text" 
+        id="profileCity" 
+        placeholder="Type to search city" 
+      />
+      <div id="profileCitySuggestions" class="suggestions-container"></div>
+    </div>
+    <br/><br/>
 
-      <label for="swapPhotos">Upload Photos (up to 5):</label>
-      <input type="file" id="swapPhotos" accept="image/*" multiple />
+    <!-- Instagram and Phone Inputs -->
+    <input type="text" id="instagram" placeholder="Instagram (optional)" />
+    <input type="text" id="phone" placeholder="Phone (optional)" />
 
-      <button type="submit">Add Swap</button>
-    </form>
-  </div>
+    <!-- Profile Photo Upload -->
+    <input type="file" id="profilePhoto" accept="image/*" />
+    <button type="submit">Save Profile</button>
+    <button type="button" onclick="closeProfileEditor()">Cancel</button>
+  </form>
+</section>
 
-  <!-- Import Firebase and JS -->
-  <script type="module" src="./js/explore.js"></script>
+    <!-- User Profile Modal -->
+    <section id="userProfileModal" class="hidden">
+      <div id="userProfileContent"></div>
+    </section>
+
+    <!-- Offer Swap Modal -->
+<section id="offerSwapModal" class="hidden">
+  <h3>Offer a Swap</h3>
+  <p>Offering for: <span id="targetPostTitle"></span></p>
+  <form id="offerSwapForm">
+    <label for="offeredPost">Your Posts:</label>
+    <select id="offeredPost" required></select>
+    <textarea id="swapMessage" placeholder="Message (optional)"></textarea>
+    <button type="submit">Send Offer</button>
+    <button type="button" onclick="closeOfferSwap()">Cancel</button>
+  </form>
+</section>
+
+<section id="chatModal" class="hidden">
+  <div id="chatContainer"></div>
+  <form id="chatForm">
+    <input type="text" id="chatMessage" placeholder="Type a message..." required />
+    <button type="submit">Send</button>
+  </form>
+  <button id="closeDealBtn" class="hidden" onclick="closeDeal()">Close Deal</button>
+  <button onclick="closeChat()">Exit Chat</button>
+</section>
+
+
+<section id="ratingModal" class="hidden">
+  <h3>Rate Your Experience</h3>
+  <label for="rating">Rating (0-5):</label>
+  <input type="number" id="rating" min="0" max="5" required />
+  <textarea id="feedback" placeholder="Optional feedback"></textarea>
+  <button onclick="submitRating()">Submit Rating</button>
+  <button onclick="closeRatingModal()">Cancel</button>
+</section>
+
+
+  </main>
+
+
+  <footer>
+    <p>&copy; 2025 Life Swap</p>
+  </footer>
 </body>
 </html>
