@@ -253,9 +253,16 @@ async function loadPosts(filterType = "", filterHashtags = [], filterCity = "", 
     const imageUrl = post.imageUrls && post.imageUrls[0] 
       ? post.imageUrls[0] 
       : "https://upload.wikimedia.org/wikipedia/commons/a/a3/Image-not-found.png?20210521171500"; // Placeholder image if none exists
-
+  
     const postDate = new Date(post.timestamp.toDate()).toLocaleString(); // Format timestamp
-
+  
+    // Convert hashtags array to clickable links
+    const hashtags = post.hashtags
+      ? post.hashtags
+          .map((tag) => `<span class="clickable-hashtag" onclick="filterByHashtag('${tag}')">${tag}</span>`)
+          .join(", ")
+      : "No hashtags";
+  
     const postCard = document.createElement("div");
     postCard.classList.add("post-card"); // Add class for styling
     postCard.innerHTML = `
@@ -266,6 +273,7 @@ async function loadPosts(filterType = "", filterHashtags = [], filterCity = "", 
           <p class="post-city">${post.city} (${post.distanceFromCity} miles away)</p>
           <p class="post-date">Posted on: ${postDate}</p>
           <p class="post-rating">★ ${post.averageRating} (${post.ratingCount} reviews)</p>
+          <p class="post-hashtags"><strong>Hashtags:</strong> ${hashtags}</p> <!-- Add clickable hashtags -->
         </div>
       </div>
       <button onclick="viewDetails('${post.id}')">View Details</button>
@@ -289,6 +297,12 @@ async function normalizeCityNames() {
 }
 
 normalizeCityNames();
+
+function filterByHashtag(hashtag) {
+  console.log(`Filtering posts by hashtag: ${hashtag}`); // Debug log
+  // Pass the clicked hashtag as a filter to `loadPosts`
+  loadPosts("", [hashtag], "", 0);
+}
 
 function applyFilters(filterType = "", filterHashtags = "") {
   const selectedFilterType = document.getElementById("filterType").value || filterType;
@@ -609,7 +623,6 @@ document.getElementById("recommendationsBtn").addEventListener("click", async ()
     const idToken = await auth.currentUser.getIdToken(/* forceRefresh */ true);
 
     // 2) Make a direct POST request to your onRequest function endpoint
-    //    (change the URL to match your function's deploy location)
     const response = await fetch("https://us-central1-life-swap-6065e.cloudfunctions.net/getRecommendations", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -634,10 +647,10 @@ document.getElementById("recommendationsBtn").addEventListener("click", async ()
     recommendations.forEach((post) => {
       recommendationGrid.innerHTML += `
         <div class="post-card">
-          <img src="${post.imageUrls?.[0] || "placeholder.jpg"}" alt="${post.title}" />
-          <h3>${post.title}</h3>
-          <p>${post.description}</p>
-          <p><strong>Location:</strong> ${post.city}</p>
+          <img src="${post.imageUrls?.[0] || "placeholder.jpg"}" alt="${post.title || "No Title"}" />
+          <h3>${post.title || "No Title"}</h3>
+          <p>${post.description || "No Description"}</p>
+          <p><strong>Location:</strong> ${post.city || "Unknown"}</p>
         </div>
       `;
     });
@@ -1516,3 +1529,4 @@ window.cancelOffer = cancelOffer;
 window.openRatingModal = openRatingModal;
 window.setupAutocomplete = setupAutocomplete;
 window.clearAllNotifications = clearAllNotifications;
+window.filterByHashtag = filterByHashtag;
