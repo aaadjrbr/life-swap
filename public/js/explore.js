@@ -605,17 +605,28 @@ document.getElementById("recommendationsBtn").addEventListener("click", async ()
   recommendationGrid.innerHTML = "Loading recommendations...";
 
   try {
-    const getRecommendations = httpsCallable(functions, "getRecommendations");
+    // 1) Get a fresh ID token from the current user
     const idToken = await auth.currentUser.getIdToken(/* forceRefresh */ true);
-    const result = await getRecommendations({ idToken });
-    console.log(result.data.recommendations);
-    const recommendations = result.data.recommendations;
 
+    // 2) Make a direct POST request to your onRequest function endpoint
+    //    (change the URL to match your function's deploy location)
+    const response = await fetch("https://us-central1-life-swap-6065e.cloudfunctions.net/getRecommendations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Request failed with status ${response.status}`);
+    }
+
+    // 3) Parse the JSON response
+    const data = await response.json();
+    const recommendations = data.recommendations;
+
+    // 4) Display the recommendations
     recommendationGrid.innerHTML = "";
-    // Pass it in as data.idToken
-
-
-    if (recommendations.length === 0) {
+    if (!recommendations || recommendations.length === 0) {
       recommendationGrid.innerHTML = "<p>No recommendations found.</p>";
       return;
     }
