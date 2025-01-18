@@ -2,22 +2,22 @@ name: Deploy to Firebase
 on:
   push:
     branches:
-      - main  # This triggers the workflow on pushes to the main branch.
+      - main
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest  # Specifies the runner environment.
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout Repo
-      uses: actions/checkout@v2  # Checks out your repository under $GITHUB_WORKSPACE, so your workflow can access it.
+      uses: actions/checkout@v2
 
     - name: Install Dependencies
-      run: npm install  # Installs dependencies defined in package.json within the 'functions' directory.
-      working-directory: ./functions  # Specifies that 'npm install' should be run in the functions directory where your Firebase functions' package.json is located.
+      run: npm install
+      working-directory: ./functions
 
     - name: Deploy to Firebase
-      uses: w9jds/firebase-action@master  # Uses an external GitHub Action to deploy the code to Firebase.
+      uses: w9jds/firebase-action@master
       with:
-        args: deploy --only hosting,functions --token "${{ secrets.FIREBASE_TOKEN }}"  # Deploys both your hosting and functions to Firebase using the token for authentication.
+        args: deploy --only hosting,functions --force --token "${{ secrets.FIREBASE_TOKEN }}"
       env:
-        FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}  # Sets the Firebase token as an environment variable.
+        FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
