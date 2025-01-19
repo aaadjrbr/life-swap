@@ -45,10 +45,11 @@ header {
   flex-direction: column;
   border: 1px solid #ccc;
   border-radius: 8px;
-  margin: 10px;
-  padding: 10px;
+  margin: 5px;
+  padding: 15px;
   max-width: 300px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  background: #d2f0da;
 }
 
 .post-header {
@@ -79,9 +80,13 @@ header {
   margin: 0;
 }
 
-.post-city,
-.post-date {
+.post-city {
   font-size: 0.9em;
+  color: #666;
+}
+
+.post-date {
+  font-size: 0.8em;
   color: #666;
 }
 
@@ -157,7 +162,8 @@ img {
 .post-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-direction: column;
 }
 
 .profile-photo {
@@ -246,6 +252,12 @@ div#filterCitySuggestions {
   background-color: #f0f0f0;
 }
 
+.container-viewdetails-buttons {
+  display: flex;
+  margin: auto;
+  justify-content: center;
+}
+
 .post-details {
   padding: 20px;
   font-family: Arial, sans-serif;
@@ -255,6 +267,13 @@ div#filterCitySuggestions {
   text-align: center;
   font-size: 24px;
   margin-bottom: 10px;
+}
+
+.post-desired-trade {
+  font-size: 0.9em;
+  background: #ffff0061;
+  padding: 4px;
+  border-radius: 8px;
 }
 
 .carousel {

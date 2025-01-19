@@ -303,7 +303,8 @@ if (filterHashtags.length > 0) conditions.push(where("hashtags", "array-contains
           <img src="${imageUrl}" alt="${post.title}" class="post-image" />
           <div class="post-info">
             <h3 class="post-title">${post.title}</h3>
-            <p class="post-city">${post.city} (${post.distanceFromCity || 0} miles away)</p>
+            <p class="post-desired-trade"><strong>📌 Desired Trade:</strong> ${post.desiredTrade || "Not specified"}</p>
+            <p class="post-city">🌍 ${post.city} (${post.distanceFromCity || 0} miles away)</p>
             <p class="post-date">Posted on: ${postDate}</p>
             <p class="post-hashtags"><strong>Hashtags:</strong> ${hashtags}</p>
           </div>
@@ -641,6 +642,14 @@ async function viewDetails(postId, hideOfferSwap = false) {
         <img src="${post.imageUrls[0]}" class="carousel-image" alt="Image" />
         <button class="carousel-button" id="next">→</button>
       </div>
+      <div class="container-viewdetails-buttons">
+            ${
+        !hideOfferSwap
+          ? `<button class="offer-swap-btn" onclick="openOfferSwapModal('${postId}', '${post.title}')">Offer Swap</button>`
+          : ""
+      }
+      <button class="close-modal-btn" onclick="closeModal()">Close ❌</button>
+      </div>
       <p class="post-description">${post.description}</p>
       <p class="post-category"><strong>Category:</strong> ${post.category}</p>
       <p class="post-location"><strong>Location:</strong> ${post.city} (${post.distanceFromCity || 0} miles away)</p>
@@ -653,12 +662,7 @@ async function viewDetails(postId, hideOfferSwap = false) {
           <span class="clickable-author" onclick="viewProfile('${post.userId}')">${user.name}</span>
         </p>
       </div>
-      ${
-        !hideOfferSwap
-          ? `<button class="offer-swap-btn" onclick="openOfferSwapModal('${postId}', '${post.title}')">Offer Swap</button>`
-          : ""
-      }
-      <button class="close-modal-btn" onclick="closeModal()">Close</button>
+
     </div>
   `;
 
