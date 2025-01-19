@@ -1905,10 +1905,10 @@ async function loadPostsToMap(map) {
 
 function centerMapOnUserLocation(map) {
   const recenterButton = document.createElement("button");
-  recenterButton.textContent = "Center on My Location";
+  recenterButton.textContent = "📍 My Location";
   recenterButton.style.cssText = `
     position: absolute;
-    top: 10px;
+    top: 80px;
     left: 10px;
     z-index: 1000;
     padding: 10px;
@@ -1923,7 +1923,8 @@ function centerMapOnUserLocation(map) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
-          map.setView([latitude, longitude], 13); // Center map on user location with zoom level 13
+          map.setView([latitude, longitude], 13); // Center map
+          map.fire("moveend"); // Trigger fetching posts
           L.marker([latitude, longitude]).addTo(map)
             .bindPopup("You are here!")
             .openPopup();
@@ -1938,7 +1939,6 @@ function centerMapOnUserLocation(map) {
     }
   };
 
-  // Add the button to the map container
   const mapContainer = document.getElementById("map");
   mapContainer.appendChild(recenterButton);
 }
@@ -1970,7 +1970,7 @@ document.getElementById("getLocationButton").addEventListener("click", () => {
 
 document.addEventListener("DOMContentLoaded", async () => {
   // Initialize the map
-  const map = L.map("map").setView([37.7749, -122.4194], 10); // Default center is San Francisco
+  const map = L.map("map").setView([40.7128, -74.0060], 10); // Default center is San Francisco
 
   // Add OpenStreetMap tiles
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {

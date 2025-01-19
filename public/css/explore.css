@@ -9,25 +9,107 @@
 
 /* Basic styles for the page layout */
 body {
-  font-family: 'Arial', sans-serif;
+  font-family: 'Open Sans', sans-serif; /* Body font */
   background-color: #f8f9fa;
   margin: 0;
-  padding: 20px;
   color: #333;
 }
 
+.padding-body {
+  padding: 20px;
+}
+
 h3 {
-  color: #007bff;
+  color: #77BFA3;
+  font-size: 1.6em;
   text-align: center;
   margin-bottom: 20px;
+}
+
+h4 {
+  text-align: center;
 }
 
 header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem;
-  background-color: #f4f4f4;
+  padding: 1rem 2rem; /* Increased horizontal padding */
+  background-color: #ffffff; /* White background for a clean look */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Subtle shadow for depth */
+  top: 0;
+  z-index: 1000; /* Ensure it stays above other content */
+}
+
+header h1 {
+  margin: 0;
+  font-family: 'Poppins', sans-serif; /* Modern font */
+  font-size: 1.5rem; /* Larger font size for emphasis */
+  font-weight: 600; /* Bold weight */
+  color: #2c3e50; /* Dark color for contrast */
+}
+
+header h1 a {
+  text-decoration: none; /* Remove underline */
+  color: inherit; /* Inherit color from h1 */
+  transition: color 0.3s ease; /* Smooth color transition */
+}
+
+header h1 a:hover {
+  color: #77BFA3; /* Highlight color on hover */
+}
+
+header button {
+  background-color: #77BFA3; /* Primary button color */
+  color: #ffffff; /* White text */
+  border: none;
+  padding: 0.5rem 1rem; /* Comfortable padding */
+  border-radius: 8px; /* Rounded corners */
+  font-family: 'Open Sans', sans-serif; /* Clean font */
+  font-size: 0.9rem; /* Readable font size */
+  font-weight: 500; /* Medium weight */
+  cursor: pointer;
+  transition: background-color 0.3s ease, transform 0.2s ease; /* Smooth transitions */
+  margin-left: 0.5rem; /* Space between buttons */
+}
+
+header button:hover {
+  background-color: #98C9A3; /* Lighter shade on hover */
+  transform: translateY(-2px); /* Slight lift effect */
+}
+
+header button:active {
+  transform: translateY(0); /* Reset lift effect on click */
+}
+
+button#toggleYourPostsBtn {
+  display: flex;
+  margin: auto;
+  margin-top: 10px;
+}
+
+.edit-profile-btn, #toggleYourPostsBtn {
+  background-color: #77BFA3; /* Primary button color */
+  color: #ffffff; /* White text */
+  border: none;
+  padding: 0.5rem 1rem; /* Comfortable padding */
+  border-radius: 8px; /* Rounded corners */
+  font-family: 'Open Sans', sans-serif; /* Clean font */
+  font-size: 0.9rem; /* Readable font size */
+  font-weight: 500; /* Medium weight */
+  cursor: pointer;
+  transition: background-color 0.3s ease, transform 0.2s ease; /* Smooth transitions */
+  margin-left: 0.5rem; /* Space between buttons */
+  margin-top: 8px;
+}
+
+.edit-profile-btn:hover, #toggleYourPostsBtn:hover {
+  background-color: #98C9A3; /* Lighter shade on hover */
+  transform: translateY(-2px); /* Slight lift effect */
+}
+
+.edit-profile-btn:active, #toggleYourPostsBtn:active {
+  transform: translateY(0); /* Reset lift effect on click */
 }
 
 /*#postsContainer {
@@ -308,10 +390,49 @@ div#filterCitySuggestions {
 }
 
 .offer-item {
-  background: #ceffd1;
-  border: 1px solid #ccc;
-  padding: 10px;
+  background: linear-gradient(145deg, #EDEEC9, #BFD8BD); /* Gradient background */
+  border: 1px solid rgba(0, 0, 0, 0.1); /* Subtle border */
+  border-radius: 12px; /* Rounded corners */
+  padding: 20px; /* Increased padding */
   margin: 10px 0;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08); /* Soft shadow */
+  transition: transform 0.3s ease, box-shadow 0.3s ease; /* Smooth transition */
+  position: relative;
+  overflow: hidden;
+}
+
+.offer-item:hover {
+  transform: translateY(-5px); /* Lift effect on hover */
+  box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15), 0 3px 6px rgba(0, 0, 0, 0.1); /* Enhanced shadow on hover */
+}
+
+/* Optional: Add a pseudo-element for extra depth */
+.offer-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.1), rgba(0, 0, 0, 0.05));
+  border-radius: 12px;
+  pointer-events: none;
+}
+
+/* Optional: Add a subtle animation */
+@keyframes fadeIn {
+  from {
+      opacity: 0;
+      transform: translateY(10px);
+  }
+  to {
+      opacity: 1;
+      transform: translateY(0);
+  }
+}
+
+.offer-item {
+  animation: fadeIn 0.5s ease-out; /* Fade-in animation */
 }
 
 .accept-btn,
@@ -335,18 +456,35 @@ div#filterCitySuggestions {
 
 #yourPosts {
   display: flex;
-  flex-direction: column;
+  flex-direction: row-reverse;
   gap: 10px;
+}
+
+/* Mobile devices (phones, less than 768px) */
+@media (max-width: 767.98px) {
+  #yourPosts {
+    flex-direction: column; /* Stack items vertically */
+    gap: 15px; /* Increase gap for better spacing on small screens */
+  }
 }
 
 .your-post-item {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  justify-content: space-around;
   padding: 10px;
   border: 1px solid #ddd;
   border-radius: 5px;
   background-color: #f9f9f9;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  width: 60%;
+  margin: auto;
+  align-content: center;
+  align-items: center;
+  background: linear-gradient(145deg, #EDEEC9, #BFD8BD);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 .your-post-item .post-title {
@@ -363,7 +501,7 @@ div#filterCitySuggestions {
 }
 
 .your-post-item .view-post-btn {
-  background-color: #007bff;
+  background-color: #77BFA3;
 }
 
 .your-post-item .delete-post-btn, .cancel-offer-btn {
@@ -391,22 +529,13 @@ div#filterCitySuggestions {
   margin-top: 20px;
   border: 1px solid #ddd;
   padding: 15px;
-  border-radius: 5px;
-  background-color: #f9f9f9;
+  border-radius: 15px;
+  background-color: #ffffff;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-#toggleYourPostsBtn {
-  margin-top: 10px;
-  padding: 10px 15px;
-  background-color: #007bff;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-}
-
-#toggleYourPostsBtn:hover {
-  background-color: #0056b3;
+#yourPostsContainer p {
+  font-size: 1.1em;
 }
 
 #closeDealBtn {
@@ -467,7 +596,7 @@ div#map {
   border-radius: 8px;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
   padding: 20px;
-  max-width: 500px;
+  max-width: auto;
   margin: 0 auto;
   margin-top: 30px;
 }
@@ -478,14 +607,47 @@ div#map {
   gap: 15px;
 }
 
-#createPost input,
-#createPost textarea,
-#createPost select {
-  width: 100%;
+input#user-message {
+  width: 90%;
   padding: 10px;
   border: 1px solid #ddd;
   border-radius: 5px;
   font-size: 16px;
+  display: flex;
+  margin: auto;
+}
+
+input#user-message:focus {
+  border-color: #007bff;
+  outline: none;
+  box-shadow: 0 0 4px rgba(0, 123, 255, 0.2);
+}
+
+form#chat-form button {
+  background: #007bff;
+  color: #ffffff;
+  border: none;
+  padding: 10px;
+  border-radius: 5px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+form#chat-form button:hover {
+  background: #0056b3;
+}
+
+#createPost input,
+#createPost textarea,
+#createPost select {
+  width: 90%;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-size: 16px;
+  display: flex;
+  margin: auto;
 }
 
 #createPost input:focus,
@@ -762,7 +924,7 @@ div#map {
 
 .notification-list {
   position: fixed;
-  top: 90px;
+  top: 115px;
   right: 10px;
   background: white;
   border: 1px solid #ccc;
@@ -794,7 +956,7 @@ div#map {
 
 #notificationBell {
   position: fixed;
-  top: 50px;
+  top: 75px;
   right: 10px;
   border-radius: 5px;
   width: auto;
@@ -1046,4 +1208,8 @@ div#response div.post-details {
   margin: 10px;
   padding: 10px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+footer p {
+  text-align: center;
 }
