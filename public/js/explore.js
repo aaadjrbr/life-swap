@@ -1,6 +1,6 @@
 // Import Firebase modules
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, addDoc, writeBatch, setDoc, getDocs, where, orderBy, onSnapshot, updateDoc, query, doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, addDoc, writeBatch, limit, startAfter, setDoc, getDocs, where, orderBy, onSnapshot, updateDoc, query, doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
@@ -176,11 +176,11 @@ document.getElementById("postForm").addEventListener("submit", async (e) => {
   await addDoc(collection(db, "posts"), {
     title,
     description,
-    desiredTrade, // Include the new field in the Firestore document
+    desiredTrade,
     type: postType,
     category,
-    city, // User-selected city
-    distanceFromCity: distance, // Distance from the selected city
+    city: city.trim().toLowerCase(), // Normalize city name
+    distanceFromCity: distance,
     hashtags,
     imageUrls,
     userId: user.uid,
@@ -193,94 +193,203 @@ document.getElementById("postForm").addEventListener("submit", async (e) => {
 });
 
 // Load Posts
-async function loadPosts(filterType = "", filterHashtags = [], filterCity = "", maxDistance = 0) {
+let postsPerPage = 6; // Default number of posts per page
+let currentPage = 1; // Current page
+let lastVisibleDocs = []; // Track last visible documents for pagination
+let appliedFilters = {}; // Store applied filters globally
+let totalPosts = 0; // Initialize with a default value
+
+async function loadPosts(filterType = "", filterHashtags = [], filterCity = null, filterDistance = null, page = 1, filterCategory = "") {
   const postGrid = document.getElementById("postGrid");
+  const postsPerPageSelector = document.getElementById("postsPerPageSelector");
   postGrid.innerHTML = "Loading...";
 
-  let postsQuery = query(collection(db, "posts"));
+  // Set postsPerPage based on user selection
+  const postsPerPage = parseInt(postsPerPageSelector.value) || 6;
 
-  // Filter by type
-  if (filterType) {
-    postsQuery = query(postsQuery, where("type", "==", filterType));
-  }
-
-  // Filter by hashtags
-  if (filterHashtags.length > 0) {
-    postsQuery = query(postsQuery, where("hashtags", "array-contains-any", filterHashtags));
-  }
-
-  const querySnapshot = await getDocs(postsQuery);
-
-  const filteredPosts = [];
-  for (const postDoc of querySnapshot.docs) {
-    const post = postDoc.data();
-
-    // Apply city filter
-    if (filterCity && post.city !== filterCity) {
-      continue;
-    }
-
-    // Apply distance filter
-    if (maxDistance > 0 && post.distanceFromCity > maxDistance) {
-      continue;
-    }
-
-    // Fetch the user rating for the post owner
-    const userRatingsQuery = query(collection(db, "ratings"), where("rateeId", "==", post.userId));
-    const userRatingsSnapshot = await getDocs(userRatingsQuery);
-
-    const ratings = [];
-    userRatingsSnapshot.forEach((ratingDoc) => ratings.push(ratingDoc.data().rating));
-    const averageRating = ratings.length > 0 ? (ratings.reduce((a, b) => a + b) / ratings.length).toFixed(1) : "No ratings";
-
-    // Add the post to the filtered results
-    filteredPosts.push({
-      id: postDoc.id,
-      ...post,
-      averageRating,
-      ratingCount: ratings.length,
-    });
-  }
-
-  // Display posts
-  if (filteredPosts.length === 0) {
-    postGrid.innerHTML = "<p>No posts match your filter criteria.</p>";
+  const user = auth.currentUser;
+  if (!user) {
+    console.log("You must be logged in to view posts!");
     return;
   }
 
-  postGrid.innerHTML = ""; // Clear the grid
-  filteredPosts.forEach((post) => {
-    const imageUrl = post.imageUrls && post.imageUrls[0] 
-      ? post.imageUrls[0] 
-      : "https://upload.wikimedia.org/wikipedia/commons/a/a3/Image-not-found.png?20210521171500"; // Placeholder image if none exists
-  
-    const postDate = new Date(post.timestamp.toDate()).toLocaleString(); // Format timestamp
-  
-    // Convert hashtags array to clickable links
-    const hashtags = post.hashtags
-      ? post.hashtags
-          .map((tag) => `<span class="clickable-hashtag" onclick="filterByHashtag('${tag}')">${tag}</span>`)
-          .join(", ")
-      : "No hashtags";
-  
-    const postCard = document.createElement("div");
-    postCard.classList.add("post-card"); // Add class for styling
-    postCard.innerHTML = `
-      <div class="post-header">
-        <img src="${imageUrl}" alt="${post.title}" class="post-image" />
-        <div class="post-info">
-          <h3 class="post-title">${post.title}</h3>
-          <p class="post-city">${post.city} (${post.distanceFromCity} miles away)</p>
-          <p class="post-date">Posted on: ${postDate}</p>
-          <p class="post-rating">★ ${post.averageRating} (${post.ratingCount} reviews)</p>
-          <p class="post-hashtags"><strong>Hashtags:</strong> ${hashtags}</p> <!-- Add clickable hashtags -->
-        </div>
-      </div>
-      <button onclick="viewDetails('${post.id}')">View Details</button>
-    `;
-    postGrid.appendChild(postCard);
+  const userRef = doc(db, "users", user.uid);
+  const userDoc = await getDoc(userRef);
+
+  if (!userDoc.exists()) {
+    console.log("User document not found!");
+    return;
+  }
+
+  const userData = userDoc.data();
+
+  // Default values from user profile
+  const defaultCity = userData.city || "";
+  const defaultDistance = userData.distance || 0;
+
+  // Effective values prioritize filters over defaults
+  const effectiveCity = filterCity !== null ? filterCity : defaultCity;
+  const effectiveDistance = filterDistance !== null ? filterDistance : defaultDistance;
+
+  console.log("Filters applied:", {
+    filterType,
+    filterHashtags,
+    city: effectiveCity,
+    distance: effectiveDistance,
   });
+
+  // Reset pagination for a new query
+  if (page === 1) {
+    lastVisibleDocs = [];
+    currentPage = 1;
+  }
+
+  // Construct the query
+  let postsQuery = collection(db, "posts");
+  const conditions = [];
+
+// Add conditions dynamically based on filters
+if (filterType) conditions.push(where("type", "==", filterType));
+if (effectiveCity) conditions.push(where("city", "==", effectiveCity));
+if (effectiveDistance > 0) conditions.push(where("distanceFromCity", "<=", effectiveDistance));
+if (filterCategory) conditions.push(where("category", "==", filterCategory));
+if (filterHashtags.length > 0) conditions.push(where("hashtags", "array-contains-any", filterHashtags));
+
+  conditions.push(orderBy("timestamp", "desc"));
+  conditions.push(limit(postsPerPage));
+
+  // Handle pagination
+  if (page > 1 && lastVisibleDocs[page - 2]) {
+    conditions.push(startAfter(lastVisibleDocs[page - 2]));
+  }
+
+  postsQuery = query(postsQuery, ...conditions);
+
+  try {
+    const querySnapshot = await getDocs(postsQuery);
+
+    if (querySnapshot.empty) {
+      postGrid.innerHTML = page === 1 ? "<p>No posts available.</p>" : "";
+      return;
+    }
+
+    lastVisibleDocs[page - 1] = querySnapshot.docs[querySnapshot.docs.length - 1];
+    currentPage = page;
+
+
+    // Render posts
+    postGrid.innerHTML = "";
+    querySnapshot.docs.forEach((doc) => {
+      const post = doc.data();
+      const imageUrl = post.imageUrls?.[0] || "https://via.placeholder.com/150";
+      const postDate = post.timestamp ? new Date(post.timestamp.toDate()).toLocaleString() : "Unknown date";
+      const hashtags = post.hashtags
+  ? post.hashtags
+      .map((tag) => `
+        <span 
+          class="clickable-hashtag" 
+          onclick="filterByHashtag('${tag}')"
+          style="cursor: pointer; color: blue; text-decoration: underline;">
+          ${tag}
+        </span>`)
+      .join(", ")
+  : "No hashtags";
+
+
+      const postCard = document.createElement("div");
+      postCard.classList.add("post-card");
+      postCard.innerHTML = `
+        <div class="post-header">
+          <img src="${imageUrl}" alt="${post.title}" class="post-image" />
+          <div class="post-info">
+            <h3 class="post-title">${post.title}</h3>
+            <p class="post-city">${post.city} (${post.distanceFromCity || 0} miles away)</p>
+            <p class="post-date">Posted on: ${postDate}</p>
+            <p class="post-hashtags"><strong>Hashtags:</strong> ${hashtags}</p>
+          </div>
+        </div>
+        <button onclick="viewDetails('${doc.id}')">View Details</button>
+      `;
+      postGrid.appendChild(postCard);
+    });
+
+    if (page === 1) {
+      fetchTotalPosts(effectiveCity, effectiveDistance);
+    }
+    renderPaginationControls();
+  } catch (error) {
+    console.error("Error loading posts:", error);
+    postGrid.innerHTML = "<p>Error loading posts. Please try again later.</p>";
+  }
 }
+
+// Fetch total posts count for pagination controls
+async function fetchTotalPosts(userCity, userMaxDistance) {
+  const totalQuery = query(
+    collection(db, "posts"),
+    where("city", "==", userCity),
+    where("distanceFromCity", "<=", userMaxDistance)
+  );
+  const totalSnapshot = await getDocs(totalQuery);
+  totalPosts = totalSnapshot.size;
+  console.log("Total posts:", totalPosts);
+}
+
+// Render pagination controls
+function renderPaginationControls() {
+  // Calculate total pages, ensuring at least one page is shown
+  const totalPages = Math.max(Math.ceil(totalPosts / postsPerPage), 1);
+
+  // Get pagination container
+  const pagination = document.getElementById("pagination");
+  pagination.innerHTML = ""; // Clear existing buttons
+
+  // Helper function to create a button
+  const createButton = (text, page, disabled = false) => {
+    const button = document.createElement("button");
+    button.textContent = text;
+    button.disabled = disabled;
+    button.onclick = () => {
+      if (!disabled) {
+        loadPosts(
+          appliedFilters.filterType,
+          appliedFilters.filterHashtags,
+          appliedFilters.filterCity,
+          appliedFilters.filterDistance,
+          page
+        );
+      }
+    };
+    return button;
+  };
+
+  // Add Previous button
+  pagination.appendChild(createButton("<", currentPage - 1, currentPage === 1));
+
+  // Add numbered page buttons
+  for (let i = 1; i <= totalPages; i++) {
+    const button = createButton(i, i, i === currentPage);
+    if (i === currentPage) {
+      button.classList.add("active"); // Highlight the current page
+    }
+    pagination.appendChild(button);
+  }
+
+  // Add Next button
+  pagination.appendChild(createButton(">", currentPage + 1, currentPage >= totalPages));
+}
+
+// Event listener for changing posts per page
+document.getElementById("postsPerPageSelector").addEventListener("change", () => {
+  currentPage = 1; // Reset to first page
+  lastVisibleDocs = []; // Clear pagination state
+  loadPosts();
+});
+
+// Load posts on page load
+document.addEventListener("DOMContentLoaded", () => {
+  loadPosts();
+});
 
 async function normalizeCityNames() {
   const postsQuery = query(collection(db, "posts"));
@@ -299,42 +408,121 @@ async function normalizeCityNames() {
 normalizeCityNames();
 
 function filterByHashtag(hashtag) {
-  console.log(`Filtering posts by hashtag: ${hashtag}`); // Debug log
-  // Pass the clicked hashtag as a filter to `loadPosts`
-  loadPosts("", [hashtag], "", 0);
+  console.log(`Filtering posts by hashtag: ${hashtag}`);
+  
+  // Pass the clicked hashtag as the filter
+  applyFilters("", [hashtag], "", 0); // Set filterType, hashtags array, city, and distance
 }
 
-function applyFilters(filterType = "", filterHashtags = "") {
-  const selectedFilterType = document.getElementById("filterType").value || filterType;
+function applyFilters(filterType = "", filterHashtags = [], filterCity = "", filterDistance = 0, filterCategory = "") {
+  // Get values from input fields if not explicitly passed
+  const selectedFilterType = filterType || document.getElementById("filterType").value;
   const rawHashtags = document.getElementById("filterHashtag").value;
-  const selectedCity = document.getElementById("filterCity").value;
-  const maxDistance = parseInt(document.getElementById("filterDistance").value, 10) || 0;
+  const selectedFilterCity = filterCity || document.getElementById("filterCity").value.trim();
+  const selectedFilterDistance = filterDistance || parseInt(document.getElementById("filterDistance").value) || 0;
+  const selectedFilterCategory = filterCategory || document.getElementById("filterCategory").value;
 
   // Process hashtags
-  const filterHashtagsArray = rawHashtags
+  // Normalize hashtags passed as parameters or from input
+  const filterHashtagsArray = filterHashtags.length > 0 ? filterHashtags : rawHashtags
     .split(",")
-    .map((tag) => {
-      const trimmed = tag.trim().toLowerCase();
-      return trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
-    })
-    .filter((tag) => tag.length > 1);
+    .map((tag) => tag.trim().toLowerCase())
+    .filter((tag) => tag.length > 0);
 
-  if (filterHashtags) {
-    const clickedHashtag = decodeURIComponent(filterHashtags).trim();
-    if (!filterHashtagsArray.includes(clickedHashtag)) {
-      filterHashtagsArray.push(clickedHashtag);
-    }
-  }
-
+  // Log applied filters
   console.log("Applying filters:", {
     filterType: selectedFilterType,
-    filterCity: selectedCity,
-    filterDistance: maxDistance,
     filterHashtags: filterHashtagsArray,
+    filterCity: selectedFilterCity,
+    filterDistance: selectedFilterDistance,
+    filterCategory: selectedFilterCategory,
   });
 
-  // Pass all filters to `loadPosts`
-  loadPosts(selectedFilterType, filterHashtagsArray, selectedCity, maxDistance);
+  // Display filters as bubbles
+  displayAppliedFilters({
+    filterType: selectedFilterType,
+    filterHashtags: filterHashtagsArray,
+    filterCity: selectedFilterCity,
+    filterDistance: selectedFilterDistance,
+    filterCategory: selectedFilterCategory,
+  });
+
+  // Call loadPosts with the mapped filters
+  loadPosts(selectedFilterType, filterHashtagsArray, selectedFilterCity, selectedFilterDistance, 1, selectedFilterCategory);
+}
+
+function displayAppliedFilters(filters) {
+  const appliedFiltersDiv = document.getElementById("appliedFilters");
+  appliedFiltersDiv.innerHTML = ""; // Clear previous bubbles
+
+  const { filterType, filterHashtags, filterCity, filterDistance, filterCategory } = filters;
+
+  // Add filter bubbles
+  if (filterType) {
+    createFilterBubble(appliedFiltersDiv, `Type: ${filterType}`, () => {
+      document.getElementById("filterType").value = "";
+      applyFilters(); // Update filters without this type
+    });
+  }
+
+  if (filterCategory) {
+    createFilterBubble(appliedFiltersDiv, `Category: ${filterCategory}`, () => {
+      document.getElementById("filterCategory").value = "";
+      applyFilters(); // Update filters without this category
+    });
+  }
+
+  if (filterCity) {
+    createFilterBubble(appliedFiltersDiv, `City: ${filterCity}`, () => {
+      document.getElementById("filterCity").value = "";
+      applyFilters(); // Update filters without this city
+    });
+  }
+
+  if (filterDistance) {
+    createFilterBubble(appliedFiltersDiv, `Distance: ${filterDistance} miles`, () => {
+      document.getElementById("filterDistance").value = "";
+      applyFilters(); // Update filters without this distance
+    });
+  }
+
+  if (filterHashtags.length > 0) {
+    filterHashtags.forEach((hashtag) => {
+      createFilterBubble(appliedFiltersDiv, `Hashtag: ${hashtag}`, () => {
+        const hashtagsInput = document.getElementById("filterHashtag");
+        const remainingHashtags = hashtagsInput.value
+          .split(",")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.toLowerCase() !== hashtag.toLowerCase());
+        hashtagsInput.value = remainingHashtags.join(", ");
+        applyFilters(); // Update filters without this hashtag
+      });
+    });
+  }
+
+  // Add a "clear all" button
+  if (appliedFiltersDiv.childNodes.length > 0) {
+    const clearButton = document.createElement("button");
+    clearButton.textContent = "Clear All Filters";
+    clearButton.classList.add("clear-filters-btn"); // Optional: Add styling class
+    clearButton.onclick = () => {
+      document.getElementById("filterType").value = "";
+      document.getElementById("filterCategory").value = "";
+      document.getElementById("filterCity").value = "";
+      document.getElementById("filterDistance").value = "";
+      document.getElementById("filterHashtag").value = "";
+      applyFilters(); // Reset all filters
+    };
+    appliedFiltersDiv.appendChild(clearButton);
+  }
+}
+
+function createFilterBubble(container, text, onRemove) {
+  const bubble = document.createElement("div");
+  bubble.className = "filter-bubble";
+  bubble.innerHTML = `<span>${text}</span> <button class="remove-btn">×</button>`;
+  bubble.querySelector(".remove-btn").onclick = onRemove;
+  container.appendChild(bubble);
 }
 
 let allHashtags = [];
@@ -456,6 +644,7 @@ async function viewDetails(postId, hideOfferSwap = false) {
       <p class="post-description">${post.description}</p>
       <p class="post-category"><strong>Category:</strong> ${post.category}</p>
       <p class="post-location"><strong>Location:</strong> ${post.city} (${post.distanceFromCity || 0} miles away)</p>
+      <p class="post-desired-trade"><strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}</p>
       <div class="user-info">
         <img src="${user.profilePhoto}" alt="${user.name}" class="profile-photo" />
         <p class="post-rating">★ ${averageRating} (${ratingCount} reviews)</p>
@@ -503,8 +692,9 @@ async function openProfileEditor() {
     document.getElementById("userName").value = userData.name || "";
     document.getElementById("userBio").value = userData.bio || "";
     document.getElementById("profileCity").value = userData.city || "";
-    document.getElementById("instagram").value = userData.instagram || ""; // Populate Instagram
-    document.getElementById("phone").value = userData.phone || ""; // Populate Phone
+    document.getElementById("profileDistance").value = userData.distance || "";
+    document.getElementById("instagram").value = userData.instagram || ""; 
+    document.getElementById("phone").value = userData.phone || "";
   }
 
   document.getElementById("profileEditor").classList.remove("hidden");
@@ -539,6 +729,7 @@ document.getElementById("profileForm").addEventListener("submit", async (e) => {
   const instagram = document.getElementById("instagram").value.trim();
   const phone = document.getElementById("phone").value.trim();
   const photo = document.getElementById("profilePhoto").files[0];
+  const distance = parseInt(document.getElementById("profileDistance").value.trim()) || 0;
 
   // Object to store updated fields
   const updates = {};
@@ -580,6 +771,11 @@ document.getElementById("profileForm").addEventListener("submit", async (e) => {
     updates.phone = phone;
   }
 
+  // Check if distance has changed
+  if (distance !== (userData.distance || 0)) { // Default to 0 if no distance is set
+    updates.distance = distance;
+  }
+
   // Check if a new profile photo has been uploaded
   if (photo) {
     const photoRef = ref(storage, `profilePhotos/${user.uid}`);
@@ -604,61 +800,6 @@ document.getElementById("profileForm").addEventListener("submit", async (e) => {
 function closeProfileEditor() {
   document.getElementById("profileEditor").classList.add("hidden");
 }
-
-// Recommendations
-document.getElementById("recommendationsBtn").addEventListener("click", async () => {
-  const user = auth.currentUser;
-  console.log("Current User:", user); // Log the authenticated user
-
-  if (!user) {
-    alert("You must be logged in to get recommendations.");
-    return;
-  }
-
-  const recommendationGrid = document.getElementById("recommendationGrid");
-  recommendationGrid.innerHTML = "Loading recommendations...";
-
-  try {
-    // 1) Get a fresh ID token from the current user
-    const idToken = await auth.currentUser.getIdToken(/* forceRefresh */ true);
-
-    // 2) Make a direct POST request to your onRequest function endpoint
-    const response = await fetch("https://us-central1-life-swap-6065e.cloudfunctions.net/getRecommendations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken })
-    });
-
-    if (!response.ok) {
-      throw new Error(`Request failed with status ${response.status}`);
-    }
-
-    // 3) Parse the JSON response
-    const data = await response.json();
-    const recommendations = data.recommendations;
-
-    // 4) Display the recommendations
-    recommendationGrid.innerHTML = "";
-    if (!recommendations || recommendations.length === 0) {
-      recommendationGrid.innerHTML = "<p>No recommendations found.</p>";
-      return;
-    }
-
-    recommendations.forEach((post) => {
-      recommendationGrid.innerHTML += `
-        <div class="post-card">
-          <img src="${post.imageUrls?.[0] || "placeholder.jpg"}" alt="${post.title || "No Title"}" />
-          <h3>${post.title || "No Title"}</h3>
-          <p>${post.description || "No Description"}</p>
-          <p><strong>Location:</strong> ${post.city || "Unknown"}</p>
-        </div>
-      `;
-    });
-  } catch (error) {
-    console.error("Error fetching recommendations:", error);
-    recommendationGrid.innerHTML = "<p>Error fetching recommendations. Please try again later.</p>";
-  }
-});
 
 // Load User Profile
 async function viewProfile(userId) {
@@ -1236,6 +1377,73 @@ async function sendMessage(dealId, message) {
     console.log("Notification successfully added.");
   } catch (error) {
     console.error("Failed to add notification:", error);
+  }
+}
+
+const form = document.getElementById('chat-form');
+const userMessageInput = document.getElementById('user-message');
+const responseContainer = document.getElementById('response');
+
+form.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const userMessage = userMessageInput.value.trim();
+  const userId = auth.currentUser.uid; // Get the userId of the logged-in user
+
+  if (!userId) {
+    alert('You must be logged in to use this feature.');
+    return;
+  }
+
+  if (!userMessage) {
+    alert('Please enter a message.');
+    return;
+  }
+
+  const firebaseFunctionUrl = 'https://us-central1-life-swap-6065e.cloudfunctions.net/chatSearch'; // Replace with your function URL
+
+  try {
+    const response = await fetch(firebaseFunctionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ message: userMessage, userId: userId }), // Include userId here
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    responseContainer.innerHTML = `<p>${data.message}</p>`;
+    if (data.posts && data.posts.length > 0) {
+      const postsList = data.posts.map(post => `
+        <div class="post-details">
+          <h3 class="post-title">${post.title}</h3>
+          ${post.imageUrls && post.imageUrls.length > 0 ? `
+            <img src="${post.imageUrls[0]}" alt="${post.title}" class="ai-image" />
+          ` : ''}
+          <p class="post-description">${post.description}</p>
+          <p class="post-desired-trade">💡 <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}</p>
+          <p class="post-location">📌 ${post.city}, Distance: ${post.distanceFromCity} miles</p>
+          ${post.viewDetailsButton}
+        </div>
+      `).join('');
+      responseContainer.innerHTML += `<h2>Matching Posts:</h2>${postsList}`;
+    }
+  } catch (error) {
+    responseContainer.innerHTML = `<p>Error: ${error.message}</p>`;
+  }
+});
+
+async function getIdToken() {
+  const user = auth.currentUser; // Use the initialized `auth` object
+  if (user) {
+    return await user.getIdToken();
+  } else {
+    console.warn("User is not authenticated.");
+    return null;
   }
 }
 

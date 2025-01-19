@@ -63,7 +63,32 @@
           <option value="" disabled selected>Select Category</option>
           <option value="clothing">Clothing</option>
           <option value="electronics">Electronics</option>
+          <option value="furniture">Furniture</option>
           <option value="fitness">Fitness</option>
+          <option value="food_and_groceries">Food and Groceries</option>
+          <option value="home_and_garden">Home and Garden</option>
+          <option value="personal_care">Personal Care</option>
+          <option value="transportation">Transportation</option>
+          <option value="entertainment">Entertainment</option>
+          <option value="education">Education</option>
+          <option value="finance">Finance</option>
+          <option value="work_and_office">Work and Office</option>
+          <option value="social_and_family">Social and Family</option>
+          <option value="travel">Travel</option>
+          <option value="health">Health</option>
+          <option value="hobbies_and_interests">Hobbies and Interests</option>
+          <option value="shopping">Shopping</option>
+          <option value="cooking">Cooking</option>
+          <option value="pets">Pets</option>
+          <option value="beauty">Beauty</option>
+          <option value="sports">Sports</option>
+          <option value="technology">Technology</option>
+          <option value="books">Books</option>
+          <option value="music">Music</option>
+          <option value="movies_and_tv">Movies and TV</option>
+          <option value="photography">Photography</option>
+          <option value="art_and_crafts">Art and Crafts</option>
+          <option value="diy_projects">DIY Projects</option>
         </select>
         
         <!-- City and Distance -->
@@ -87,14 +112,7 @@
         
         <button type="submit">Post</button>
       </form>
-    </section>    
-
-    <!-- Recommendations Section -->
-    <section id="recommendationsContainer" class="recommendations-section">
-      <h3 class="section-title">Recommended for You</h3>
-      <button id="recommendationsBtn" class="btn">Get Recommendations</button>
-      <div id="recommendationGrid" class="recommendation-grid"></div>
-    </section>    
+    </section>      
 
     <div id="filters">
       <select id="filterType">
@@ -102,6 +120,38 @@
         <option value="item">Item</option>
         <option value="skill">Skill</option>
         <option value="time">Time</option>
+      </select>
+
+      <select id="filterCategory">
+        <option value="" disabled selected>Select Category</option>
+        <option value="clothing">Clothing</option>
+        <option value="electronics">Electronics</option>
+        <option value="furniture">Furniture</option>
+        <option value="fitness">Fitness</option>
+        <option value="food_and_groceries">Food and Groceries</option>
+        <option value="home_and_garden">Home and Garden</option>
+        <option value="personal_care">Personal Care</option>
+        <option value="transportation">Transportation</option>
+        <option value="entertainment">Entertainment</option>
+        <option value="education">Education</option>
+        <option value="finance">Finance</option>
+        <option value="work_and_office">Work and Office</option>
+        <option value="social_and_family">Social and Family</option>
+        <option value="travel">Travel</option>
+        <option value="health">Health</option>
+        <option value="hobbies_and_interests">Hobbies and Interests</option>
+        <option value="shopping">Shopping</option>
+        <option value="cooking">Cooking</option>
+        <option value="pets">Pets</option>
+        <option value="beauty">Beauty</option>
+        <option value="sports">Sports</option>
+        <option value="technology">Technology</option>
+        <option value="books">Books</option>
+        <option value="music">Music</option>
+        <option value="movies_and_tv">Movies and TV</option>
+        <option value="photography">Photography</option>
+        <option value="art_and_crafts">Art and Crafts</option>
+        <option value="diy_projects">DIY Projects</option>
       </select>
       
       <div class="city-autocomplete">
@@ -112,15 +162,44 @@
       <input type="number" id="filterDistance" placeholder="Distance from city (miles)" />
       
       <input type="text" id="filterHashtag" placeholder="Filter by hashtag" />
-      <button onclick="applyFilters()">Apply Filters</button>
+      <button onclick="applyFilters()">Apply Filters</button> 
     </div>   
+
+    <div id="appliedFilters" class="filter-bubbles">
+      <!-- Applied filters will be dynamically added here -->
+    </div>
+    
+    <form id="chat-form">
+      <h2>Life Swap AI for recommendations</h2>
+      <input type="text" id="user-message" placeholder="Enter your message" required>
+      <button type="submit">Search</button>
+      <div id="response"></div>
+    </form>
+    
+    
+    
 
     <!-- Posts Section -->
     <section id="postsContainer">
       <h3>Explore Listings</h3>
+      
+      <!-- Pagination Controls -->
+      <div id="paginationControls">
+        <label for="postsPerPageSelector">Posts per page:</label>
+        <select id="postsPerPageSelector">
+          <option value="6" selected>6</option>
+          <option value="12">12</option>
+          <option value="20">20</option>
+        </select>
+      </div>
+      
+      <!-- Post Grid -->
       <div id="postGrid"></div>
+      
+      <!-- Pagination Navigation -->
+      <div id="pagination" class="pagination-controls"></div>
     </section>
-
+    
     <!-- Modal for Post Details -->
     <section id="modal" class="hidden">
       <div id="modalContent"></div>
@@ -135,20 +214,15 @@
     
     <!-- City Input with Suggestions -->
     <div class="city-autocomplete">
-      <input 
-        type="text" 
-        id="profileCity" 
-        placeholder="Type to search city" 
-      />
+      <input type="text" id="profileCity" placeholder="Type to search city" />
       <div id="profileCitySuggestions" class="suggestions-container"></div>
     </div>
-    <br/><br/>
-
-    <!-- Instagram and Phone Inputs -->
+    
+    <!-- New Field: Distance -->
+    <input type="number" id="profileDistance" placeholder="Distance from city (miles)" />
+    
     <input type="text" id="instagram" placeholder="Instagram (optional)" />
     <input type="text" id="phone" placeholder="Phone (optional)" />
-
-    <!-- Profile Photo Upload -->
     <input type="file" id="profilePhoto" accept="image/*" />
     <button type="submit">Save Profile</button>
     <button type="button" onclick="closeProfileEditor()">Cancel</button>

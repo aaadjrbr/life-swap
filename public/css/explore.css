@@ -85,7 +85,7 @@ header {
   color: #666;
 }
 
-div.post-card button {
+div.post-card button, div.post-details button {
   margin-top: 15px;
   background-color: #007BFF;
   color: white;
@@ -95,7 +95,7 @@ div.post-card button {
   cursor: pointer;
 }
 
-div.post-card button:hover {
+div.post-card button:hover, div.post-details button:hover {
   background-color: #0056b3;
 }
 
@@ -827,4 +827,163 @@ div#filterCitySuggestions {
   display: flex;
   flex-wrap: wrap;
   gap: 16px;
+}
+
+/* Pagination Container */
+.pagination-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem; /* Space between buttons */
+  margin: 20px 0;
+  font-family: Arial, sans-serif;
+}
+
+/* Pagination Buttons */
+.pagination-controls button {
+  background-color: #f0f0f0;
+  border: 1px solid #ddd;
+  color: #333;
+  padding: 5px 10px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background-color 0.2s ease;
+}
+
+/* Active Page */
+.pagination-controls button.active {
+  background-color: #007bff;
+  color: white;
+  border-color: #007bff;
+  font-weight: bold;
+  cursor: default;
+}
+
+/* Hover Effect */
+.pagination-controls button:hover:not(.active) {
+  background-color: #e0e0e0;
+}
+
+/* Disabled Buttons */
+.pagination-controls button:disabled {
+  background-color: #f9f9f9;
+  color: #aaa;
+  cursor: not-allowed;
+}
+
+/* Ellipsis */
+.pagination-controls .ellipsis {
+  color: #999;
+  padding: 5px;
+  font-size: 14px;
+}
+
+.filter-bubbles {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  align-content: center;
+}
+
+.clear-filters-btn {
+  background-color: #ff4d4d;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  margin-top: 10px;
+  cursor: pointer;
+  border-radius: 5px;
+}
+
+.clear-filters-btn:hover {
+  background-color: #cc0000;
+}
+
+.filter-bubble {
+  display: inline-flex;
+  align-items: center;
+  background-color: #f0f0f0;
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.filter-bubble span {
+  margin-right: 5px;
+}
+
+.filter-bubble .remove-btn {
+  background: none;
+  border: none;
+  color: #ff0000;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.filter-bubble .remove-btn:hover {
+  color: #cc0000;
+}
+
+input#user-message {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  outline: none;
+}
+
+form#chat-form button {
+  padding: 10px 15px;
+  border: none;
+  background: #007bff;
+  color: white;
+  cursor: pointer;
+}
+
+#chat-form {
+  border: 1px solid #ccc;
+  padding: 10px;
+  max-width: 600px;
+  display: flex;
+  margin: auto;
+  flex-direction: column;
+  text-align: center;
+}
+
+div#response h2 {
+  color: #007bff;
+}
+
+.ai-image {
+  width: 160px;
+  height: auto;
+  border-radius: 15px;
+}
+
+#response {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: flex-start;
+  justify-content: center;
+  align-items: center;
+}
+
+div#response div.post-details {
+  width: 80%;
+  flex-direction: column;
+  align-content: flex-start;
+  justify-content: flex-start;
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  margin: 10px;
+  padding: 10px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
