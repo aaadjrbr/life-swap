@@ -15,9 +15,9 @@ jobs:
       run: npm install
       working-directory: ./functions
 
-    - name: Deploy to Firebase
+    - name: Deploy to Firebase Hosting
       uses: w9jds/firebase-action@master
       with:
-        args: deploy --only hosting,functions --force --token "${{ secrets.FIREBASE_TOKEN }}"
+        args: deploy --only hosting --force --token "${{ secrets.FIREBASE_TOKEN }}"
       env:
         FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
