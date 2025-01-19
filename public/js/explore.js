@@ -1449,7 +1449,7 @@ form.addEventListener('submit', async (event) => {
           <button type="button" class="view-details" data-post-id="${post.id}">View Details</button>
         </div>
       `).join('');
-      responseContainer.innerHTML += `<h2>Matching Posts:</h2>${postsList}`;
+      responseContainer.innerHTML += `<h2>✨ Swap AI Suggestions:</h2>${postsList}`;
     }
 
     // Show the "Clear Results" button
