@@ -451,6 +451,15 @@ div#filterCitySuggestions {
   margin-top: 8px;
 }
 
+div#map {
+  z-index: 0;
+  width: 100% !important;
+  display: flex;
+  margin: auto;
+  border-radius: 8px;
+  margin-top: 35px;
+}
+
 /* Post Creation Section */
 #createPost {
   background: #ffffff;

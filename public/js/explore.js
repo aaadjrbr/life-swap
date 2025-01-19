@@ -148,8 +148,18 @@ document.getElementById("postForm").addEventListener("submit", async (e) => {
   const city = document.getElementById("city").value.trim();
   const distance = parseInt(document.getElementById("distance").value) || 0;
 
+  // New fields: Latitude and Longitude
+  const latitude = parseFloat(document.getElementById("latitude").value);
+  const longitude = parseFloat(document.getElementById("longitude").value);
+
+  // Validate latitude and longitude
+  if (isNaN(latitude) || isNaN(longitude)) {
+    alert("Please click on 'Add My Location' to set your current location.");
+    return;
+  }
+
   // New field: Desired trade
-  const desiredTrade = document.getElementById("desiredTrade").value.trim(); // Ensure this input exists in your HTML form
+  const desiredTrade = document.getElementById("desiredTrade").value.trim();
 
   // Clean and prepare hashtags
   const hashtags = hashtagsField.value
@@ -179,13 +189,15 @@ document.getElementById("postForm").addEventListener("submit", async (e) => {
     desiredTrade,
     type: postType,
     category,
-    city: city.trim(), // Removed .toLowerCase() to preserve original case
+    city: city.trim(),
     distanceFromCity: distance,
+    latitude, // Save latitude
+    longitude, // Save longitude
     hashtags,
     imageUrls,
     userId: user.uid,
     timestamp: new Date(),
-  });  
+  });
 
   alert("Post created successfully!");
   document.getElementById("postForm").reset();
@@ -1830,6 +1842,128 @@ async function deletePost(postId) {
     }
   }
 }
+
+async function loadPostsToMap(map) {
+  map.on("moveend", async () => {
+    const bounds = map.getBounds(); // Get visible map bounds
+    const southwest = bounds.getSouthWest();
+    const northeast = bounds.getNorthEast();
+
+    const postsQuery = query(
+      collection(db, "posts"),
+      where("latitude", ">=", southwest.lat),
+      where("latitude", "<=", northeast.lat),
+      where("longitude", ">=", southwest.lng),
+      where("longitude", "<=", northeast.lng)
+    );
+
+    const postsSnapshot = await getDocs(postsQuery);
+
+    map.eachLayer((layer) => {
+      if (layer instanceof L.Marker && !layer._popup) {
+        map.removeLayer(layer); // Remove old markers (optional)
+      }
+    });
+
+    postsSnapshot.forEach((doc) => {
+      const post = doc.data();
+      if (post.latitude && post.longitude) {
+        const marker = L.marker([post.latitude, post.longitude]).addTo(map);
+        marker.bindPopup(`
+          <div>
+            <h3>${post.title}</h3>
+            <p>${post.description}</p>
+            <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}
+            <br />
+            <button onclick="viewDetails('${doc.id}')">View Details</button>
+          </div>
+        `);
+      }
+    });
+  });
+}
+
+function centerMapOnUserLocation(map) {
+  const recenterButton = document.createElement("button");
+  recenterButton.textContent = "Center on My Location";
+  recenterButton.style.cssText = `
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 1000;
+    padding: 10px;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    cursor: pointer;
+  `;
+
+  recenterButton.onclick = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          map.setView([latitude, longitude], 13); // Center map on user location with zoom level 13
+          L.marker([latitude, longitude]).addTo(map)
+            .bindPopup("You are here!")
+            .openPopup();
+        },
+        (error) => {
+          console.error("Geolocation error:", error);
+          alert("Unable to access your location.");
+        }
+      );
+    } else {
+      alert("Geolocation is not supported by your browser.");
+    }
+  };
+
+  // Add the button to the map container
+  const mapContainer = document.getElementById("map");
+  mapContainer.appendChild(recenterButton);
+}
+
+document.getElementById("getLocationButton").addEventListener("click", () => {
+  const latitudeField = document.getElementById("latitude");
+  const longitudeField = document.getElementById("longitude");
+
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        console.log(`Geolocation successful: Latitude=${latitude}, Longitude=${longitude}`);
+        
+        latitudeField.value = latitude;
+        longitudeField.value = longitude;
+
+        alert(`Location fetched:\nLatitude: ${latitude}\nLongitude: ${longitude}`);
+      },
+      (error) => {
+        console.error("Geolocation error:", error);
+        alert("Failed to get your location. Make sure you allow location access.");
+      }
+    );
+  } else {
+    alert("Geolocation is not supported by your browser.");
+  }
+});
+
+document.addEventListener("DOMContentLoaded", async () => {
+  // Initialize the map
+  const map = L.map("map").setView([37.7749, -122.4194], 10); // Default center is San Francisco
+
+  // Add OpenStreetMap tiles
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "© OpenStreetMap",
+  }).addTo(map);
+
+  // Add the recenter button and enable geolocation
+  centerMapOnUserLocation(map);
+
+  // Load posts and add them to the map
+  await loadPostsToMap(map);
+});
 
 // Load "Your Posts" on page load
 document.addEventListener("DOMContentLoaded", async () => {

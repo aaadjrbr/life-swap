@@ -6,6 +6,12 @@
   <title>Life Swap Explore</title>
   <script type="module" src="./js/explore.js"></script>
   <link rel="stylesheet" href="./css/explore.css">
+  <!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<!-- Leaflet JavaScript -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
 </head>
 <body>
   <header>
@@ -91,6 +97,11 @@
           <option value="art_and_crafts">Art and Crafts</option>
           <option value="diy_projects">DIY Projects</option>
         </select>
+
+        <label for="location">Location (latitude, longitude):</label>
+        <input type="text" id="latitude" name="latitude" placeholder="Latitude" readonly>
+        <input type="text" id="longitude" name="longitude" placeholder="Longitude" readonly>
+        <button type="button" id="getLocationButton">📍 Click here to add your current location</button>
         
         <!-- City and Distance -->
         <div class="city-autocomplete">
@@ -181,6 +192,17 @@
     </form>
     
     
+    <div id="map" style="height: 500px; width: 100%;"></div>
+
+<div id="pinpointModal" class="hidden">
+  <div class="modal-content">
+    <h3 id="pinTitle"></h3>
+    <p><strong>Desired Trade:</strong> <span id="pinTrade"></span></p>
+    <button id="viewDetailsBtn" onclick="viewDetailsFromPin()">View Details</button>
+    <button onclick="closePinpointModal()">Close</button>
+  </div>
+</div>
+
     
 
     <!-- Posts Section -->
