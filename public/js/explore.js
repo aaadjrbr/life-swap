@@ -1859,26 +1859,46 @@ async function loadPostsToMap(map) {
 
     const postsSnapshot = await getDocs(postsQuery);
 
+    // Group posts by location
+    const locationPostsMap = {};
+    postsSnapshot.forEach((doc) => {
+      const post = doc.data();
+      if (post.latitude && post.longitude) {
+        const locationKey = `${post.latitude},${post.longitude}`;
+        if (!locationPostsMap[locationKey]) {
+          locationPostsMap[locationKey] = [];
+        }
+        locationPostsMap[locationKey].push({ ...post, id: doc.id });
+      }
+    });
+
+    // Clear previous markers
     map.eachLayer((layer) => {
       if (layer instanceof L.Marker && !layer._popup) {
         map.removeLayer(layer); // Remove old markers (optional)
       }
     });
 
-    postsSnapshot.forEach((doc) => {
-      const post = doc.data();
-      if (post.latitude && post.longitude) {
-        const marker = L.marker([post.latitude, post.longitude]).addTo(map);
-        marker.bindPopup(`
-          <div>
-            <h3>${post.title}</h3>
-            <p>${post.description}</p>
-            <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}
-            <br />
-            <button onclick="viewDetails('${doc.id}')">View Details</button>
-          </div>
-        `);
-      }
+    // Add markers to the map
+    Object.keys(locationPostsMap).forEach((locationKey) => {
+      const [lat, lng] = locationKey.split(",").map(Number);
+      const posts = locationPostsMap[locationKey];
+
+      // Generate popup content with all posts
+      const popupContent = posts.map((post) => `
+        <div style="margin-bottom: 10px;">
+          <h3>${post.title}</h3>
+          <p>${post.description}</p>
+          <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}
+          <br />
+          <button onclick="viewDetails('${post.id}')">View Details</button>
+        </div>
+        <hr>
+      `).join("");
+
+      // Add a single marker for the location
+      const marker = L.marker([lat, lng]).addTo(map);
+      marker.bindPopup(`<div>${popupContent}</div>`);
     });
   });
 }
@@ -1936,7 +1956,7 @@ document.getElementById("getLocationButton").addEventListener("click", () => {
         latitudeField.value = latitude;
         longitudeField.value = longitude;
 
-        alert(`Location fetched:\nLatitude: ${latitude}\nLongitude: ${longitude}`);
+        console.log(`Location fetched:\nLatitude: ${latitude}\nLongitude: ${longitude}`);
       },
       (error) => {
         console.error("Geolocation error:", error);

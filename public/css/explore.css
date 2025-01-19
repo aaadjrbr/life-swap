@@ -370,6 +370,7 @@ div#filterCitySuggestions {
   background-color: #dc3545;
   color: white;
   border: none;
+  border-radius: 4px;
   padding: 5px 10px;
   margin-top: 5px;
   cursor: pointer;
