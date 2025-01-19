@@ -179,13 +179,13 @@ document.getElementById("postForm").addEventListener("submit", async (e) => {
     desiredTrade,
     type: postType,
     category,
-    city: city.trim().toLowerCase(), // Normalize city name
+    city: city.trim(), // Removed .toLowerCase() to preserve original case
     distanceFromCity: distance,
     hashtags,
     imageUrls,
     userId: user.uid,
     timestamp: new Date(),
-  });
+  });  
 
   alert("Post created successfully!");
   document.getElementById("postForm").reset();
@@ -1380,9 +1380,28 @@ async function sendMessage(dealId, message) {
   }
 }
 
+// Add a "Clear Results" button
 const form = document.getElementById('chat-form');
 const userMessageInput = document.getElementById('user-message');
 const responseContainer = document.getElementById('response');
+const clearResultsButton = document.getElementById('clear-results'); // Reference the existing button
+const viewDetailsButton = `<button type="button" class="view-details">View Details</button>`;
+
+// Add click event listener to the Clear Results button
+clearResultsButton.addEventListener('click', () => {
+  responseContainer.innerHTML = ''; // Clear the results
+  userMessageInput.value = ''; // Clear the input field
+  clearResultsButton.style.display = 'none'; // Hide the button after clearing
+});
+
+// Add event delegation for dynamically created "View Details" buttons
+responseContainer.addEventListener('click', (event) => {
+  if (event.target.classList.contains('view-details')) {
+    event.preventDefault(); // Prevent default behavior (e.g., form submission)
+    const postId = event.target.dataset.postId; // Get post ID from data attribute
+    viewDetails(postId); // Call the viewDetails function
+  }
+});
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -1427,11 +1446,14 @@ form.addEventListener('submit', async (event) => {
           <p class="post-description">${post.description}</p>
           <p class="post-desired-trade">💡 <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}</p>
           <p class="post-location">📌 ${post.city}, Distance: ${post.distanceFromCity} miles</p>
-          ${post.viewDetailsButton}
+          <button type="button" class="view-details" data-post-id="${post.id}">View Details</button>
         </div>
       `).join('');
       responseContainer.innerHTML += `<h2>Matching Posts:</h2>${postsList}`;
     }
+
+    // Show the "Clear Results" button
+    clearResultsButton.style.display = 'block';
   } catch (error) {
     responseContainer.innerHTML = `<p>Error: ${error.message}</p>`;
   }

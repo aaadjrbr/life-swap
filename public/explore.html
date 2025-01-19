@@ -16,7 +16,8 @@
 
   <main>
     <div id="notificationBell" onclick="viewNotifications()">
-      🔔<span id="notificationCount" class="hidden"></span>
+      <img class="notificationBell-img" src="https://cdn3d.iconscout.com/3d/premium/thumb/notification-bell-3d-icon-download-in-png-blend-fbx-gltf-file-formats--packard-reminder-user-interface-pack-icons-4884302.png?f=webp">
+      <span id="notificationCount" class="hidden"></span>
     </div>
     
     <div id="notificationList" class="notification-list hidden">
@@ -171,7 +172,10 @@
     
     <form id="chat-form">
       <h2>Life Swap AI for recommendations</h2>
+      <button id="clear-results" type="button" style="display: none;">Clear Results</button>
+      <br/><br/>
       <input type="text" id="user-message" placeholder="Enter your message" required>
+      <br/>
       <button type="submit">Search</button>
       <div id="response"></div>
     </form>

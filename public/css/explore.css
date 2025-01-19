@@ -713,9 +713,14 @@ div#filterCitySuggestions {
   color: blue;
 }
 
+.notificationBell-img {
+  width: 35px;
+  height: auto;
+}
+
 .notification-list {
   position: fixed;
-  top: 80px;
+  top: 90px;
   right: 10px;
   background: white;
   border: 1px solid #ccc;
@@ -889,7 +894,7 @@ div#filterCitySuggestions {
 }
 
 .clear-filters-btn {
-  background-color: #ff4d4d;
+  background: #ff4d4d;
   color: white;
   border: none;
   padding: 5px 10px;
@@ -899,7 +904,7 @@ div#filterCitySuggestions {
 }
 
 .clear-filters-btn:hover {
-  background-color: #cc0000;
+  background: #cc0000;
 }
 
 .filter-bubble {
@@ -927,6 +932,18 @@ div#filterCitySuggestions {
 
 .filter-bubble .remove-btn:hover {
   color: #cc0000;
+}
+
+#clear-results {
+    margin-top: 10px;
+    padding: 5px 10px;
+    background-color: #ff4444;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+#clear-results:hover {
+    background-color: #cc0000;
 }
 
 input#user-message {
