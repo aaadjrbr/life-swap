@@ -951,28 +951,32 @@ async function loadOffers() {
   const yourOffersSnapshot = await getDocs(yourOffersQuery);
   const offersReceivedSnapshot = await getDocs(offersReceivedQuery);
 
-  yourOffersDiv.innerHTML = yourOffersSnapshot.empty ? "No offers yet." : "";
-  offersReceivedDiv.innerHTML = offersReceivedSnapshot.empty ? "No received offers yet." : "";
+  let hasValidYourOffers = false;
+  let hasValidReceivedOffers = false;
 
   // Display "Your Offers"
-  yourOffersSnapshot.forEach(async (offerDoc) => {
+  yourOffersDiv.innerHTML = "";
+  for (const offerDoc of yourOffersSnapshot.docs) {
     const offer = offerDoc.data();
+
     const targetPost = await getDoc(doc(db, "posts", offer.targetPostId));
     const offeredPost = await getDoc(doc(db, "posts", offer.offeredPostId));
 
-    const targetPostTitle = targetPost.exists() ? targetPost.data().title : "Unknown Post";
-    const offeredPostTitle = offeredPost.exists() ? offeredPost.data().title : "Unknown Post";
+    if (!targetPost.exists() || !offeredPost.exists()) continue;
 
-    // Query the deals collection for this offer
+    hasValidYourOffers = true;
+
+    const targetPostTitle = targetPost.data().title;
+    const offeredPostTitle = offeredPost.data().title;
+
     const dealQuery = query(collection(db, "deals"), where("offerId", "==", offerDoc.id));
     const dealSnapshot = await getDocs(dealQuery);
 
-    // Initialize button and status variables
-    let actionButton = `<button class="cancel-offer-btn" onclick="cancelOffer('${offerDoc.id}')">Cancel Offer</button>`;
     let dealStatus = "Offer pending.";
+    let actionButton = `<button class="cancel-offer-btn" onclick="cancelOffer('${offerDoc.id}')">Cancel Offer</button>`;
     let rateButton = "";
+    let deleteButton = "";
 
-    // Check offer status and update accordingly
     if (offer.status === "declined") {
       dealStatus = "Offer declined.";
       actionButton = `<button class="cancel-offer-btn" onclick="cancelOffer('${offerDoc.id}')">Remove Offer</button>`;
@@ -982,15 +986,23 @@ async function loadOffers() {
 
       if (deal.status === "closed") {
         dealStatus = "Deal closed. Thank you!";
-        actionButton = ""; // No action needed
-        rateButton = `<button class="rate-btn" onclick="openRatingModal('${dealId}')">Rate</button>`;
+        actionButton = ""; // No action needed after deal closure
+        rateButton = `<button class="rate-btn" onclick="openRatingModal('${dealId}')">Rate User</button>`;
+        deleteButton = `<button class="delete-offer-btn" onclick="deleteOffer('${dealId}')">Delete Offer</button>`;
       } else if (deal.status === "active") {
         dealStatus = "Deal accepted. Start chatting!";
         actionButton = `<button class="chat-btn" onclick="openChat('${dealId}')">Open Chat</button>`;
+
+        // Keep the "Cancel Offer" button visible if the user sent the offer
+        if (user.uid === offer.fromUserId) {
+          actionButton += `
+            <button class="cancel-offer-btn" onclick="cancelOffer('${offerDoc.id}')">
+              Cancel Offer
+            </button>`;
+        }
       }
     }
 
-    // Render the offer in the UI
     yourOffersDiv.innerHTML += `
       <div class="offer-item">
         <p><strong>Offered for:</strong> <a href="#" onclick="viewDetails('${offer.targetPostId}', true)">${targetPostTitle}</a></p>
@@ -998,49 +1010,62 @@ async function loadOffers() {
         <p>${dealStatus}</p>
         ${actionButton}
         ${rateButton}
+        ${deleteButton}
       </div>
     `;
-  });
+  }
+
+  if (!hasValidYourOffers) {
+    yourOffersDiv.innerHTML = "<p>No offers yet.</p>";
+  }
 
   // Display "Offers You Received"
-  offersReceivedSnapshot.forEach(async (offerDoc) => {
+  offersReceivedDiv.innerHTML = "";
+  for (const offerDoc of offersReceivedSnapshot.docs) {
     const offer = offerDoc.data();
+
     const offeredPost = await getDoc(doc(db, "posts", offer.offeredPostId));
     const targetPost = await getDoc(doc(db, "posts", offer.targetPostId));
-    const fromUser = await getDoc(doc(db, "users", offer.fromUserId));
 
-    const offeredPostTitle = offeredPost.exists() ? offeredPost.data().title : "Unknown Post";
-    const targetPostTitle = targetPost.exists() ? targetPost.data().title : "Unknown Post";
+    if (!offeredPost.exists() || !targetPost.exists()) continue;
+
+    hasValidReceivedOffers = true;
+
+    const offeredPostTitle = offeredPost.data().title;
+    const targetPostTitle = targetPost.data().title;
+
+    const fromUser = await getDoc(doc(db, "users", offer.fromUserId));
     const fromUserName = fromUser.exists() ? fromUser.data().name : "Unknown User";
 
-    // Query the deals collection for this offer
     const dealQuery = query(collection(db, "deals"), where("offerId", "==", offerDoc.id));
     const dealSnapshot = await getDocs(dealQuery);
 
-    // Initialize button and status variables
-    let actionButton = `<button class="accept-btn" onclick="acceptOffer('${offerDoc.id}', this)">Accept</button>`;
     let dealStatus = "Offer pending.";
+    let actionButton = `<button class="accept-btn" onclick="acceptOffer('${offerDoc.id}', this)">Accept</button>`;
+    let declineButton = `<button class="decline-btn" onclick="declineOffer('${offerDoc.id}')">Decline</button>`;
     let rateButton = "";
+    let deleteButton = "";
 
-    // Check offer status and update accordingly
     if (offer.status === "declined") {
       dealStatus = "You declined this offer.";
-      actionButton = ""; // No further actions for the receiver
+      actionButton = "";
+      declineButton = "";
     } else if (!dealSnapshot.empty) {
       const deal = dealSnapshot.docs[0].data();
       const dealId = dealSnapshot.docs[0].id;
 
       if (deal.status === "closed") {
         dealStatus = "Deal closed. Thank you!";
-        actionButton = ""; // No action needed
-        rateButton = `<button class="rate-btn" onclick="openRatingModal('${dealId}')">Rate</button>`;
+        actionButton = "";
+        declineButton = "";
+        rateButton = `<button class="rate-btn" onclick="openRatingModal('${dealId}')">Rate User</button>`;
+        deleteButton = `<button class="delete-offer-btn" onclick="deleteOffer('${dealId}')">Delete Offer</button>`;
       } else if (deal.status === "active") {
         dealStatus = "Deal accepted. Start chatting!";
         actionButton = `<button class="chat-btn" onclick="openChat('${dealId}')">Open Chat</button>`;
       }
     }
 
-    // Render the offer in the UI
     offersReceivedDiv.innerHTML += `
       <div class="offer-item">
         <p><strong>Offer from:</strong> 
@@ -1052,16 +1077,40 @@ async function loadOffers() {
         <p>${dealStatus}</p>
         ${actionButton}
         ${rateButton}
-        <button class="decline-btn" onclick="declineOffer('${offerDoc.id}')">Decline</button>
+        ${deleteButton}
+        ${declineButton}
       </div>
     `;
-  });
+  }
+
+  if (!hasValidReceivedOffers) {
+    offersReceivedDiv.innerHTML = "<p>No received offers yet.</p>";
+  }
 }
 
 async function cancelOffer(offerId) {
-  if (confirm("Are you sure you want to cancel this offer?")) {
+  if (confirm("Are you sure you want to cancel this offer? This action cannot be undone.")) {
     try {
+      // Fetch the offer document
+      const offerDoc = await getDoc(doc(db, "offers", offerId));
+      if (!offerDoc.exists()) {
+        alert("Offer not found. It may have already been removed.");
+        return;
+      }
+
+      const offer = offerDoc.data();
+
+      // Delete the offer document
       await deleteDoc(doc(db, "offers", offerId));
+
+      // Notify the other user about the canceled offer
+      const otherUserId = offer.toUserId; // The user who received the offer
+      await addNotification(otherUserId, {
+        type: "offerCanceled",
+        content: `The offer for your post has been canceled by the user.`,
+        link: `#`, // Optional: Add a link to the offers page
+      });
+
       alert("Offer canceled successfully.");
       loadOffers(); // Refresh the offers list
     } catch (error) {
@@ -1261,12 +1310,56 @@ async function closeDeal(dealId) {
       // Both parties closed the deal
       await updateDoc(dealRef, { status: "closed" });
       alert("Deal closed! Time to leave feedback.");
-      openRatingModal(dealId); // Trigger the rating modal
+      loadOffers(); // Refresh the offers list to show the "Rate User" and "Delete Offer" buttons
     } else {
       alert("Waiting for the other party to confirm.");
     }
   } else {
     alert("You have already confirmed this deal.");
+  }
+}
+
+async function deleteOffer(dealId) {
+  if (confirm("Are you sure you want to delete this offer and the associated posts? This action cannot be undone.")) {
+    try {
+      const dealRef = doc(db, "deals", dealId);
+      const dealSnapshot = await getDoc(dealRef);
+
+      if (!dealSnapshot.exists()) {
+        alert("Deal not found!");
+        return;
+      }
+
+      const deal = dealSnapshot.data();
+
+      // 1. Delete the deal document
+      await deleteDoc(dealRef);
+
+      // 2. Delete the associated posts
+      const offeredPostRef = doc(db, "posts", deal.offeredPostId);
+      const targetPostRef = doc(db, "posts", deal.postId);
+
+      await deleteDoc(offeredPostRef);
+      await deleteDoc(targetPostRef);
+
+      // 3. Also delete the original offer(s) that led to this deal
+      const offerQuery = query(
+        collection(db, "offers"),
+        where("targetPostId", "==", deal.postId),
+        where("offeredPostId", "==", deal.offeredPostId)
+      );
+      const offerSnapshot = await getDocs(offerQuery);
+
+      for (const singleOfferDoc of offerSnapshot.docs) {
+        await deleteDoc(singleOfferDoc.ref);
+      }
+
+      alert("Offer and associated posts deleted successfully.");
+      loadOffers(); // Refresh the offers list
+    } catch (error) {
+      console.error("Error deleting offer:", error);
+      alert("Failed to delete the offer. Please try again.");
+    }
   }
 }
 
@@ -1623,6 +1716,19 @@ async function declineOffer(offerId) {
     }
 
     const offer = offerDoc.data();
+
+    // Check if the deal is already closed by both users
+    const dealQuery = query(collection(db, "deals"), where("offerId", "==", offerId));
+    const dealSnapshot = await getDocs(dealQuery);
+
+    if (!dealSnapshot.empty) {
+      const deal = dealSnapshot.docs[0].data();
+      if (deal.status === "closed") {
+        alert("You can't decline this offer once both have closed it. Please delete or rate the offer.");
+        return;
+      }
+    }
+
     const fromUserId = offer.fromUserId;
 
     // Fetch the sender's name
@@ -1645,7 +1751,7 @@ async function declineOffer(offerId) {
     await addNotification(fromUserId, {
       type: "offerDeclined",
       content: `${currentUserName} declined your offer for "${targetPostTitle}".`,
-      link: `#`, // Link to the sender's offers page (You can add a different one later a page explaining why you got declined)
+      link: `#`, // Link to the sender's offers page
     });
 
     alert(`You declined an offer from ${fromUserName}.`);
@@ -1764,3 +1870,4 @@ window.openRatingModal = openRatingModal;
 window.setupAutocomplete = setupAutocomplete;
 window.clearAllNotifications = clearAllNotifications;
 window.filterByHashtag = filterByHashtag;
+window.deleteOffer= deleteOffer;
