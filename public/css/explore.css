@@ -1218,7 +1218,7 @@ footer p {
   font-size: 12px;
   color: #000;
   text-align: center;
-  white-space: nowrap;
+  font-size: 1em;
 }
 
 .custom-tooltip p {
