@@ -1875,30 +1875,48 @@ async function loadPostsToMap(map) {
     // Clear previous markers
     map.eachLayer((layer) => {
       if (layer instanceof L.Marker && !layer._popup) {
-        map.removeLayer(layer); // Remove old markers (optional)
+        map.removeLayer(layer); // Remove old markers
       }
     });
 
-    // Add markers to the map
+    // Add markers with tooltips to the map
     Object.keys(locationPostsMap).forEach((locationKey) => {
       const [lat, lng] = locationKey.split(",").map(Number);
       const posts = locationPostsMap[locationKey];
 
-      // Generate popup content with all posts
-      const popupContent = posts.map((post) => `
-        <div style="margin-bottom: 10px;">
-          <h3>${post.title}</h3>
-          <p>${post.description}</p>
-          <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}
-          <br />
-          <button onclick="viewDetails('${post.id}')">View Details</button>
-        </div>
-        <hr>
-      `).join("");
+      // Generate popup content for all posts at this location
+      const popupContent = posts
+        .map(
+          (post) => `
+          <div style="margin-bottom: 10px;">
+            <h3>${post.title}</h3>
+            <p>${post.description}</p>
+            <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}
+            <br />
+            <button onclick="viewDetails('${post.id}')">View Details</button>
+          </div>
+          <hr>
+        `
+        )
+        .join("");
 
-      // Add a single marker for the location
+      // Title or number of posts to display on the tooltip
+      const tooltipLabel =
+        posts.length > 1
+          ? `${posts.length} items here`
+          : posts[0].title || "1 item here";
+
+      // Create a marker
       const marker = L.marker([lat, lng]).addTo(map);
-      marker.bindPopup(`<div>${popupContent}</div>`);
+      marker.bindPopup(`<div class="custom-tooltip">${popupContent}</div>`);
+
+      // Add tooltip above the pin
+      marker.bindTooltip(tooltipLabel, {
+        permanent: true, // Always visible
+        direction: "top", // Position above the pin
+        offset: [-15, -10], // Slightly offset upward
+        className: "custom-tooltip", // Optional: Add custom styles
+      });
     });
   });
 }
@@ -1926,7 +1944,7 @@ function centerMapOnUserLocation(map) {
           map.setView([latitude, longitude], 13); // Center map
           map.fire("moveend"); // Trigger fetching posts
           L.marker([latitude, longitude]).addTo(map)
-            .bindPopup("You are here!")
+            .bindPopup("You are here! 👋")
             .openPopup();
         },
         (error) => {
