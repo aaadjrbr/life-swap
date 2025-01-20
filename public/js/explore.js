@@ -33,17 +33,25 @@ onAuthStateChanged(auth, async (user) => {
     const userDoc = await getDoc(userRef);
 
     if (!userDoc.exists()) {
-      // New user: Create a default document
+      // New user: Create a default document with their email
       await setDoc(userRef, {
         name: user.displayName || "New User", // Default to Firebase display name or "New User"
+        email: user.email || "",             // Save email if available
         bio: "",
-        city: "", // Empty city
-        profilePhoto: null, // No profile photo
-        joinedAt: new Date(), // Track when the user joined
+        city: "",                            // Empty city
+        profilePhoto: null,                  // No profile photo
+        joinedAt: new Date(),                // Track when the user joined
       });
       console.log("User document created for new user.");
     } else {
-      console.log("User document already exists.");
+      // If the document exists, check if the email field is missing and add it
+      const userData = userDoc.data();
+      if (!userData.email && user.email) {
+        await updateDoc(userRef, { email: user.email });
+        console.log("Email added to existing user document.");
+      } else {
+        console.log("User document already exists and email is up-to-date.");
+      }
     }
 
     // Load data after ensuring the document exists
@@ -61,6 +69,16 @@ function logout() {
     window.location.href = "/login.html";
   });
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const dealId = urlParams.get("chat"); // Extract the dealId from the URL
+
+  if (dealId) {
+    console.log(`Opening chat for dealId: ${dealId}`);
+    openChat(dealId); // Trigger the chat modal with the extracted dealId
+  }
+});
 
 let cityData = {}; // To store JSON data
 
@@ -1175,13 +1193,13 @@ async function acceptOffer(offerId, buttonElement) {
   await addNotification(offer.fromUserId, {
     type: "offerAccepted",
     content: `${toUserName} accepted your offer. You can now chat.`,
-    link: `/chat/${dealId}`,
+    link: `https://life-swap-6065e.web.app/explore.html?chat=${dealId}`,
   });
 
   await addNotification(offer.toUserId, {
     type: "offerAccepted",
     content: `You accepted ${fromUserName}'s offer. You can now chat.`,
-    link: `/chat/${dealId}`,
+    link: `https://life-swap-6065e.web.app/explore.html?chat=${dealId}`,
   });
 
   // Update the button to "Open Chat"
@@ -1287,7 +1305,7 @@ async function openChat(dealId) {
       await addNotification(otherUserId, {
         type: "newMessage",
         content: `${senderName} sent you a message: "${message.substring(0, 30)}..."`,
-        link: `/chat/${dealId}`,
+        link: `https://life-swap-6065e.web.app/explore.html?chat=${dealId}`,
       });
       console.log("Notification successfully added for user:", otherUserId);
     } catch (error) {
@@ -1481,7 +1499,7 @@ async function sendMessage(dealId, message) {
     await addNotification(otherUserId, {
       type: "newMessage",
       content: `${senderName} sent you a message: "${message.substring(0, 30)}..."`,
-      link: `/chat/${dealId}`,
+      link: `https://life-swap-6065e.web.app/explore.html?chat=${dealId}`,
     });
     console.log("Notification successfully added.");
   } catch (error) {
