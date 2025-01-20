@@ -1138,7 +1138,7 @@ async function cancelOffer(offerId) {
       await addNotification(otherUserId, {
         type: "offerCanceled",
         content: `The offer for your post has been canceled by the user.`,
-        link: `#`, // Optional: Add a link to the offers page
+        link: `https://life-swap-6065e.web.app/explore`, // Optional: Add a link to the offers page
       });
 
       alert("Offer canceled successfully.");
@@ -1781,7 +1781,7 @@ async function declineOffer(offerId) {
     await addNotification(fromUserId, {
       type: "offerDeclined",
       content: `${currentUserName} declined your offer for "${targetPostTitle}".`,
-      link: `#`, // Link to the sender's offers page
+      link: `https://life-swap-6065e.web.app/explore`, // Link to the sender's offers page
     });
 
     alert(`You declined an offer from ${fromUserName}.`);
