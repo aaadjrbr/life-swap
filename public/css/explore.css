@@ -116,10 +116,20 @@ button#toggleYourPostsBtn {
   padding: 1rem; 
 }*/
 
+.zoomIn-msg {
+  /*position: fixed; */
+  font-family: 'Poppins', sans-serif; /* Modern font */
+  top: 220px;
+  background: yellow;
+  padding: 10px;
+  border-radius: 35px;
+}
+
 #postGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1rem;
+  justify-items: center;
 }
 
 .post-card {

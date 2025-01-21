@@ -55,7 +55,86 @@
     <h3 style="font-size: 1.3em;"><a href="#createPost">Start Swapping! Post now</a></h3>
     <h3>Explore Listings (Map)</h3>
     <h4>Want more? <a href="#postsContainer">Go to feed</a> | <a href="#chat-form">AI Recommendations</a></h4>
-    <div id="map" style="height: 500px; width: 100%;"></div>
+    
+                  <!-- Posts Section -->
+                  <section id="postsContainer">
+                    <div id="filters">
+                      <select id="filterType">
+                        <option value="">All Types</option>
+                        <option value="item">Item</option>
+                        <option value="skill">Skill</option>
+                        <option value="time">Time</option>
+                      </select>
+                
+                      <select id="filterCategory">
+                        <option value="" disabled selected>Select Category</option>
+                        <option value="clothing">Clothing</option>
+                        <option value="electronics">Electronics</option>
+                        <option value="furniture">Furniture</option>
+                        <option value="fitness">Fitness</option>
+                        <option value="food_and_groceries">Food and Groceries</option>
+                        <option value="home_and_garden">Home and Garden</option>
+                        <option value="personal_care">Personal Care</option>
+                        <option value="transportation">Transportation</option>
+                        <option value="entertainment">Entertainment</option>
+                        <option value="education">Education</option>
+                        <option value="finance">Finance</option>
+                        <option value="work_and_office">Work and Office</option>
+                        <option value="social_and_family">Social and Family</option>
+                        <option value="travel">Travel</option>
+                        <option value="health">Health</option>
+                        <option value="hobbies_and_interests">Hobbies and Interests</option>
+                        <option value="shopping">Shopping</option>
+                        <option value="cooking">Cooking</option>
+                        <option value="pets">Pets</option>
+                        <option value="beauty">Beauty</option>
+                        <option value="sports">Sports</option>
+                        <option value="technology">Technology</option>
+                        <option value="books">Books</option>
+                        <option value="music">Music</option>
+                        <option value="movies_and_tv">Movies and TV</option>
+                        <option value="photography">Photography</option>
+                        <option value="art_and_crafts">Art and Crafts</option>
+                        <option value="diy_projects">DIY Projects</option>
+                      </select>
+                      
+                      <div class="city-autocomplete">
+                        <input type="text" id="filterCity" placeholder="Type to search city" />
+                        <div id="filterCitySuggestions" class="suggestions-container"></div>
+                      </div>
+                      
+                      <input type="number" id="filterDistance" placeholder="Distance from city (miles)" />
+                      
+                      <input type="text" id="filterHashtag" placeholder="Filter by hashtag" />
+                      <button onclick="applyFilters()">Apply Filters</button> 
+                    </div>   
+                
+                    <div id="appliedFilters" class="filter-bubbles">
+                      <!-- Applied filters will be dynamically added here -->
+                    </div>
+     <!-- Map -->               
+    <div id="map" style="height: 400px; width: 100%;"></div>
+
+          <!-- Pagination Controls -->
+          <div id="paginationControls">
+            <label for="postsPerPageSelector">Posts per page:</label>
+            <select id="postsPerPageSelector">
+              <option value="6" selected>6</option>
+              <option value="12">12</option>
+              <option value="20">20</option>
+            </select>
+          </div>
+          
+          <!-- Post Grid -->
+          <h3>Explore Listings (Feed)</h3>
+          
+        <div class="post-grid">
+          <div id="postGrid"></div>
+        </div>
+
+          <!-- Pagination Navigation -->
+          <div id="pagination" class="pagination-controls"></div>
+        </section>
     
     <!-- Post Creation Section -->
     <section id="createPost">
@@ -157,84 +236,7 @@
     <button onclick="closePinpointModal()">Close</button>
   </div>
 </div>
-
-    
-
-    <!-- Posts Section -->
-    <section id="postsContainer">
-      <h3>Explore Listings (Feed)</h3>
-      <h4>Didn't find anything? Try filtering:</h4>
-      <div id="filters">
-        <select id="filterType">
-          <option value="">All Types</option>
-          <option value="item">Item</option>
-          <option value="skill">Skill</option>
-          <option value="time">Time</option>
-        </select>
-  
-        <select id="filterCategory">
-          <option value="" disabled selected>Select Category</option>
-          <option value="clothing">Clothing</option>
-          <option value="electronics">Electronics</option>
-          <option value="furniture">Furniture</option>
-          <option value="fitness">Fitness</option>
-          <option value="food_and_groceries">Food and Groceries</option>
-          <option value="home_and_garden">Home and Garden</option>
-          <option value="personal_care">Personal Care</option>
-          <option value="transportation">Transportation</option>
-          <option value="entertainment">Entertainment</option>
-          <option value="education">Education</option>
-          <option value="finance">Finance</option>
-          <option value="work_and_office">Work and Office</option>
-          <option value="social_and_family">Social and Family</option>
-          <option value="travel">Travel</option>
-          <option value="health">Health</option>
-          <option value="hobbies_and_interests">Hobbies and Interests</option>
-          <option value="shopping">Shopping</option>
-          <option value="cooking">Cooking</option>
-          <option value="pets">Pets</option>
-          <option value="beauty">Beauty</option>
-          <option value="sports">Sports</option>
-          <option value="technology">Technology</option>
-          <option value="books">Books</option>
-          <option value="music">Music</option>
-          <option value="movies_and_tv">Movies and TV</option>
-          <option value="photography">Photography</option>
-          <option value="art_and_crafts">Art and Crafts</option>
-          <option value="diy_projects">DIY Projects</option>
-        </select>
-        
-        <div class="city-autocomplete">
-          <input type="text" id="filterCity" placeholder="Type to search city" />
-          <div id="filterCitySuggestions" class="suggestions-container"></div>
-        </div>
-        
-        <input type="number" id="filterDistance" placeholder="Distance from city (miles)" />
-        
-        <input type="text" id="filterHashtag" placeholder="Filter by hashtag" />
-        <button onclick="applyFilters()">Apply Filters</button> 
-      </div>   
-  
-      <div id="appliedFilters" class="filter-bubbles">
-        <!-- Applied filters will be dynamically added here -->
-      </div>
       
-      <!-- Pagination Controls -->
-      <div id="paginationControls">
-        <label for="postsPerPageSelector">Posts per page:</label>
-        <select id="postsPerPageSelector">
-          <option value="6" selected>6</option>
-          <option value="12">12</option>
-          <option value="20">20</option>
-        </select>
-      </div>
-      
-      <!-- Post Grid -->
-      <div id="postGrid"></div>
-      
-      <!-- Pagination Navigation -->
-      <div id="pagination" class="pagination-controls"></div>
-    </section>
     
     <!-- Modal for Post Details -->
     <section id="modal" class="hidden">

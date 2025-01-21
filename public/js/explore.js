@@ -21,7 +21,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const storage = getStorage(app);
 const auth = getAuth(app);
-const functions = getFunctions(app, 'us-central1');
+const MIN_ZOOM_LEVEL = 16; // Minimum zoom level to load posts
 
 // Authentication Check
 onAuthStateChanged(auth, async (user) => {
@@ -70,14 +70,65 @@ function logout() {
   });
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  const urlParams = new URLSearchParams(window.location.search);
-  const dealId = urlParams.get("chat"); // Extract the dealId from the URL
+// Initialize the map
+const map = L.map("map").setView([40.7128, -74.0060], 10); // Default center is New York City
 
-  if (dealId) {
-    console.log(`Opening chat for dealId: ${dealId}`);
-    openChat(dealId); // Trigger the chat modal with the extracted dealId
-  }
+// Add OpenStreetMap tiles
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: "© OpenStreetMap",
+}).addTo(map);
+
+const postMarkersGroup = L.layerGroup().addTo(map);
+
+// Add the recenter button and enable geolocation
+centerMapOnUserLocation(map);
+
+// Add the moveend event listener AFTER the map is initialized
+map.on("moveend", async () => {
+    // If the flag is set, skip fetching on this event and reset the flag
+    if (suppressFetchOnce) {
+      suppressFetchOnce = false;
+      return;  // Skip this execution
+    }
+
+  // Set a new timeout
+  clearTimeout(debounceTimeout);
+  debounceTimeout = setTimeout(async () => {
+    const currentZoom = map.getZoom();
+    const postGrid = document.getElementById("postGrid");
+
+    if (currentZoom < MIN_ZOOM_LEVEL) {
+      map.eachLayer((layer) => {
+        if (layer instanceof L.Marker) {
+          map.removeLayer(layer);
+        }
+      });
+      postGrid.innerHTML = "<p>Zoom in to see posts in this area.</p>";
+      return;
+    }
+
+    const bounds = map.getBounds();
+    const southwest = bounds.getSouthWest();
+    const northeast = bounds.getNorthEast();
+
+    // Proceed to load posts and map pins only if zoom is sufficient
+    await loadPosts(
+      appliedFilters.filterType,
+      appliedFilters.filterHashtags,
+      1,
+      appliedFilters.filterCategory,
+      { southwest, northeast }
+    );
+
+    await loadPostsToMap(
+      map,
+      appliedFilters.filterType,
+      appliedFilters.filterHashtags,
+      appliedFilters.filterCategory,
+      { southwest, northeast }
+    );
+  }, 300); // Debounce 300ms
 });
 
 let cityData = {}; // To store JSON data
@@ -228,8 +279,65 @@ let currentPage = 1; // Current page
 let lastVisibleDocs = []; // Track last visible documents for pagination
 let appliedFilters = {}; // Store applied filters globally
 let totalPosts = 0; // Initialize with a default value
+let debounceTimeout;
 
-async function loadPosts(filterType = "", filterHashtags = [], filterCity = null, filterDistance = null, page = 1, filterCategory = "") {
+// Event listener for map movement (panning or zooming)
+map.on("moveend", async () => {
+  // If suppressFetchOnce flag is set, skip fetching
+  if (suppressFetchOnce) {
+    suppressFetchOnce = false;
+    return;
+  }
+
+  clearTimeout(debounceTimeout);
+  debounceTimeout = setTimeout(async () => {
+    const currentZoom = map.getZoom();
+    const postGrid = document.getElementById("postGrid");
+
+    if (currentZoom < MIN_ZOOM_LEVEL) {
+      postMarkersGroup.clearLayers(); // Clear all post markers
+      postGrid.innerHTML = "<p>Zoom in to see posts.</p>";
+      return;
+    }
+
+    const bounds = map.getBounds();
+    const southwest = bounds.getSouthWest();
+    const northeast = bounds.getNorthEast();
+
+    // Proceed with fetching posts if zoom is sufficient
+    await loadPosts(
+      appliedFilters.filterType,
+      appliedFilters.filterHashtags,
+      1,
+      appliedFilters.filterCategory,
+      { southwest, northeast }
+    );
+
+    await loadPostsToMap(
+      map,
+      appliedFilters.filterType,
+      appliedFilters.filterHashtags,
+      appliedFilters.filterCategory,
+      { southwest, northeast }
+    );
+  }, 300);
+});
+
+// Function to load posts within the current map bounds
+async function loadPosts(
+  filterType = "",
+  filterHashtags = [],
+  page = 1,
+  filterCategory = "",
+  mapBounds // mapBounds is required
+) {
+  if (!mapBounds) {
+    console.warn("mapBounds is required to load posts. Skipping...");
+    return;
+  }
+
+  const { southwest, northeast } = mapBounds; // Destructure mapBounds
+
   const postGrid = document.getElementById("postGrid");
   const postsPerPageSelector = document.getElementById("postsPerPageSelector");
   postGrid.innerHTML = "Loading...";
@@ -251,23 +359,6 @@ async function loadPosts(filterType = "", filterHashtags = [], filterCity = null
     return;
   }
 
-  const userData = userDoc.data();
-
-  // Default values from user profile
-  const defaultCity = userData.city || "";
-  const defaultDistance = userData.distance || 0;
-
-  // Effective values prioritize filters over defaults
-  const effectiveCity = filterCity !== null ? filterCity : defaultCity;
-  const effectiveDistance = filterDistance !== null ? filterDistance : defaultDistance;
-
-  console.log("Filters applied:", {
-    filterType,
-    filterHashtags,
-    city: effectiveCity,
-    distance: effectiveDistance,
-  });
-
   // Reset pagination for a new query
   if (page === 1) {
     lastVisibleDocs = [];
@@ -278,12 +369,16 @@ async function loadPosts(filterType = "", filterHashtags = [], filterCity = null
   let postsQuery = collection(db, "posts");
   const conditions = [];
 
-// Add conditions dynamically based on filters
-if (filterType) conditions.push(where("type", "==", filterType));
-if (effectiveCity) conditions.push(where("city", "==", effectiveCity));
-if (effectiveDistance > 0) conditions.push(where("distanceFromCity", "<=", effectiveDistance));
-if (filterCategory) conditions.push(where("category", "==", filterCategory));
-if (filterHashtags.length > 0) conditions.push(where("hashtags", "array-contains-any", filterHashtags));
+  // Add conditions dynamically based on filters
+  if (filterType) conditions.push(where("type", "==", filterType));
+  if (filterCategory) conditions.push(where("category", "==", filterCategory));
+  if (filterHashtags.length > 0) conditions.push(where("hashtags", "array-contains-any", filterHashtags));
+
+  // Add map bounds condition
+  conditions.push(where("latitude", ">=", southwest.lat));
+  conditions.push(where("latitude", "<=", northeast.lat));
+  conditions.push(where("longitude", ">=", southwest.lng));
+  conditions.push(where("longitude", "<=", northeast.lng));
 
   conditions.push(orderBy("timestamp", "desc"));
   conditions.push(limit(postsPerPage));
@@ -306,7 +401,6 @@ if (filterHashtags.length > 0) conditions.push(where("hashtags", "array-contains
     lastVisibleDocs[page - 1] = querySnapshot.docs[querySnapshot.docs.length - 1];
     currentPage = page;
 
-
     // Render posts
     postGrid.innerHTML = "";
     querySnapshot.docs.forEach((doc) => {
@@ -314,17 +408,18 @@ if (filterHashtags.length > 0) conditions.push(where("hashtags", "array-contains
       const imageUrl = post.imageUrls?.[0] || "https://via.placeholder.com/150";
       const postDate = post.timestamp ? new Date(post.timestamp.toDate()).toLocaleString() : "Unknown date";
       const hashtags = post.hashtags
-  ? post.hashtags
-      .map((tag) => `
-        <span 
-          class="clickable-hashtag" 
-          onclick="filterByHashtag('${tag}')"
-          style="cursor: pointer; color: blue; text-decoration: underline;">
-          ${tag}
-        </span>`)
-      .join(", ")
-  : "No hashtags";
-
+        ? post.hashtags
+            .map(
+              (tag) => `
+                <span 
+                  class="clickable-hashtag" 
+                  onclick="filterByHashtag('${tag}')"
+                  style="cursor: pointer; color: blue; text-decoration: underline;">
+                  ${tag}
+                </span>`
+            )
+            .join(", ")
+        : "No hashtags";
 
       const postCard = document.createElement("div");
       postCard.classList.add("post-card");
@@ -345,7 +440,7 @@ if (filterHashtags.length > 0) conditions.push(where("hashtags", "array-contains
     });
 
     if (page === 1) {
-      fetchTotalPosts(effectiveCity, effectiveDistance);
+      fetchTotalPosts(mapBounds); // Pass mapBounds to fetchTotalPosts
     }
     renderPaginationControls();
   } catch (error) {
@@ -355,15 +450,26 @@ if (filterHashtags.length > 0) conditions.push(where("hashtags", "array-contains
 }
 
 // Fetch total posts count for pagination controls
-async function fetchTotalPosts(userCity, userMaxDistance) {
+async function fetchTotalPosts(mapBounds) {
+  if (!mapBounds) {
+    console.error("mapBounds is required to fetch total posts.");
+    return;
+  }
+
+  const { southwest, northeast } = mapBounds;
+
+  // Fetch posts within the visible map bounds
   const totalQuery = query(
     collection(db, "posts"),
-    where("city", "==", userCity),
-    where("distanceFromCity", "<=", userMaxDistance)
+    where("latitude", ">=", southwest.lat),
+    where("latitude", "<=", northeast.lat),
+    where("longitude", ">=", southwest.lng),
+    where("longitude", "<=", northeast.lng)
   );
+
   const totalSnapshot = await getDocs(totalQuery);
   totalPosts = totalSnapshot.size;
-  console.log("Total posts:", totalPosts);
+  console.log("Total posts within bounds:", totalPosts);
 }
 
 // Render pagination controls
@@ -446,6 +552,22 @@ function filterByHashtag(hashtag) {
 }
 
 function applyFilters(filterType = "", filterHashtags = [], filterCity = "", filterDistance = 0, filterCategory = "") {
+  if (!map) {
+    console.error("Map is not initialized.");
+    return;
+  }
+
+  // Check the current zoom level
+  const currentZoom = map.getZoom();
+  if (currentZoom < MIN_ZOOM_LEVEL) {
+    postGrid.innerHTML = "<p>Zoom in to see posts in this area.</p>";
+    return;
+  }
+
+  const bounds = map.getBounds(); // Get visible map bounds
+  const southwest = bounds.getSouthWest();
+  const northeast = bounds.getNorthEast();
+
   // Get values from input fields if not explicitly passed
   const selectedFilterType = filterType || document.getElementById("filterType").value;
   const rawHashtags = document.getElementById("filterHashtag").value;
@@ -454,32 +576,35 @@ function applyFilters(filterType = "", filterHashtags = [], filterCity = "", fil
   const selectedFilterCategory = filterCategory || document.getElementById("filterCategory").value;
 
   // Process hashtags
-  // Normalize hashtags passed as parameters or from input
   const filterHashtagsArray = filterHashtags.length > 0 ? filterHashtags : rawHashtags
     .split(",")
     .map((tag) => tag.trim().toLowerCase())
     .filter((tag) => tag.length > 0);
 
-  // Log applied filters
-  console.log("Applying filters:", {
+  // Update global appliedFilters
+  appliedFilters = {
     filterType: selectedFilterType,
     filterHashtags: filterHashtagsArray,
     filterCity: selectedFilterCity,
     filterDistance: selectedFilterDistance,
     filterCategory: selectedFilterCategory,
-  });
+  };
 
-  // Display filters as bubbles
-  displayAppliedFilters({
-    filterType: selectedFilterType,
-    filterHashtags: filterHashtagsArray,
-    filterCity: selectedFilterCity,
-    filterDistance: selectedFilterDistance,
-    filterCategory: selectedFilterCategory,
-  });
+    // Display filters as bubbles
+    displayAppliedFilters({
+      filterType: selectedFilterType,
+      filterHashtags: filterHashtagsArray,
+      filterCity: selectedFilterCity,
+      filterDistance: selectedFilterDistance,
+      filterCategory: selectedFilterCategory,
+    });
+  
 
   // Call loadPosts with the mapped filters
-  loadPosts(selectedFilterType, filterHashtagsArray, selectedFilterCity, selectedFilterDistance, 1, selectedFilterCategory);
+  loadPosts(selectedFilterType, filterHashtagsArray, 1, selectedFilterCategory, { southwest, northeast });
+
+  // Call loadPostsToMap with the same filters
+  loadPostsToMap(map, selectedFilterType, filterHashtagsArray, selectedFilterCategory, { southwest, northeast });
 }
 
 function displayAppliedFilters(filters) {
@@ -618,11 +743,13 @@ document.getElementById("hashtags").addEventListener("blur", (e) => {
   e.target.value = e.target.value.replace(/,\s*$/, "");
 });
 
-let debounceTimeout;
+// Separate debounceTimeout variables for each function
+let debounceTimeoutSuggestHashtags;
 
+// Debounced function for suggesting hashtags
 function debouncedSuggestHashtags(inputValue) {
-  clearTimeout(debounceTimeout);
-  debounceTimeout = setTimeout(() => suggestHashtags(inputValue), 300); // 300ms delay
+  clearTimeout(debounceTimeoutSuggestHashtags); // Clear the timeout for this function
+  debounceTimeoutSuggestHashtags = setTimeout(() => suggestHashtags(inputValue), 300); // 300ms delay
 }
 
 // View Post Details
@@ -1861,51 +1988,64 @@ async function deletePost(postId) {
   }
 }
 
-async function loadPostsToMap(map) {
-  map.on("moveend", async () => {
-    const bounds = map.getBounds(); // Get visible map bounds
-    const southwest = bounds.getSouthWest();
-    const northeast = bounds.getNorthEast();
+async function loadPostsToMap(map, filterType = "", filterHashtags = [], filterCategory = "", mapBounds) {
+  if (!map) {
+    console.error("Map is not initialized.");
+    return;
+  }
 
-    const postsQuery = query(
-      collection(db, "posts"),
-      where("latitude", ">=", southwest.lat),
-      where("latitude", "<=", northeast.lat),
-      where("longitude", ">=", southwest.lng),
-      where("longitude", "<=", northeast.lng)
-    );
+  const currentZoom = map.getZoom();
+  if (currentZoom < MIN_ZOOM_LEVEL) {
+    postMarkersGroup.clearLayers();  // Clear markers if zoom is too low
+    return;
+  }
 
-    const postsSnapshot = await getDocs(postsQuery);
+  const bounds = map.getBounds();
+  const southwest = bounds.getSouthWest();
+  const northeast = bounds.getNorthEast();
 
-    // Group posts by location
-    const locationPostsMap = {};
-    postsSnapshot.forEach((doc) => {
-      const post = doc.data();
-      if (post.latitude && post.longitude) {
-        const locationKey = `${post.latitude},${post.longitude}`;
-        if (!locationPostsMap[locationKey]) {
-          locationPostsMap[locationKey] = [];
-        }
-        locationPostsMap[locationKey].push({ ...post, id: doc.id });
+  // Construct the query
+  let postsQuery = collection(db, "posts");
+  const conditions = [];
+
+  if (filterType) conditions.push(where("type", "==", filterType));
+  if (filterCategory) conditions.push(where("category", "==", filterCategory));
+  if (filterHashtags.length > 0) conditions.push(where("hashtags", "array-contains-any", filterHashtags));
+
+  conditions.push(where("latitude", ">=", southwest.lat));
+  conditions.push(where("latitude", "<=", northeast.lat));
+  conditions.push(where("longitude", ">=", southwest.lng));
+  conditions.push(where("longitude", "<=", northeast.lng));
+  conditions.push(orderBy("timestamp", "desc"));
+
+  postsQuery = query(postsQuery, ...conditions);
+
+  const postsSnapshot = await getDocs(postsQuery);
+
+  // Clear previous markers
+  postMarkersGroup.clearLayers();
+
+  // Group posts by location
+  const locationPostsMap = {};
+  postsSnapshot.forEach((doc) => {
+    const post = doc.data();
+    if (post.latitude && post.longitude) {
+      const locationKey = `${post.latitude},${post.longitude}`;
+      if (!locationPostsMap[locationKey]) {
+        locationPostsMap[locationKey] = [];
       }
-    });
+      locationPostsMap[locationKey].push({ ...post, id: doc.id });
+    }
+  });
 
-    // Clear previous markers
-    map.eachLayer((layer) => {
-      if (layer instanceof L.Marker && !layer._popup) {
-        map.removeLayer(layer); // Remove old markers
-      }
-    });
+  // Add markers to the LayerGroup
+  Object.keys(locationPostsMap).forEach((locationKey) => {
+    const [lat, lng] = locationKey.split(",").map(Number);
+    const posts = locationPostsMap[locationKey];
 
-    // Add markers with tooltips to the map
-    Object.keys(locationPostsMap).forEach((locationKey) => {
-      const [lat, lng] = locationKey.split(",").map(Number);
-      const posts = locationPostsMap[locationKey];
-
-      // Generate popup content for all posts at this location
-      const popupContent = posts
-        .map(
-          (post) => `
+    const popupContent = posts
+      .map(
+        (post) => `
           <div style="margin-bottom: 10px;">
             <h3>${post.title}</h3>
             <p>${post.description}</p>
@@ -1915,29 +2055,28 @@ async function loadPostsToMap(map) {
           </div>
           <hr>
         `
-        )
-        .join("");
+      )
+      .join("");
 
-      // Title or number of posts to display on the tooltip
-      const tooltipLabel =
-        posts.length > 1
-          ? `${posts.length} items here`
-          : posts[0].title || "1 item here";
+    const tooltipLabel =
+      posts.length > 1
+        ? `${posts.length} items here`
+        : posts[0].title || "1 item here";
 
-      // Create a marker
-      const marker = L.marker([lat, lng]).addTo(map);
-      marker.bindPopup(`<div class="custom-tooltip">${popupContent}</div>`);
-
-      // Add tooltip above the pin
-      marker.bindTooltip(tooltipLabel, {
-        permanent: true, // Always visible
-        direction: "top", // Position above the pin
-        offset: [-15, -10], // Slightly offset upward
-        className: "custom-tooltip", // Optional: Add custom styles
-      });
+    const marker = L.marker([lat, lng]);
+    marker.bindPopup(`<div class="custom-tooltip">${popupContent}</div>`);
+    marker.bindTooltip(tooltipLabel, {
+      permanent: true,
+      direction: "top",
+      offset: [-15, -10],
+      className: "custom-tooltip",
     });
+
+    postMarkersGroup.addLayer(marker);
   });
 }
+
+let suppressFetchOnce = false;
 
 function centerMapOnUserLocation(map) {
   const recenterButton = document.createElement("button");
@@ -1959,8 +2098,18 @@ function centerMapOnUserLocation(map) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude } = position.coords;
-          map.setView([latitude, longitude], 13); // Center map
-          map.fire("moveend"); // Trigger fetching posts
+          
+          // Get current zoom level and determine desired zoom
+          const currentZoom = map.getZoom();
+          const desiredZoom = currentZoom < MIN_ZOOM_LEVEL ? MIN_ZOOM_LEVEL : currentZoom;
+          
+          // Set the flag to suppress fetch on the next moveend
+          suppressFetchOnce = true;
+          
+          // Set the view with dynamically determined zoom
+          map.setView([latitude, longitude], desiredZoom);
+  
+          // Add marker for user location
           L.marker([latitude, longitude]).addTo(map)
             .bindPopup("You are here! 👋")
             .openPopup();
@@ -2002,28 +2151,6 @@ document.getElementById("getLocationButton").addEventListener("click", () => {
   } else {
     alert("Geolocation is not supported by your browser.");
   }
-});
-
-document.addEventListener("DOMContentLoaded", async () => {
-  // Initialize the map
-  const map = L.map("map").setView([40.7128, -74.0060], 10); // Default center is San Francisco
-
-  // Add OpenStreetMap tiles
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "© OpenStreetMap",
-  }).addTo(map);
-
-  // Add the recenter button and enable geolocation
-  centerMapOnUserLocation(map);
-
-  // Load posts and add them to the map
-  await loadPostsToMap(map);
-});
-
-// Load "Your Posts" on page load
-document.addEventListener("DOMContentLoaded", async () => {
-  await loadYourPosts();
 });
 
 // Attach global functions to the window object
