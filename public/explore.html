@@ -98,12 +98,12 @@
                         <option value="diy_projects">DIY Projects</option>
                       </select>
                       
-                      <div class="city-autocomplete">
+                      <div class="city-autocomplete" style="display: none;">
                         <input type="text" id="filterCity" placeholder="Type to search city" />
                         <div id="filterCitySuggestions" class="suggestions-container"></div>
                       </div>
                       
-                      <input type="number" id="filterDistance" placeholder="Distance from city (miles)" />
+                      <input style="display: none;" type="number" id="filterDistance" placeholder="Distance from city (miles)" />
                       
                       <input type="text" id="filterHashtag" placeholder="Filter by hashtag" />
                       <button onclick="applyFilters()">Apply Filters</button> 
@@ -190,11 +190,16 @@
         <label for="location">Location (latitude, longitude):</label>
         <input type="text" id="latitude" name="latitude" placeholder="Latitude" readonly>
         <input type="text" id="longitude" name="longitude" placeholder="Longitude" readonly>
+        <!-- Add loading indicator HTML -->
+        <div id="locationLoading" style="display: none;">
+        <div class="spinner"></div>
+        <span>Finding your location...</span>
+        </div>
         <button type="button" id="getLocationButton">📍 Click here to add your current location</button>
         
         <!-- City and Distance -->
         <div class="city-autocomplete" style="display: none;">
-          <input type="text" id="city" placeholder="Type to search city" required />
+          <input type="text" id="city" placeholder="Type to search city" />
           <div id="citySuggestions" class="suggestions-container"></div>
         </div>        
         <input style="display: none;" type="number" id="distance" placeholder="Distance from city (miles)" />

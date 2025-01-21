@@ -125,16 +125,26 @@ button#toggleYourPostsBtn {
   border-radius: 35px;
 }
 
+div#paginationControls {
+  display: flex;
+  margin: auto;
+  justify-content: center;
+  margin-top: 15px;
+}
+
 #postGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 1rem;
+  align-items: stretch;
+  justify-content: space-between;
   justify-items: center;
+  margin: auto;
+  flex-direction: column;
 }
 
 .post-card {
   display: flex;
-  flex-direction: column;
   border: 1px solid #ccc;
   border-radius: 8px;
   margin: 5px;
@@ -142,6 +152,11 @@ button#toggleYourPostsBtn {
   max-width: 300px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   background: #d2f0da;
+  flex-direction: column;
+  justify-content: space-between;
+  align-content: space-around;
+  align-items: stretch;
+  width: 300px;
 }
 
 .post-header {
@@ -1234,7 +1249,7 @@ footer p {
   margin: 5px;
 }
 
-.custom-tooltip button {
+.btn-view-details {
   background-color: #77BFA3; /* Primary button color */
   color: #ffffff; /* White text */
   border: none;
@@ -1249,7 +1264,7 @@ footer p {
   margin-left: 0.5rem; /* Space between buttons */
 }
 
-.custom-tooltip button:hover {
+.btn-view-details:hover {
   background-color: #98C9A3; /* Lighter shade on hover */
   transform: translateY(-2px); /* Slight lift effect */
 }
@@ -1258,39 +1273,89 @@ footer p {
   transform: translateY(0); /* Reset lift effect on click */
 }
 
-.leaflet-popup-content-wrapper {
-  max-width: 250px;
-  overflow: visible;
-  width: 240px;
-  padding: 6px;
+/* Custom tooltip styling */
+.map-pin-title {
+  background: rgba(255, 255, 255, 0.9);
+  border: 2px solid #007bff;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: bold;
+  color: #333;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* Style for multiple items in same area */
+.multi-item-title {
+  background: rgba(255, 235, 59, 0.9);
+  border-color: #ffc107;
+}
+
+/* Popup styling */
+.map-post-popup {
+  min-width: 200px;
+  padding: 5px;
   display: flex;
+  margin: auto;
   align-items: center;
-  justify-content: space-evenly;
+  justify-content: center;
+  flex-direction: column;
 }
 
-.leaflet-container a.leaflet-popup-close-button {
-  margin-right: 15px !important;
+.map-post-popup p {
+  margin: 2px;
+  color: #77BFA3;
 }
 
-/* For popups with multiple items */
-.multi-item-popup .leaflet-popup-content-wrapper {
-  overflow-x: auto;
-  height: 200px;
-  padding-top: 20px;
+.map-post-popup strong {
+  background: yellow;
+  padding: 4px;
+  border-radius: 8px;
+  margin-bottom: 8px;
 }
 
-.multi-item-popup .leaflet-popup-content {
-  padding-right: 10px;
+.map-post-popup h3 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  color: #77BFA3;
 }
 
-/* For single item popups */
-.single-item-popup .leaflet-popup-content-wrapper {
-  max-width: 250px;
-  overflow: visible;
-}
+  #locationLoading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    color: #666;
+  }
 
-/* Tooltip styling */
-.multi-item-tooltip {
-  background-color: #ffeb3b;
-  color: #000;
-}
+  .spinner {
+    width: 24px;
+    height: 24px;
+    border: 3px solid #f3f3f3;
+    border-radius: 50%;
+    border-top-color: #3498db;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  .zoom-warning {
+    color: #dc3545;
+    padding: 15px;
+    border: 2px solid #dc3545;
+    border-radius: 5px;
+    text-align: center;
+  }
+  
+  .shake-animation {
+    animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+  }
+  
+  @keyframes shake {
+    10%, 90% { transform: translateX(-1px); }
+    20%, 80% { transform: translateX(2px); }
+    30%, 50%, 70% { transform: translateX(-3px); }
+    40%, 60% { transform: translateX(3px); }
+  }

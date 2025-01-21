@@ -25,7 +25,7 @@ const db = initializeFirestore(app, {
 });
 const storage = getStorage(app);
 const auth = getAuth(app);
-const MIN_ZOOM_LEVEL = 14; // Minimum zoom level to load posts
+const MIN_ZOOM_LEVEL = 16; // Minimum zoom level to load posts
 
 // Authentication Check
 onAuthStateChanged(auth, async (user) => {
@@ -108,7 +108,7 @@ map.on("moveend", async () => {
           map.removeLayer(layer);
         }
       });
-      postGrid.innerHTML = "<p>Zoom in to see posts in this area.</p>";
+      postGrid.innerHTML = "<p class='zoom-warning'>🔍 Please zoom in to view posts in this area.</p>";
       return;
     }
 
@@ -285,48 +285,6 @@ let appliedFilters = {}; // Store applied filters globally
 let totalPosts = 0; // Initialize with a default value
 let debounceTimeout;
 
-// Event listener for map movement (panning or zooming)
-map.on("moveend", async () => {
-  // If suppressFetchOnce flag is set, skip fetching
-  if (suppressFetchOnce) {
-    suppressFetchOnce = false;
-    return;
-  }
-
-  clearTimeout(debounceTimeout);
-  debounceTimeout = setTimeout(async () => {
-    const currentZoom = map.getZoom();
-    const postGrid = document.getElementById("postGrid");
-
-    if (currentZoom < MIN_ZOOM_LEVEL) {
-      postMarkersGroup.clearLayers(); // Clear all post markers
-      postGrid.innerHTML = "<p>Zoom in to see posts.</p>";
-      return;
-    }
-
-    const bounds = map.getBounds();
-    const southwest = bounds.getSouthWest();
-    const northeast = bounds.getNorthEast();
-
-    // Proceed with fetching posts if zoom is sufficient
-    await loadPosts(
-      appliedFilters.filterType,
-      appliedFilters.filterHashtags,
-      1,
-      appliedFilters.filterCategory,
-      { southwest, northeast }
-    );
-
-    await loadPostsToMap(
-      map,
-      appliedFilters.filterType,
-      appliedFilters.filterHashtags,
-      appliedFilters.filterCategory,
-      { southwest, northeast }
-    );
-  }, 300);
-});
-
 // Function to load posts within the current map bounds
 async function loadPosts(
   filterType = "",
@@ -398,7 +356,7 @@ async function loadPosts(
     const querySnapshot = await getDocs(postsQuery);
 
     if (querySnapshot.empty) {
-      postGrid.innerHTML = page === 1 ? "<p>No posts available.</p>" : "";
+      postGrid.innerHTML = page === 1 ? "<p class='zoom-warning'>No posts available.</p>" : "";
       return;
     }
 
@@ -433,7 +391,7 @@ async function loadPosts(
           <div class="post-info">
             <h3 class="post-title">${post.title}</h3>
             <p class="post-desired-trade"><strong>📌 Desired Trade:</strong> ${post.desiredTrade || "Not specified"}</p>
-            <p class="post-city">🌍 ${post.city} (${post.distanceFromCity || 0} miles away)</p>
+            <p class="post-location">${post.city ? `🌍 ${post.city} (${post.distanceFromCity || 0} miles away)` : `📍 Coordinates: ${post.latitude?.toFixed(4)}, ${post.longitude?.toFixed(4)}`}</p>
             <p class="post-date">Posted on: ${postDate}</p>
             <p class="post-hashtags"><strong>Hashtags:</strong> ${hashtags}</p>
           </div>
@@ -555,7 +513,13 @@ function filterByHashtag(hashtag) {
   applyFilters("", [hashtag], "", 0); // Set filterType, hashtags array, city, and distance
 }
 
-function applyFilters(filterType = "", filterHashtags = [], filterCity = "", filterDistance = 0, filterCategory = "") {
+function applyFilters(
+  filterType = document.getElementById("filterType").value,
+  filterHashtags = document.getElementById("filterHashtag").value.split(',').map(t => t.trim()).filter(t => t),
+  filterCity = document.getElementById("filterCity").value.trim(),
+  filterDistance = parseInt(document.getElementById("filterDistance").value) || 0,
+  filterCategory = document.getElementById("filterCategory").value
+) {
   if (!map) {
     console.error("Map is not initialized.");
     return;
@@ -564,115 +528,123 @@ function applyFilters(filterType = "", filterHashtags = [], filterCity = "", fil
   // Check the current zoom level
   const currentZoom = map.getZoom();
   if (currentZoom < MIN_ZOOM_LEVEL) {
-    postGrid.innerHTML = "<p>Zoom in to see posts in this area.</p>";
+    const zoomMessage = `🔍 Please zoom in to view posts in this area`;
+    
+    // Show alert and update grid message
+    alert(zoomMessage);
+    postGrid.innerHTML = `<p class="zoom-warning">${zoomMessage}</p>`;
+    
+    // Optional: Briefly shake the map container
+    const mapContainer = document.getElementById("map");
+    mapContainer.classList.add('shake-animation');
+    setTimeout(() => mapContainer.classList.remove('shake-animation'), 500);
+    
     return;
   }
 
-  const bounds = map.getBounds(); // Get visible map bounds
+  // Always get fresh bounds
+  const bounds = map.getBounds();
   const southwest = bounds.getSouthWest();
   const northeast = bounds.getNorthEast();
 
-  // Get values from input fields if not explicitly passed
-  const selectedFilterType = filterType || document.getElementById("filterType").value;
-  const rawHashtags = document.getElementById("filterHashtag").value;
-  const selectedFilterCity = filterCity || document.getElementById("filterCity").value.trim();
-  const selectedFilterDistance = filterDistance || parseInt(document.getElementById("filterDistance").value) || 0;
-  const selectedFilterCategory = filterCategory || document.getElementById("filterCategory").value;
-
-  // Process hashtags
-  const filterHashtagsArray = filterHashtags.length > 0 ? filterHashtags : rawHashtags
-    .split(",")
-    .map((tag) => tag.trim().toLowerCase())
-    .filter((tag) => tag.length > 0);
-
-  // Update global appliedFilters
+  // Update global filters
   appliedFilters = {
-    filterType: selectedFilterType,
-    filterHashtags: filterHashtagsArray,
-    filterCity: selectedFilterCity,
-    filterDistance: selectedFilterDistance,
-    filterCategory: selectedFilterCategory,
+    filterType: filterType,
+    filterHashtags: filterHashtags,
+    filterCity: filterCity,
+    filterDistance: filterDistance,
+    filterCategory: filterCategory
   };
 
-    // Display filters as bubbles
-    displayAppliedFilters({
-      filterType: selectedFilterType,
-      filterHashtags: filterHashtagsArray,
-      filterCity: selectedFilterCity,
-      filterDistance: selectedFilterDistance,
-      filterCategory: selectedFilterCategory,
-    });
-  
+  // Update UI filters display
+  displayAppliedFilters(appliedFilters);
 
-  // Call loadPosts with the mapped filters
-  loadPosts(selectedFilterType, filterHashtagsArray, 1, selectedFilterCategory, { southwest, northeast });
+  // Load posts with current filters
+  loadPosts(
+    appliedFilters.filterType,
+    appliedFilters.filterHashtags,
+    1,
+    appliedFilters.filterCategory,
+    { southwest, northeast }
+  );
 
-  // Call loadPostsToMap with the same filters
-  loadPostsToMap(map, selectedFilterType, filterHashtagsArray, selectedFilterCategory, { southwest, northeast });
+  // Update map markers
+  loadPostsToMap(
+    map,
+    appliedFilters.filterType,
+    appliedFilters.filterHashtags,
+    appliedFilters.filterCategory,
+    { southwest, northeast }
+  );
 }
 
 function displayAppliedFilters(filters) {
   const appliedFiltersDiv = document.getElementById("appliedFilters");
-  appliedFiltersDiv.innerHTML = ""; // Clear previous bubbles
+  appliedFiltersDiv.innerHTML = "";
 
-  const { filterType, filterHashtags, filterCity, filterDistance, filterCategory } = filters;
+  // Create filter bubbles with closure-protected filters
+  const createBubble = (label, clearField) => {
+    const bubble = document.createElement("div");
+    bubble.className = "filter-bubble";
+    bubble.innerHTML = `
+      <span>${label}</span>
+      <button class="remove-btn">×</button>
+    `;
+    bubble.querySelector(".remove-btn").addEventListener("click", () => {
+      clearField();
+      applyFilters(); // Re-apply filters with updated values
+    });
+    appliedFiltersDiv.appendChild(bubble);
+  };
 
-  // Add filter bubbles
-  if (filterType) {
-    createFilterBubble(appliedFiltersDiv, `Type: ${filterType}`, () => {
+  if (filters.filterType) {
+    createBubble(`Type: ${filters.filterType}`, () => {
       document.getElementById("filterType").value = "";
-      applyFilters(); // Update filters without this type
     });
   }
 
-  if (filterCategory) {
-    createFilterBubble(appliedFiltersDiv, `Category: ${filterCategory}`, () => {
+  if (filters.filterCategory) {
+    createBubble(`Category: ${filters.filterCategory}`, () => {
       document.getElementById("filterCategory").value = "";
-      applyFilters(); // Update filters without this category
     });
   }
 
-  if (filterCity) {
-    createFilterBubble(appliedFiltersDiv, `City: ${filterCity}`, () => {
+  if (filters.filterCity) {
+    createBubble(`City: ${filters.filterCity}`, () => {
       document.getElementById("filterCity").value = "";
-      applyFilters(); // Update filters without this city
     });
   }
 
-  if (filterDistance) {
-    createFilterBubble(appliedFiltersDiv, `Distance: ${filterDistance} miles`, () => {
+  if (filters.filterDistance) {
+    createBubble(`Distance: ${filters.filterDistance} miles`, () => {
       document.getElementById("filterDistance").value = "";
-      applyFilters(); // Update filters without this distance
     });
   }
 
-  if (filterHashtags.length > 0) {
-    filterHashtags.forEach((hashtag) => {
-      createFilterBubble(appliedFiltersDiv, `Hashtag: ${hashtag}`, () => {
-        const hashtagsInput = document.getElementById("filterHashtag");
-        const remainingHashtags = hashtagsInput.value
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter((tag) => tag.toLowerCase() !== hashtag.toLowerCase());
-        hashtagsInput.value = remainingHashtags.join(", ");
-        applyFilters(); // Update filters without this hashtag
-      });
+  filters.filterHashtags.forEach(hashtag => {
+    createBubble(`Hashtag: ${hashtag}`, () => {
+      const hashtagsInput = document.getElementById("filterHashtag");
+      const newValue = hashtagsInput.value
+        .split(',')
+        .map(t => t.trim())
+        .filter(t => t.toLowerCase() !== hashtag.toLowerCase())
+        .join(', ');
+      hashtagsInput.value = newValue;
     });
-  }
+  });
 
-  // Add a "clear all" button
-  if (appliedFiltersDiv.childNodes.length > 0) {
+  if (appliedFiltersDiv.children.length > 0) {
     const clearButton = document.createElement("button");
     clearButton.textContent = "Clear All Filters";
-    clearButton.classList.add("clear-filters-btn"); // Optional: Add styling class
-    clearButton.onclick = () => {
-      document.getElementById("filterType").value = "";
-      document.getElementById("filterCategory").value = "";
-      document.getElementById("filterCity").value = "";
-      document.getElementById("filterDistance").value = "";
-      document.getElementById("filterHashtag").value = "";
-      applyFilters(); // Reset all filters
-    };
+    clearButton.className = "clear-filters-btn";
+    clearButton.addEventListener("click", () => {
+      document.querySelectorAll('.filter-input').forEach(input => {
+        if (input.type === 'text') input.value = '';
+        if (input.type === 'select-one') input.selectedIndex = 0;
+        if (input.type === 'number') input.value = '';
+      });
+      applyFilters();
+    });
     appliedFiltersDiv.appendChild(clearButton);
   }
 }
@@ -795,13 +767,18 @@ async function viewDetails(postId, hideOfferSwap = false) {
     modalContent.querySelector(".carousel-image").src = post.imageUrls[currentIndex];
   }
 
+  // Determine the number of images
+  const imageCount = post.imageUrls?.length || 0;
+
   modalContent.innerHTML = `
     <div class="post-details">
       <h3 class="post-title">${post.title}</h3>
       <div class="carousel">
-        <button class="carousel-button" id="prev">←</button>
-        <img src="${post.imageUrls[0]}" class="carousel-image" alt="Image" />
-        <button class="carousel-button" id="next">→</button>
+        ${imageCount > 1 ? `<button class="carousel-button" id="prev">←</button>` : ''}
+        <img src="${post.imageUrls?.[0] || 'https://via.placeholder.com/150'}" 
+             class="carousel-image" 
+             alt="Post Image" />
+        ${imageCount > 1 ? `<button class="carousel-button" id="next">→</button>` : ''}
       </div>
       <div class="container-viewdetails-buttons">
             ${
@@ -813,7 +790,7 @@ async function viewDetails(postId, hideOfferSwap = false) {
       </div>
       <p class="post-description">${post.description}</p>
       <p class="post-category"><strong>Category:</strong> ${post.category}</p>
-      <p class="post-location"><strong>Location:</strong> ${post.city} (${post.distanceFromCity || 0} miles away)</p>
+      <p class="post-location"><strong>Location:</strong> ${post.city ? `${post.city} (${post.distanceFromCity || 0} miles away)` : `${post.latitude?.toFixed(4)}, ${post.longitude?.toFixed(4)}`}</p>
       <p class="post-desired-trade"><strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}</p>
       <div class="user-info">
         <img src="${user.profilePhoto}" alt="${user.name}" class="profile-photo" />
@@ -828,15 +805,17 @@ async function viewDetails(postId, hideOfferSwap = false) {
   `;
 
   // Carousel navigation
-  document.getElementById("prev").addEventListener("click", () => {
-    currentIndex = (currentIndex - 1 + post.imageUrls.length) % post.imageUrls.length;
-    updateCarousel();
-  });
+  if (imageCount > 1) {
+    document.getElementById("prev").addEventListener("click", () => {
+      currentIndex = (currentIndex - 1 + imageCount) % imageCount;
+      updateCarousel();
+    });
 
-  document.getElementById("next").addEventListener("click", () => {
-    currentIndex = (currentIndex + 1) % post.imageUrls.length;
-    updateCarousel();
-  });
+    document.getElementById("next").addEventListener("click", () => {
+      currentIndex = (currentIndex + 1) % imageCount;
+      updateCarousel();
+    });
+  }
 
   modal.classList.remove("hidden");
 }
@@ -2037,38 +2016,49 @@ async function loadPostsToMap(map, filterType = "", filterHashtags = [], filterC
     }
   });
 
+  // Create markers with jittered positions
   Object.keys(locationPostsMap).forEach((locationKey) => {
-    const [lat, lng] = locationKey.split(",").map(Number);
+    const [originalLat, originalLng] = locationKey.split(",").map(Number);
     const posts = locationPostsMap[locationKey];
-    const isMultiItem = posts.length > 1;
+    const postCount = posts.length;
 
-    const popupContent = posts.map(post => `
-      <div class="post-item">
-        <h3>${post.title}</h3>
-        <p>${post.description}</p>
-        <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}
-        <br>
-        <button onclick="viewDetails('${post.id}')">View Details</button>
-      </div>
-      ${isMultiItem ? '<hr>' : ''}
-    `).join("");
+    posts.forEach((post, index) => {
+      // Apply jitter only if multiple posts exist at this location
+      let jitteredLat = originalLat;
+      let jitteredLng = originalLng;
+      if (postCount > 1) {
+        const angle = (index * (2 * Math.PI)) / postCount;
+        const radius = 0.0002; // Adjust radius for spread (~20 meters)
+        jitteredLat += radius * Math.cos(angle);
+        jitteredLng += radius * Math.sin(angle);
+      }
 
-    const marker = L.marker([lat, lng]);
-    marker.bindPopup(`<div class="custom-tooltip">${popupContent}</div>`, {
-      className: isMultiItem ? 'multi-item-popup' : 'single-item-popup'
-    });
+      // Create marker with default icon
+      const marker = L.marker([jitteredLat, jitteredLng], {
+        title: post.title // This adds basic hover text
+      });
 
-    marker.bindTooltip(
-      isMultiItem ? `${posts.length} items here` : posts[0].title,
-      {
+      // Add permanent tooltip with custom styling
+      marker.bindTooltip(post.title, {
         permanent: true,
         direction: "top",
-        offset: [-15, -10],
-        className: `custom-tooltip ${isMultiItem ? 'multi-item-tooltip' : ''}`
-      }
-    );
+        offset: [-15, -5], // Position above the pin
+        className: `map-pin-title ${postCount > 1 ? 'multi-item-title' : ''}`
+      });
 
-    postMarkersGroup.addLayer(marker);
+      // Add popup with custom class
+      marker.bindPopup(`
+        <div class="map-post-popup">
+          <h3>${post.title}</h3>
+          <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}
+          <button class="btn-view-details" onclick="viewDetails('${post.id}')">
+            View Details
+          </button>
+        </div>
+      `);
+
+      postMarkersGroup.addLayer(marker);
+    });
   });
 }
 
@@ -2089,37 +2079,81 @@ function centerMapOnUserLocation(map) {
     cursor: pointer;
   `;
 
+  // Create a persistent marker reference
+  let userLocationMarker = null;
+
   recenterButton.onclick = () => {
     if (navigator.geolocation) {
+      // Show loading state
+      recenterButton.textContent = "⌛";
+      recenterButton.disabled = true;
+
+      // Configure high-precision options
+      const geoOptions = {
+        enableHighAccuracy: true,  // Request GPS if available
+        timeout: 10000,            // 10 second timeout
+        maximumAge: 0              // No cached positions
+      };
+
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          const { latitude, longitude } = position.coords;
+          const { latitude, longitude, accuracy } = position.coords;
           
-          // Get current zoom level and determine desired zoom
-          const currentZoom = map.getZoom();
-          const desiredZoom = currentZoom < MIN_ZOOM_LEVEL ? MIN_ZOOM_LEVEL : currentZoom;
-          
-          // Set the flag to suppress fetch on the next moveend
-          suppressFetchOnce = true;
-          
-          // Set the view with dynamically determined zoom
-          map.setView([latitude, longitude], desiredZoom);
-  
-          // Add marker for user location
-          L.marker([latitude, longitude]).addTo(map)
-            .bindPopup("You are here! 👋")
+          // Remove previous marker if exists
+          if (userLocationMarker) {
+            map.removeLayer(userLocationMarker);
+          }
+
+          // Create accuracy circle
+          const accuracyCircle = L.circle([latitude, longitude], {
+            color: '#135aac',
+            fillColor: '#135aac',
+            fillOpacity: 0.15,
+            radius: accuracy
+          }).addTo(map);
+
+          // Add new marker with accuracy info
+          userLocationMarker = L.marker([latitude, longitude])
+            .bindPopup(`
+              <b>Your location</b><br>
+              Accuracy: ${Math.round(accuracy)} meters
+            `)
+            .addTo(map)
             .openPopup();
+
+          // Calculate optimal zoom based on accuracy
+          const targetZoom = Math.min(
+            Math.max(16 - Math.log2(accuracy/50), MIN_ZOOM_LEVEL),
+            18
+          );
+
+          // Set view with smooth transition
+          map.flyTo([latitude, longitude], targetZoom, {
+            animate: true,
+            duration: 1.5
+          });
+
+          // Set flag to suppress initial load
+          suppressFetchOnce = true;
+
+          // Update UI
+          recenterButton.textContent = "📍";
+          recenterButton.disabled = false;
         },
         (error) => {
           console.error("Geolocation error:", error);
-          alert("Unable to access your location.");
-        }
+          alert(`Location error: ${error.message}`);
+          recenterButton.textContent = "📍";
+          recenterButton.disabled = false;
+        },
+        geoOptions
       );
     } else {
       alert("Geolocation is not supported by your browser.");
     }
   };
 
+  // Add button to map container
   const mapContainer = document.getElementById("map");
   mapContainer.appendChild(recenterButton);
 }
@@ -2127,22 +2161,56 @@ function centerMapOnUserLocation(map) {
 document.getElementById("getLocationButton").addEventListener("click", () => {
   const latitudeField = document.getElementById("latitude");
   const longitudeField = document.getElementById("longitude");
+  const loadingIndicator = document.getElementById("locationLoading");
+  const button = document.getElementById("getLocationButton");
 
   if (navigator.geolocation) {
+    // Show loading state
+    loadingIndicator.style.display = "flex";
+    button.disabled = true;
+    button.textContent = "Fetching location...";
+
+    const successHandler = (position) => {
+      const { latitude, longitude } = position.coords;
+      latitudeField.value = latitude;
+      longitudeField.value = longitude;
+      
+      // Hide loading state
+      loadingIndicator.style.display = "none";
+      button.disabled = false;
+      button.textContent = "📍 Click here to add your current location";
+    };
+
+    const errorHandler = (error) => {
+      console.error("Geolocation error:", error);
+      alert("Failed to get your location. Make sure you allow location access.");
+      
+      // Hide loading state
+      loadingIndicator.style.display = "none";
+      button.disabled = false;
+      button.textContent = "📍 Click here to add your current location";
+    };
+
+    // Clear any previous geolocation attempts
+    if (window.geolocationTimeout) {
+      clearTimeout(window.geolocationTimeout);
+    }
+
+    // Add timeout fallback
+    window.geolocationTimeout = setTimeout(() => {
+      errorHandler({ code: 3, message: "Geolocation timed out" });
+    }, 10000);
+
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const { latitude, longitude } = position.coords;
-        console.log(`Geolocation successful: Latitude=${latitude}, Longitude=${longitude}`);
-        
-        latitudeField.value = latitude;
-        longitudeField.value = longitude;
-
-        console.log(`Location fetched:\nLatitude: ${latitude}\nLongitude: ${longitude}`);
+        clearTimeout(window.geolocationTimeout);
+        successHandler(position);
       },
       (error) => {
-        console.error("Geolocation error:", error);
-        alert("Failed to get your location. Make sure you allow location access.");
-      }
+        clearTimeout(window.geolocationTimeout);
+        errorHandler(error);
+      },
+      { enableHighAccuracy: true, timeout: 9500 }
     );
   } else {
     alert("Geolocation is not supported by your browser.");
