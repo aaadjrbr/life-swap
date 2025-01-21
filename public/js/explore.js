@@ -1,6 +1,6 @@
 // Import Firebase modules
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, collection, addDoc, writeBatch, limit, startAfter, setDoc, getDocs, where, orderBy, onSnapshot, updateDoc, query, doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, initializeFirestore, CACHE_SIZE_UNLIMITED, collection, addDoc, writeBatch, limit, startAfter, setDoc, getDocs, where, orderBy, onSnapshot, updateDoc, query, doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
@@ -18,10 +18,14 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
+const db = initializeFirestore(app, {
+  cacheSizeBytes: CACHE_SIZE_UNLIMITED, // Optional: Adjust cache size as needed
+  experimentalForceLongPolling: true,   // Optional: Improve reliability in certain network conditions
+  persistence: true                     // Enable offline persistence
+});
 const storage = getStorage(app);
 const auth = getAuth(app);
-const MIN_ZOOM_LEVEL = 16; // Minimum zoom level to load posts
+const MIN_ZOOM_LEVEL = 14; // Minimum zoom level to load posts
 
 // Authentication Check
 onAuthStateChanged(auth, async (user) => {
@@ -1988,7 +1992,7 @@ async function deletePost(postId) {
   }
 }
 
-async function loadPostsToMap(map, filterType = "", filterHashtags = [], filterCategory = "", mapBounds) {
+async function loadPostsToMap(map, filterType = "", filterHashtags = [], filterCategory = "", mapBounds) { 
   if (!map) {
     console.error("Map is not initialized.");
     return;
@@ -1996,7 +2000,7 @@ async function loadPostsToMap(map, filterType = "", filterHashtags = [], filterC
 
   const currentZoom = map.getZoom();
   if (currentZoom < MIN_ZOOM_LEVEL) {
-    postMarkersGroup.clearLayers();  // Clear markers if zoom is too low
+    postMarkersGroup.clearLayers();
     return;
   }
 
@@ -2019,58 +2023,50 @@ async function loadPostsToMap(map, filterType = "", filterHashtags = [], filterC
   conditions.push(orderBy("timestamp", "desc"));
 
   postsQuery = query(postsQuery, ...conditions);
-
   const postsSnapshot = await getDocs(postsQuery);
 
-  // Clear previous markers
   postMarkersGroup.clearLayers();
 
-  // Group posts by location
   const locationPostsMap = {};
   postsSnapshot.forEach((doc) => {
     const post = doc.data();
     if (post.latitude && post.longitude) {
       const locationKey = `${post.latitude},${post.longitude}`;
-      if (!locationPostsMap[locationKey]) {
-        locationPostsMap[locationKey] = [];
-      }
+      locationPostsMap[locationKey] = locationPostsMap[locationKey] || [];
       locationPostsMap[locationKey].push({ ...post, id: doc.id });
     }
   });
 
-  // Add markers to the LayerGroup
   Object.keys(locationPostsMap).forEach((locationKey) => {
     const [lat, lng] = locationKey.split(",").map(Number);
     const posts = locationPostsMap[locationKey];
+    const isMultiItem = posts.length > 1;
 
-    const popupContent = posts
-      .map(
-        (post) => `
-          <div style="margin-bottom: 10px;">
-            <h3>${post.title}</h3>
-            <p>${post.description}</p>
-            <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}
-            <br />
-            <button onclick="viewDetails('${post.id}')">View Details</button>
-          </div>
-          <hr>
-        `
-      )
-      .join("");
-
-    const tooltipLabel =
-      posts.length > 1
-        ? `${posts.length} items here`
-        : posts[0].title || "1 item here";
+    const popupContent = posts.map(post => `
+      <div class="post-item">
+        <h3>${post.title}</h3>
+        <p>${post.description}</p>
+        <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}
+        <br>
+        <button onclick="viewDetails('${post.id}')">View Details</button>
+      </div>
+      ${isMultiItem ? '<hr>' : ''}
+    `).join("");
 
     const marker = L.marker([lat, lng]);
-    marker.bindPopup(`<div class="custom-tooltip">${popupContent}</div>`);
-    marker.bindTooltip(tooltipLabel, {
-      permanent: true,
-      direction: "top",
-      offset: [-15, -10],
-      className: "custom-tooltip",
+    marker.bindPopup(`<div class="custom-tooltip">${popupContent}</div>`, {
+      className: isMultiItem ? 'multi-item-popup' : 'single-item-popup'
     });
+
+    marker.bindTooltip(
+      isMultiItem ? `${posts.length} items here` : posts[0].title,
+      {
+        permanent: true,
+        direction: "top",
+        offset: [-15, -10],
+        className: `custom-tooltip ${isMultiItem ? 'multi-item-tooltip' : ''}`
+      }
+    );
 
     postMarkersGroup.addLayer(marker);
   });
@@ -2080,7 +2076,7 @@ let suppressFetchOnce = false;
 
 function centerMapOnUserLocation(map) {
   const recenterButton = document.createElement("button");
-  recenterButton.textContent = "📍 My Location";
+  recenterButton.textContent = "📍";
   recenterButton.style.cssText = `
     position: absolute;
     top: 80px;

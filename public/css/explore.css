@@ -593,7 +593,6 @@ div#filterCitySuggestions {
 
 div#map {
   z-index: 0;
-  width: 100% !important;
   display: flex;
   margin: auto;
   border-radius: 8px;
@@ -810,7 +809,7 @@ form#chat-form button:hover {
 
   #filters select,
   #filters input {
-    width: 100%;
+    width: 90%;
   }
 }
 
@@ -1257,4 +1256,41 @@ footer p {
 
 .custom-tooltip button:active {
   transform: translateY(0); /* Reset lift effect on click */
+}
+
+.leaflet-popup-content-wrapper {
+  max-width: 250px;
+  overflow: visible;
+  width: 240px;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+  margin-right: 15px !important;
+}
+
+/* For popups with multiple items */
+.multi-item-popup .leaflet-popup-content-wrapper {
+  overflow-x: auto;
+  height: 200px;
+  padding-top: 20px;
+}
+
+.multi-item-popup .leaflet-popup-content {
+  padding-right: 10px;
+}
+
+/* For single item popups */
+.single-item-popup .leaflet-popup-content-wrapper {
+  max-width: 250px;
+  overflow: visible;
+}
+
+/* Tooltip styling */
+.multi-item-tooltip {
+  background-color: #ffeb3b;
+  color: #000;
 }
