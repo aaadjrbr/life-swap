@@ -1138,20 +1138,33 @@ async function openOfferSwapModal(targetPostId, targetPostTitle) {
 
   document.getElementById("offerSwapForm").onsubmit = async function (e) {
     e.preventDefault();
-
-    const offeredPostId = dropdown.value;
+  
+    const user = auth.currentUser;          // Person making the offer
+    const offeredPostId = dropdown.value;   // The post your user is offering
     const message = document.getElementById("swapMessage").value.trim();
-
-    await addDoc(collection(db, "offers"), {
+  
+    // 1. Create the offer in Firestore
+    const offerRef = await addDoc(collection(db, "offers"), {
       fromUserId: user.uid,
-      toUserId: (await getDoc(doc(db, "posts", targetPostId))).data().userId,
+      toUserId: (await getDoc(doc(db, "posts", targetPostId))).data().userId, 
       offeredPostId,
       targetPostId,
       message,
       status: "pending",
       timestamp: new Date(),
     });
-
+  
+    // 2. Send the user a Firestore notification
+    const targetOwnerId = (await getDoc(doc(db, "posts", targetPostId))).data().userId;
+  
+    // Your content text can be anything you want:
+    await addNotification(targetOwnerId, {
+      type: "newOffer",             // <--- KEY PART: "newOffer"
+      content: `${user.displayName || "Someone"} sent you a new offer!`,
+      link: `https://life-swap-6065e.web.app/explore.html?offer=${offerRef.id}`, 
+      // e.g., link to a page or anchor where they can see details
+    });
+  
     alert("Swap offer sent!");
     closeOfferSwap();
   };
