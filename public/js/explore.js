@@ -1,6 +1,14 @@
 // Import Firebase modules
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getFirestore, initializeFirestore, CACHE_SIZE_UNLIMITED, collection, addDoc, writeBatch, limit, startAfter, setDoc, getDocs, where, orderBy, onSnapshot, updateDoc, query, doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, 
+  initializeFirestore, 
+  CACHE_SIZE_UNLIMITED, 
+  collection, addDoc, 
+  writeBatch, limit, 
+  startAfter, setDoc, 
+  getDocs, where, orderBy, 
+  onSnapshot, updateDoc, query, 
+  doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
@@ -85,6 +93,16 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
 
 const postMarkersGroup = L.layerGroup().addTo(map);
 
+// Add zoom alert control to the map
+const zoomAlertControl = L.control({ position: 'bottomleft' });
+zoomAlertControl.onAdd = function(map) {
+  this._div = L.DomUtil.create('div', 'zoom-alert');
+  this._div.id = 'mapZoomAlert';
+  this._div.innerHTML = '🔍 Zoom in to see posts';
+  return this._div;
+};
+zoomAlertControl.addTo(map);
+
 // Add the recenter button and enable geolocation
 centerMapOnUserLocation(map);
 
@@ -99,17 +117,17 @@ map.on("moveend", async () => {
   // Set a new timeout
   clearTimeout(debounceTimeout);
   debounceTimeout = setTimeout(async () => {
+    const zoomAlert = document.getElementById('mapZoomAlert');
     const currentZoom = map.getZoom();
     const postGrid = document.getElementById("postGrid");
 
     if (currentZoom < MIN_ZOOM_LEVEL) {
-      map.eachLayer((layer) => {
-        if (layer instanceof L.Marker) {
-          map.removeLayer(layer);
-        }
-      });
-      postGrid.innerHTML = "<p class='zoom-warning'>🔍 Please zoom in to view posts in this area.</p>";
+      postMarkersGroup.clearLayers();
+      postGrid.innerHTML = "";
+      zoomAlert.style.display = 'block'; // Show map alert
       return;
+    } else {
+      zoomAlert.style.display = 'none'; // Hide alert when zoomed in
     }
 
     const bounds = map.getBounds();
@@ -207,75 +225,142 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 // Handle Post Creation
-document.getElementById("postForm").addEventListener("submit", async (e) => {
-  e.preventDefault();
+  // 1. The image compression function
+  async function compressImage(file, maxWidth = 800, maxHeight = 800, quality = 0.7) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
 
-  const hashtagsField = document.getElementById("hashtags");
-  // Clean the hashtags input to remove any trailing comma
-  hashtagsField.value = hashtagsField.value.replace(/,\s*$/, "");
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          // Create an off-screen canvas
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
 
-  const title = document.getElementById("title").value.trim();
-  const description = document.getElementById("description").value.trim();
-  const postType = document.getElementById("postType").value;
-  const category = document.getElementById("category").value;
-  const city = document.getElementById("city").value.trim();
-  const distance = parseInt(document.getElementById("distance").value) || 0;
+          // Scale down to maintain aspect ratio if bigger than max dimensions
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.floor(height * (maxWidth / width));
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.floor(width * (maxHeight / height));
+              height = maxHeight;
+            }
+          }
 
-  // New fields: Latitude and Longitude
-  const latitude = parseFloat(document.getElementById("latitude").value);
-  const longitude = parseFloat(document.getElementById("longitude").value);
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
 
-  // Validate latitude and longitude
-  if (isNaN(latitude) || isNaN(longitude)) {
-    alert("Please click on 'Add My Location' to set your current location.");
-    return;
+          // Convert canvas back to Blob (this is where compression happens)
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error('Canvas is empty or could not be converted to blob.'));
+                return;
+              }
+              // Keep the original file name if desired
+              blob.name = file.name;
+              resolve(blob);
+            },
+            'image/jpeg', // or 'image/png'
+            quality       // 0.0 ~ 1.0 (JPEG quality)
+          );
+        };
+        img.onerror = reject;
+        img.src = e.target.result; // base64 data URL
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file); // read the file in base64
+    });
   }
 
-  // New field: Desired trade
-  const desiredTrade = document.getElementById("desiredTrade").value.trim();
+  // 2. The postForm submission handler
+  document.getElementById("postForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
 
-  // Clean and prepare hashtags
-  const hashtags = hashtagsField.value
-    .split(",")
-    .map((tag) => `#${tag.trim().toLowerCase().replace(/^#/, "")}`)
-    .filter((tag) => tag); // Remove empty tags
+    // (Assuming `auth`, `db`, `storage`, `loadPosts()` etc. are all already set up)
 
-  const images = document.getElementById("images").files;
+    const hashtagsField = document.getElementById("hashtags");
+    // Clean the hashtags input to remove any trailing comma
+    hashtagsField.value = hashtagsField.value.replace(/,\s*$/, "");
 
-  const user = auth.currentUser;
-  if (!user) {
-    alert("You must be logged in to post!");
-    return;
-  }
+    const title = document.getElementById("title").value.trim();
+    const description = document.getElementById("description").value.trim();
+    const postType = document.getElementById("postType").value;
+    const category = document.getElementById("category").value;
+    const city = document.getElementById("city").value.trim();
+    const distance = parseInt(document.getElementById("distance").value) || 0;
 
-  const imageUrls = [];
-  for (const image of images) {
-    const imageRef = ref(storage, `images/${user.uid}/${image.name}`);
-    await uploadBytes(imageRef, image);
-    const url = await getDownloadURL(imageRef);
-    imageUrls.push(url);
-  }
+    // New fields: Latitude and Longitude
+    const latitude = parseFloat(document.getElementById("latitude").value);
+    const longitude = parseFloat(document.getElementById("longitude").value);
 
-  await addDoc(collection(db, "posts"), {
-    title,
-    description,
-    desiredTrade,
-    type: postType,
-    category,
-    city: city.trim(),
-    distanceFromCity: distance,
-    latitude, // Save latitude
-    longitude, // Save longitude
-    hashtags,
-    imageUrls,
-    userId: user.uid,
-    timestamp: new Date(),
+    if (isNaN(latitude) || isNaN(longitude)) {
+      alert("Please click on 'Add My Location' to set your current location.");
+      return;
+    }
+
+    // New field: Desired trade
+    const desiredTrade = document.getElementById("desiredTrade").value.trim();
+
+    // Clean and prepare hashtags
+    const hashtags = hashtagsField.value
+      .split(",")
+      .map((tag) => `#${tag.trim().toLowerCase().replace(/^#/, "")}`)
+      .filter((tag) => tag); // Remove empty tags
+
+    // Gather images from file input
+    const images = document.getElementById("images").files;
+
+    const user = auth.currentUser;
+    if (!user) {
+      alert("You must be logged in to post!");
+      return;
+    }
+
+    // 3. Compress & upload images
+    const imageUrls = [];
+    for (const image of images) {
+      // Compress the image before upload
+      const compressedImage = await compressImage(image, 800, 800, 0.7);
+
+      // Now upload the compressed blob instead of the raw file
+      const imageRef = ref(storage, `images/${user.uid}/${compressedImage.name}`);
+      await uploadBytes(imageRef, compressedImage);
+
+      // Get the download URL for that image
+      const url = await getDownloadURL(imageRef);
+      imageUrls.push(url);
+    }
+
+    // 4. Add doc to Firestore
+    await addDoc(collection(db, "posts"), {
+      title,
+      description,
+      desiredTrade,
+      type: postType,
+      category,
+      city: city.trim(),
+      distanceFromCity: distance,
+      latitude,
+      longitude,
+      hashtags,
+      imageUrls,
+      userId: user.uid,
+      timestamp: new Date(),
+    });
+
+    alert("Post created successfully!");
+    document.getElementById("postForm").reset();
+
+    // Reload or refresh your posts if needed
+    loadPosts();
   });
-
-  alert("Post created successfully!");
-  document.getElementById("postForm").reset();
-  loadPosts();
-});
 
 // Load Posts
 let postsPerPage = 6; // Default number of posts per page
