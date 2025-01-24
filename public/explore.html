@@ -290,17 +290,28 @@
 </section>
 
 <section id="chatModal" class="hidden">
+  <div class="chat-header">
+    <button id="closeDealBtn" class="hidden" onclick="closeDeal()">Close Deal</button>
+    <button onclick="closeChat()">Exit Chat</button>
+  </div>
   <div id="chatContainer"></div>
+<div class="chat-inputs">
   <form id="chatForm">
-    <input type="text" id="chatMessage" placeholder="Type your message" />
-    <input type="file" id="imageInput" accept="image/*" style="display: none;" />
-    <button type="button" id="imageButton">📷</button>
-    <button type="button" id="recordButton">🎤</button>
-    <audio id="audioPlayback" controls style="display: none;"></audio>
-    <button type="submit">Send</button>
+    <div class="chat-input-container">
+      <input type="text" id="chatMessage" placeholder="Type your message" />
+      <div class="input-icons">
+          <button type="button" id="recordButton" class="voice-button">🎤</button>
+      </div>
+  </div>
+  
+  <input type="file" id="imageInput" accept="image/*" style="display: none;" />
+  <div class="buttons-chat">
+  <button type="submit">Send</button>
+  <button type="button" id="imageButton">📷</button>
+  <audio id="audioPlayback" controls style="display: none;"></audio>
+  </div>
   </form>
-  <button id="closeDealBtn" class="hidden" onclick="closeDeal()">Close Deal</button>
-  <button onclick="closeChat()">Exit Chat</button>
+</div>
 </section>
 
 

@@ -1519,42 +1519,43 @@ async function openChat(dealId) {
   const messagesQuery = query(collection(db, "chats", dealId, "messages"), orderBy("timestamp"));
   onSnapshot(messagesQuery, async (snapshot) => {
     chatContainer.innerHTML = ""; // Clear existing messages
+    const currentUser = auth.currentUser;
+
     for (const doc of snapshot.docs) {
       const msg = doc.data();
       const senderName = await fetchUserName(msg.senderId);
       const formattedTimestamp = msg.timestamp
         ? new Date(msg.timestamp.toDate()).toLocaleString()
         : "Unknown Time";
-  
+      const isSender = currentUser && currentUser.uid === msg.senderId;
+      const messageClass = isSender ? "sender-message" : "recipient-message";
+
       let messageContent = `
-        <p>
+        <p class="${messageClass}">
           <strong>${senderName}:</strong>
       `;
-  
-      // Check for message types and display them appropriately
+
       if (msg.message) {
         messageContent += `${msg.message}`;
       } else if (msg.imageUrl) {
         messageContent += `<br><img src="${msg.imageUrl}" alt="Image" class="chat-image" />`;
       } else if (msg.voiceUrl) {
         try {
-          // If the voiceUrl is not a full URL, resolve it using Firebase Storage
           const voiceUrl = msg.voiceUrl.startsWith("https://")
             ? msg.voiceUrl
             : await getDownloadURL(ref(storage, msg.voiceUrl));
-  
           messageContent += `<br><audio controls src="${voiceUrl}" class="chat-audio"></audio>`;
         } catch (error) {
           console.error("Error resolving voiceUrl:", error);
           messageContent += `<br><small>Error loading voice message</small>`;
         }
       }
-  
+
       messageContent += `<br><small>${formattedTimestamp}</small></p>`;
       chatContainer.innerHTML += messageContent;
     }
-  });  
-  
+  });
+
   // Show "Close Deal" button if the deal is active
   if (deal.status === "active") {
     closeDealBtn.classList.remove("hidden");
@@ -1565,38 +1566,64 @@ async function openChat(dealId) {
 
   chatModal.classList.remove("hidden");
 
-  // Handle image selection
-  document.getElementById("imageButton").addEventListener("click", () => {
-    imageInput.click();
-  });
+  // Notification handler
+  async function handleMessageNotification(content) {
+    try {
+      const updatedDealSnapshot = await getDoc(dealRef);
+      if (!updatedDealSnapshot.exists()) {
+        console.error("Deal not found:", dealId);
+        return;
+      }
+
+      const updatedDeal = updatedDealSnapshot.data();
+      const currentUserId = auth.currentUser.uid;
+      const otherUserId = updatedDeal.fromUserId === currentUserId 
+        ? updatedDeal.toUserId 
+        : updatedDeal.fromUserId;
+
+      const senderDoc = await getDoc(doc(db, "users", currentUserId));
+      const senderName = senderDoc.exists() ? senderDoc.data().name : "Unknown User";
+
+      await addNotification(otherUserId, {
+        type: "newMessage",
+        content: `${senderName} sent you: ${content}`,
+        link: `https://life-swap-6065e.web.app/explore.html?chat=${dealId}`,
+      });
+    } catch (error) {
+      console.error("Error handling notification:", error);
+    }
+  }
+
+  // Image handling
+  document.getElementById("imageButton").addEventListener("click", () => imageInput.click());
 
   imageInput.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-  
-    const user = auth.currentUser;
-    const imagePath = `chatImages/${user.uid}/${Date.now()}_${file.name}`;
-    const imgRef = ref(storage, imagePath); // Corrected this line
-  
+
     try {
-      const snapshot = await uploadBytes(imgRef, file); // Upload the file
-      const downloadURL = await getDownloadURL(snapshot.ref); // Get the download URL
-  
-      // Add the message with the image URL to Firestore
+      const user = auth.currentUser;
+      const imagePath = `chatImages/${user.uid}/${Date.now()}_${file.name}`;
+      const imgRef = ref(storage, imagePath);
+      const snapshot = await uploadBytes(imgRef, file);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+
       await addDoc(collection(db, "chats", dealId, "messages"), {
         senderId: user.uid,
         imageUrl: downloadURL,
         timestamp: new Date(),
       });
+
+      await handleMessageNotification("an image");
     } catch (error) {
-      console.error("Error uploading image:", error);
+      console.error("Error handling image:", error);
       alert("Failed to send image.");
     }
   });
 
-  // Handle voice recording
+  // Voice recording
   recordButton.addEventListener("click", async () => {
-    if (mediaRecorder && mediaRecorder.state === "recording") {
+    if (mediaRecorder?.state === "recording") {
       mediaRecorder.stop();
       recordButton.textContent = "🎤";
       return;
@@ -1608,61 +1635,53 @@ async function openChat(dealId) {
       mediaRecorder.start();
       recordButton.textContent = "⏹️";
 
-      mediaRecorder.ondataavailable = (e) => {
-        audioChunks.push(e.data);
-      };
-
+      mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-        audioChunks = []; // Reset audio chunks
-        const user = auth.currentUser;
-        const audioPath = `voiceMessages/${user.uid}/${Date.now()}.webm`;
-        const audioRef = ref(storage, audioPath);
-      
         try {
-          // Upload audio to Firebase Storage
+          const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+          audioChunks = [];
+          const user = auth.currentUser;
+          const audioPath = `voiceMessages/${user.uid}/${Date.now()}.webm`;
+          const audioRef = ref(storage, audioPath);
+
           const snapshot = await uploadBytes(audioRef, audioBlob);
-          
-          // Get the full Firebase Storage download URL
           const downloadURL = await getDownloadURL(snapshot.ref);
-          
-          // Save the full download URL to Firestore
+
           await addDoc(collection(db, "chats", dealId, "messages"), {
             senderId: user.uid,
-            voiceUrl: downloadURL, // Save full download URL here
+            voiceUrl: downloadURL,
             timestamp: new Date(),
           });
-      
-          console.log("Audio uploaded successfully:", downloadURL);
-          
-          // Optional: Play back the uploaded audio
-          //audioPlayback.src = downloadURL;
-          //audioPlayback.style.display = "block";
-          //audioPlayback.play();
+
+          await handleMessageNotification("a voice message");
         } catch (error) {
-          console.error("Error uploading or fetching voice message:", error);
-          console.log("Failed to send or play back voice message.");
+          console.error("Error handling voice message:", error);
         }
       };
     } catch (error) {
-      console.error("Error accessing microphone:", error);
-      alert("Could not access your microphone. Please check permissions.");
+      console.error("Microphone access error:", error);
+      alert("Microphone access required for voice messages.");
     }
   });
 
-  // Handle new text messages
+  // Text messages
   document.getElementById("chatForm").onsubmit = async (e) => {
     e.preventDefault();
     const message = document.getElementById("chatMessage").value.trim();
     if (!message) return;
 
-    await addDoc(collection(db, "chats", dealId, "messages"), {
-      senderId: auth.currentUser.uid,
-      message,
-      timestamp: new Date(),
-    });
+    try {
+      await addDoc(collection(db, "chats", dealId, "messages"), {
+        senderId: auth.currentUser.uid,
+        message,
+        timestamp: new Date(),
+      });
 
-    document.getElementById("chatMessage").value = "";
+      document.getElementById("chatMessage").value = "";
+      await handleMessageNotification(`"${message.substring(0, 30)}${message.length > 30 ? '...' : ''}"`);
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
   };
 }
 

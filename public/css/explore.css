@@ -236,9 +236,92 @@ img {
   overflow-x: auto;
 }
 
-#chatModal {
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  align-content: center;
+  flex-direction: row;
+}
+
+.chat-input-container {
+  position: relative;
+  flex-grow: 1;
+}
+
+#chatMessage {
+  width: 100%;
+  padding: 10px 40px 10px 15px; /* Make space for the icon */
+  border: 1px solid #ccc;
+  border-radius: 20px;
+  box-sizing: border-box;
+}
+
+.input-icons {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 5px;
+}
+
+.voice-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 5px;
+  font-size: 1.2em;
+}
+
+#imageButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 5px;
+  font-size: 1.2em;
+}
+
+#chatContainer {
+  background: rgb(255, 255, 255);
+  padding: 10px;
+  border-radius: 15px;
+  max-height: 60vh;
   overflow-x: auto;
-  height: 80%;
+  margin-top: 10px;
+  margin-bottom: 10px;
+}
+
+.buttons-chat {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.sender-message {
+  background-color: #d1f7d6; /* Light green for sender */
+  text-align: right;
+  padding: 8px;
+  border-radius: 10px;
+  margin: 5px;
+}
+
+.recipient-message {
+  background-color: #f1f1f1; /* Light gray for recipient */
+  text-align: left;
+  padding: 8px;
+  border-radius: 10px;
+  margin: 5px;
+}
+
+.chat-image {
+  max-width: 100px;
+  border-radius: 8px;
+}
+
+.chat-audio {
+  width: 100%;
 }
 
 /* Add styles for the new modals */
