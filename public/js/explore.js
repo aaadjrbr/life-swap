@@ -9,7 +9,7 @@ import { getFirestore,
   getDocs, where, orderBy, 
   onSnapshot, updateDoc, query, 
   doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 
@@ -1327,11 +1327,18 @@ async function loadOffers() {
 }
 
 async function cancelOffer(offerId) {
+  const loadingOverlay = document.getElementById('loadingOverlay');
+  const loadingText = document.getElementById('loadingText');
+  
   if (confirm("Are you sure you want to cancel this offer? This action cannot be undone.")) {
     try {
+      loadingOverlay.style.display = 'flex';
+      loadingText.textContent = 'Initializing cancellation...';
+
       // Fetch the offer document
       const offerDoc = await getDoc(doc(db, "offers", offerId));
       if (!offerDoc.exists()) {
+        loadingOverlay.style.display = 'none';
         alert("Offer not found. It may have already been removed.");
         return;
       }
@@ -1339,19 +1346,75 @@ async function cancelOffer(offerId) {
       const offer = offerDoc.data();
 
       // Delete the offer document
+      loadingText.textContent = 'Deleting offer...';
       await deleteDoc(doc(db, "offers", offerId));
 
+      // Check if there is an associated chat for this offer
+      loadingText.textContent = 'Checking for associated chats...';
+      const dealQuery = query(collection(db, "deals"), where("offerId", "==", offerId));
+      const dealSnapshot = await getDocs(dealQuery);
+
+      if (!dealSnapshot.empty) {
+        const deal = dealSnapshot.docs[0];
+        const dealId = deal.id;
+
+        // Fetch chat messages for this deal
+        loadingText.textContent = 'Deleting chat messages...';
+        const messagesQuery = collection(db, "chats", dealId, "messages");
+        const messagesSnapshot = await getDocs(messagesQuery);
+
+        const batch = writeBatch(db);
+        for (const messageDoc of messagesSnapshot.docs) {
+          const message = messageDoc.data();
+
+          // Delete associated files from Firebase Storage
+          loadingText.textContent = 'Cleaning up media files...';
+          if (message.imageUrl) {
+            try {
+              const imageRef = ref(storage, message.imageUrl);
+              await deleteObject(imageRef);
+            } catch (error) {
+              console.error("Error deleting image:", error);
+            }
+          }
+          if (message.voiceUrl) {
+            try {
+              const voiceRef = ref(storage, message.voiceUrl);
+              await deleteObject(voiceRef);
+            } catch (error) {
+              if (error.code === "storage/object-not-found") {
+                console.warn("Voice file not found, skipping:", message.voiceUrl);
+              } else {
+                console.error("Error deleting voice file:", error);
+              }
+            }
+          }
+
+          batch.delete(messageDoc.ref);
+        }
+
+        // Commit batch deletion for messages
+        loadingText.textContent = 'Finalizing chat deletion...';
+        await batch.commit();
+
+        // Delete the deal document
+        await deleteDoc(deal.ref);
+      }
+
       // Notify the other user about the canceled offer
-      const otherUserId = offer.toUserId; // The user who received the offer
+      loadingText.textContent = 'Sending notification...';
+      const otherUserId = offer.toUserId;
       await addNotification(otherUserId, {
         type: "offerCanceled",
         content: `The offer for your post has been canceled by the user.`,
-        link: `https://life-swap-6065e.web.app/explore`, // Optional: Add a link to the offers page
+        link: `https://life-swap-6065e.web.app/explore`,
       });
 
-      alert("Offer canceled successfully.");
-      loadOffers(); // Refresh the offers list
+      loadingOverlay.style.display = 'none';
+      alert("Offer and associated chat deleted successfully.");
+      loadOffers();
     } catch (error) {
+      loadingOverlay.style.display = 'none';
       console.error("Error canceling offer:", error);
       alert("Failed to cancel the offer. Please try again.");
     }
@@ -1418,6 +1481,12 @@ async function openChat(dealId) {
   const chatModal = document.getElementById("chatModal");
   const chatContainer = document.getElementById("chatContainer");
   const closeDealBtn = document.getElementById("closeDealBtn");
+  const imageInput = document.getElementById("imageInput");
+  const recordButton = document.getElementById("recordButton");
+  const audioPlayback = document.getElementById("audioPlayback");
+
+  let mediaRecorder;
+  let audioChunks = [];
 
   if (!dealId) {
     console.error("Deal ID is required to open the chat.");
@@ -1456,14 +1525,36 @@ async function openChat(dealId) {
       const formattedTimestamp = msg.timestamp
         ? new Date(msg.timestamp.toDate()).toLocaleString()
         : "Unknown Time";
-      chatContainer.innerHTML += `
+  
+      let messageContent = `
         <p>
-          <strong>${senderName}:</strong> ${msg.message}
-          <br><small>${formattedTimestamp}</small>
-        </p>`;
+          <strong>${senderName}:</strong>
+      `;
+  
+      // Check for message types and display them appropriately
+      if (msg.message) {
+        messageContent += `${msg.message}`;
+      } else if (msg.imageUrl) {
+        messageContent += `<br><img src="${msg.imageUrl}" alt="Image" class="chat-image" />`;
+      } else if (msg.voiceUrl) {
+        try {
+          // If the voiceUrl is not a full URL, resolve it using Firebase Storage
+          const voiceUrl = msg.voiceUrl.startsWith("https://")
+            ? msg.voiceUrl
+            : await getDownloadURL(ref(storage, msg.voiceUrl));
+  
+          messageContent += `<br><audio controls src="${voiceUrl}" class="chat-audio"></audio>`;
+        } catch (error) {
+          console.error("Error resolving voiceUrl:", error);
+          messageContent += `<br><small>Error loading voice message</small>`;
+        }
+      }
+  
+      messageContent += `<br><small>${formattedTimestamp}</small></p>`;
+      chatContainer.innerHTML += messageContent;
     }
-  });
-
+  });  
+  
   // Show "Close Deal" button if the deal is active
   if (deal.status === "active") {
     closeDealBtn.classList.remove("hidden");
@@ -1474,51 +1565,104 @@ async function openChat(dealId) {
 
   chatModal.classList.remove("hidden");
 
-  // Handle new messages
+  // Handle image selection
+  document.getElementById("imageButton").addEventListener("click", () => {
+    imageInput.click();
+  });
+
+  imageInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+  
+    const user = auth.currentUser;
+    const imagePath = `chatImages/${user.uid}/${Date.now()}_${file.name}`;
+    const imgRef = ref(storage, imagePath); // Corrected this line
+  
+    try {
+      const snapshot = await uploadBytes(imgRef, file); // Upload the file
+      const downloadURL = await getDownloadURL(snapshot.ref); // Get the download URL
+  
+      // Add the message with the image URL to Firestore
+      await addDoc(collection(db, "chats", dealId, "messages"), {
+        senderId: user.uid,
+        imageUrl: downloadURL,
+        timestamp: new Date(),
+      });
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      alert("Failed to send image.");
+    }
+  });
+
+  // Handle voice recording
+  recordButton.addEventListener("click", async () => {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      mediaRecorder.stop();
+      recordButton.textContent = "🎤";
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.start();
+      recordButton.textContent = "⏹️";
+
+      mediaRecorder.ondataavailable = (e) => {
+        audioChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+        audioChunks = []; // Reset audio chunks
+        const user = auth.currentUser;
+        const audioPath = `voiceMessages/${user.uid}/${Date.now()}.webm`;
+        const audioRef = ref(storage, audioPath);
+      
+        try {
+          // Upload audio to Firebase Storage
+          const snapshot = await uploadBytes(audioRef, audioBlob);
+          
+          // Get the full Firebase Storage download URL
+          const downloadURL = await getDownloadURL(snapshot.ref);
+          
+          // Save the full download URL to Firestore
+          await addDoc(collection(db, "chats", dealId, "messages"), {
+            senderId: user.uid,
+            voiceUrl: downloadURL, // Save full download URL here
+            timestamp: new Date(),
+          });
+      
+          console.log("Audio uploaded successfully:", downloadURL);
+          
+          // Optional: Play back the uploaded audio
+          //audioPlayback.src = downloadURL;
+          //audioPlayback.style.display = "block";
+          //audioPlayback.play();
+        } catch (error) {
+          console.error("Error uploading or fetching voice message:", error);
+          console.log("Failed to send or play back voice message.");
+        }
+      };
+    } catch (error) {
+      console.error("Error accessing microphone:", error);
+      alert("Could not access your microphone. Please check permissions.");
+    }
+  });
+
+  // Handle new text messages
   document.getElementById("chatForm").onsubmit = async (e) => {
     e.preventDefault();
-  
     const message = document.getElementById("chatMessage").value.trim();
     if (!message) return;
-  
-    // Add message to Firestore
+
     await addDoc(collection(db, "chats", dealId, "messages"), {
       senderId: auth.currentUser.uid,
       message,
       timestamp: new Date(),
     });
-  
-    // Clear input field
+
     document.getElementById("chatMessage").value = "";
-  
-    // Fetch deal details to determine participants
-    const dealRef = doc(db, "deals", dealId);
-    const dealSnapshot = await getDoc(dealRef);
-  
-    if (!dealSnapshot.exists()) {
-      console.error("Deal not found:", dealId);
-      return;
-    }
-  
-    const deal = dealSnapshot.data();
-    const currentUserId = auth.currentUser.uid;
-    const otherUserId = deal.fromUserId === currentUserId ? deal.toUserId : deal.fromUserId;
-  
-    // Fetch sender name
-    const senderDoc = await getDoc(doc(db, "users", currentUserId));
-    const senderName = senderDoc.exists() ? senderDoc.data().name : "Unknown User";
-  
-    // Add notification for the other user
-    try {
-      await addNotification(otherUserId, {
-        type: "newMessage",
-        content: `${senderName} sent you a message: "${message.substring(0, 30)}..."`,
-        link: `https://life-swap-6065e.web.app/explore.html?chat=${dealId}`,
-      });
-      console.log("Notification successfully added for user:", otherUserId);
-    } catch (error) {
-      console.error("Error adding notification:", error);
-    }
   };
 }
 
@@ -1580,7 +1724,40 @@ async function deleteOffer(dealId) {
       await deleteDoc(offeredPostRef);
       await deleteDoc(targetPostRef);
 
-      // 3. Also delete the original offer(s) that led to this deal
+      // 3. Delete the chat messages for this deal
+      const messagesQuery = collection(db, "chats", dealId, "messages");
+      const messagesSnapshot = await getDocs(messagesQuery);
+
+      const batch = writeBatch(db); // Batch write for efficiency
+      for (const messageDoc of messagesSnapshot.docs) {
+        const message = messageDoc.data();
+
+        // Delete associated files (images, voice messages) from Firebase Storage
+        if (message.imageUrl) {
+          const imageRef = ref(storage, message.imageUrl.replace(/.*\/o\/(.*)\?alt=.*/, "$1"));
+          await deleteObject(imageRef);
+        }
+        if (message.voiceUrl) {
+          const voiceRef = ref(storage, message.voiceUrl); // Use relative path directly
+          try {
+            await deleteObject(voiceRef);
+          } catch (error) {
+            if (error.code === "storage/object-not-found") {
+              console.warn("Voice file not found, skipping:", message.voiceUrl);
+            } else {
+              console.error("Error deleting voice file:", error);
+            }
+          }
+        }
+
+        // Add message deletion to batch
+        batch.delete(messageDoc.ref);
+      }
+
+      // Commit batch deletion for messages
+      await batch.commit();
+
+      // 4. Also delete the original offer(s) that led to this deal
       const offerQuery = query(
         collection(db, "offers"),
         where("targetPostId", "==", deal.postId),
@@ -1592,7 +1769,7 @@ async function deleteOffer(dealId) {
         await deleteDoc(singleOfferDoc.ref);
       }
 
-      alert("Offer and associated posts deleted successfully.");
+      alert("Offer, associated posts, and chat messages deleted successfully.");
       loadOffers(); // Refresh the offers list
     } catch (error) {
       console.error("Error deleting offer:", error);
@@ -1704,11 +1881,22 @@ async function sendMessage(dealId, message) {
 
   // Add notification for the other user
   try {
+    let notificationContent = `${senderName} sent you a message`;
+  
+    if (message) {
+      notificationContent = `${senderName} sent you a message: "${message.substring(0, 30)}..."`;
+    } else if (imageUrl) {
+      notificationContent = `${senderName} sent you an image.`;
+    } else if (voiceUrl) {
+      notificationContent = `${senderName} sent you a voice message.`;
+    }
+  
     await addNotification(otherUserId, {
       type: "newMessage",
-      content: `${senderName} sent you a message: "${message.substring(0, 30)}..."`,
+      content: notificationContent,
       link: `https://life-swap-6065e.web.app/explore.html?chat=${dealId}`,
     });
+  
     console.log("Notification successfully added.");
   } catch (error) {
     console.error("Failed to add notification:", error);
@@ -1945,10 +2133,17 @@ async function submitRating() {
 }
 
 async function declineOffer(offerId) {
+  const loadingOverlay = document.getElementById('loadingOverlay');
+  const loadingText = document.getElementById('loadingText');
+  
   try {
+    loadingOverlay.style.display = 'flex';
+    loadingText.textContent = 'Checking offer status...';
+
     // Fetch the offer document
     const offerDoc = await getDoc(doc(db, "offers", offerId));
     if (!offerDoc.exists()) {
+      loadingOverlay.style.display = 'none';
       alert("Offer not found. It may have already been removed.");
       return;
     }
@@ -1956,20 +2151,63 @@ async function declineOffer(offerId) {
     const offer = offerDoc.data();
 
     // Check if the deal is already closed by both users
+    loadingText.textContent = 'Checking for existing deals...';
     const dealQuery = query(collection(db, "deals"), where("offerId", "==", offerId));
     const dealSnapshot = await getDocs(dealQuery);
 
     if (!dealSnapshot.empty) {
       const deal = dealSnapshot.docs[0].data();
+      const dealId = dealSnapshot.docs[0].id;
+
       if (deal.status === "closed") {
+        loadingOverlay.style.display = 'none';
         alert("You can't decline this offer once both have closed it. Please delete or rate the offer.");
         return;
       }
+
+      // Fetch chat messages for this deal
+      loadingText.textContent = 'Deleting chat messages...';
+      const messagesQuery = collection(db, "chats", dealId, "messages");
+      const messagesSnapshot = await getDocs(messagesQuery);
+
+      const batch = writeBatch(db);
+      for (const messageDoc of messagesSnapshot.docs) {
+        const message = messageDoc.data();
+
+        // Delete associated files from Firebase Storage
+        loadingText.textContent = 'Deleting media files...';
+        if (message.imageUrl) {
+          try {
+            const imageRef = ref(storage, message.imageUrl);
+            await deleteObject(imageRef);
+          } catch (error) {
+            console.error("Error deleting image:", error);
+          }
+        }
+        if (message.voiceUrl) {
+          try {
+            const voiceRef = ref(storage, message.voiceUrl);
+            await deleteObject(voiceRef);
+          } catch (error) {
+            console.error("Error deleting voice message:", error);
+          }
+        }
+
+        batch.delete(messageDoc.ref);
+      }
+
+      // Commit batch deletion for messages
+      loadingText.textContent = 'Finalizing deletions...';
+      await batch.commit();
+
+      // Delete the deal document
+      await deleteDoc(doc(db, "deals", dealId));
     }
 
     const fromUserId = offer.fromUserId;
 
     // Fetch the sender's name
+    loadingText.textContent = 'Fetching user information...';
     const fromUserDoc = await getDoc(doc(db, "users", fromUserId));
     const fromUserName = fromUserDoc.exists() ? fromUserDoc.data().name : "Unknown User";
 
@@ -1979,22 +2217,27 @@ async function declineOffer(offerId) {
     const currentUserName = currentUserDoc.exists() ? currentUserDoc.data().name : "Unknown User";
 
     // Fetch the target post title
+    loadingText.textContent = 'Fetching post details...';
     const targetPostDoc = await getDoc(doc(db, "posts", offer.targetPostId));
     const targetPostTitle = targetPostDoc.exists() ? targetPostDoc.data().title : "Unknown Post";
 
     // Delete the offer document
+    loadingText.textContent = 'Removing offer...';
     await deleteDoc(doc(db, "offers", offerId));
 
     // Notify the sender about the declined offer
+    loadingText.textContent = 'Sending notification...';
     await addNotification(fromUserId, {
       type: "offerDeclined",
       content: `${currentUserName} declined your offer for "${targetPostTitle}".`,
-      link: `https://life-swap-6065e.web.app/explore`, // Link to the sender's offers page
+      link: `https://life-swap-6065e.web.app/explore`,
     });
 
-    alert(`You declined an offer from ${fromUserName}.`);
-    loadOffers(); // Refresh the offers list
+    loadingOverlay.style.display = 'none';
+    alert(`You declined an offer from ${fromUserName}, and associated chats were deleted if they existed.`);
+    loadOffers();
   } catch (error) {
+    loadingOverlay.style.display = 'none';
     console.error("Error declining offer:", error);
     alert("Failed to decline the offer. Please try again.");
   }
