@@ -1477,13 +1477,44 @@ async function acceptOffer(offerId, buttonElement) {
   buttonElement.outerHTML = `<button class="chat-btn" onclick="openChat('${dealId}')">Open Chat</button>`;
 }
 
+// Global variables for cleanup
+let chatUnsubscribe = null;
+let chatAbortController = null;
+
 async function openChat(dealId) {
+  // Cleanup previous chat session
+  if (chatAbortController) {
+    chatAbortController.abort();
+  }
+  if (chatUnsubscribe) {
+    chatUnsubscribe();
+  }
+
+  // Initialize new cleanup controller
+  chatAbortController = new AbortController();
+  const signal = chatAbortController.signal;
+
   const chatModal = document.getElementById("chatModal");
   const chatContainer = document.getElementById("chatContainer");
   const closeDealBtn = document.getElementById("closeDealBtn");
   const imageInput = document.getElementById("imageInput");
   const recordButton = document.getElementById("recordButton");
-  const audioPlayback = document.getElementById("audioPlayback");
+
+  // Image click handling (using event delegation)
+  chatContainer.addEventListener('click', (e) => {
+    const img = e.target.closest('.chat-image');
+    if (img) {
+      const modal = document.getElementById('imageModal');
+      const modalImg = document.getElementById('expandedImage');
+      modal.classList.remove('hidden');
+      modalImg.src = img.src;
+    }
+  }, { signal });
+
+// Add modal close handling
+document.querySelector('.close-modal').addEventListener('click', () => {
+  document.getElementById('imageModal').classList.add('hidden');
+}, { signal });
 
   let mediaRecorder;
   let audioChunks = [];
@@ -1515,10 +1546,10 @@ async function openChat(dealId) {
     return participants[userId];
   }
 
-  // Real-time message listener
+  // Real-time message listener with proper cleanup
   const messagesQuery = query(collection(db, "chats", dealId, "messages"), orderBy("timestamp"));
-  onSnapshot(messagesQuery, async (snapshot) => {
-    chatContainer.innerHTML = ""; // Clear existing messages
+  chatUnsubscribe = onSnapshot(messagesQuery, async (snapshot) => {
+    chatContainer.innerHTML = "";
     const currentUser = auth.currentUser;
 
     for (const doc of snapshot.docs) {
@@ -1556,7 +1587,7 @@ async function openChat(dealId) {
     }
   });
 
-  // Show "Close Deal" button if the deal is active
+  // Close deal button handling
   if (deal.status === "active") {
     closeDealBtn.classList.remove("hidden");
     closeDealBtn.onclick = () => closeDeal(dealId);
@@ -1570,10 +1601,7 @@ async function openChat(dealId) {
   async function handleMessageNotification(content) {
     try {
       const updatedDealSnapshot = await getDoc(dealRef);
-      if (!updatedDealSnapshot.exists()) {
-        console.error("Deal not found:", dealId);
-        return;
-      }
+      if (!updatedDealSnapshot.exists()) return;
 
       const updatedDeal = updatedDealSnapshot.data();
       const currentUserId = auth.currentUser.uid;
@@ -1594,35 +1622,45 @@ async function openChat(dealId) {
     }
   }
 
-  // Image handling
-  document.getElementById("imageButton").addEventListener("click", () => imageInput.click());
+  // Image handling with cleanup
+  document.getElementById("imageButton").addEventListener("click", 
+    () => imageInput.click(), 
+    { signal }
+  );
 
-  imageInput.addEventListener("change", async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+// Modified image handling in openChat function
+imageInput.addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
 
-    try {
-      const user = auth.currentUser;
-      const imagePath = `chatImages/${user.uid}/${Date.now()}_${file.name}`;
-      const imgRef = ref(storage, imagePath);
-      const snapshot = await uploadBytes(imgRef, file);
-      const downloadURL = await getDownloadURL(snapshot.ref);
+  try {
+    const user = auth.currentUser;
+    
+    // Use your existing compression function
+    const compressedFile = await compressImage(file);
+    
+    const imagePath = `chatImages/${user.uid}/${Date.now()}_${file.name}`;
+    const imgRef = ref(storage, imagePath);
+    
+    // Upload compressed image instead of original
+    const snapshot = await uploadBytes(imgRef, compressedFile);
+    const downloadURL = await getDownloadURL(snapshot.ref);
 
-      await addDoc(collection(db, "chats", dealId, "messages"), {
-        senderId: user.uid,
-        imageUrl: downloadURL,
-        timestamp: new Date(),
-      });
+    await addDoc(collection(db, "chats", dealId, "messages"), {
+      senderId: user.uid,
+      imageUrl: downloadURL,
+      timestamp: new Date(),
+    });
 
-      await handleMessageNotification("an image");
-    } catch (error) {
-      console.error("Error handling image:", error);
-      alert("Failed to send image.");
-    }
-  });
+    await handleMessageNotification("an image");
+  } catch (error) {
+    console.error("Error handling image:", error);
+    alert("Failed to send image.");
+  }
+}, { signal });
 
-  // Voice recording
-  recordButton.addEventListener("click", async () => {
+  // Voice recording with cleanup
+  const handleRecording = async () => {
     if (mediaRecorder?.state === "recording") {
       mediaRecorder.stop();
       recordButton.textContent = "🎤";
@@ -1654,18 +1692,19 @@ async function openChat(dealId) {
           });
 
           await handleMessageNotification("a voice message");
-        } catch (error) {
-          console.error("Error handling voice message:", error);
+        } finally {
+          stream.getTracks().forEach(track => track.stop());
         }
       };
     } catch (error) {
-      console.error("Microphone access error:", error);
-      alert("Microphone access required for voice messages.");
+      alert("Microphone access required!");
     }
-  });
+  };
 
-  // Text messages
-  document.getElementById("chatForm").onsubmit = async (e) => {
+  recordButton.addEventListener("click", handleRecording, { signal });
+
+  // Text messages with cleanup
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const message = document.getElementById("chatMessage").value.trim();
     if (!message) return;
@@ -1683,10 +1722,23 @@ async function openChat(dealId) {
       console.error("Error sending message:", error);
     }
   };
+
+  document.getElementById("chatForm").addEventListener("submit", handleSubmit, { signal });
 }
 
 function closeChat() {
   document.getElementById("chatModal").classList.add("hidden");
+  
+  // Cleanup resources
+  if (chatAbortController) {
+    chatAbortController.abort();
+    chatAbortController = null;
+  }
+  
+  if (chatUnsubscribe) {
+    chatUnsubscribe();
+    chatUnsubscribe = null;
+  }
 }
 
 async function closeDeal(dealId) {
