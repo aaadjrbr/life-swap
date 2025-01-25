@@ -818,22 +818,89 @@ function debouncedSuggestHashtags(inputValue) {
 /****************************/
 
 // A) Reverse Geocoding: Convert lat/lng -> city name
+// Global variables for caching and rate-limiting
+const nominatimCache = new Map();  // Cache lat/lon => city
+let lastNominatimRequestTime = 0;  // Timestamp of last request
+
+/**
+ * Ensures at least 1 second (1000ms) passes between calls to Nominatim.
+ */
+function enforceRateLimit() {
+  const now = Date.now();
+  const timeSinceLast = now - lastNominatimRequestTime;
+  const minInterval = 1100; // ~1.1 seconds to be safe
+
+  if (timeSinceLast < minInterval) {
+    // We need to wait the remaining time
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        lastNominatimRequestTime = Date.now();
+        resolve();
+      }, minInterval - timeSinceLast);
+    });
+  } else {
+    // We can proceed now
+    lastNominatimRequestTime = now;
+    return Promise.resolve();
+  }
+}
+
+/**
+ * Reverse geocoding with caching, rate limiting, and lat/lng fallback.
+ * @param {number} lat 
+ * @param {number} lon 
+ * @returns {string} City/Town/Village name or "lat, lon" if not found.
+ */
 async function getCityFromCoordinates(lat, lon) {
+  // 1. Check our cache first
+  const cacheKey = `${lat},${lon}`;
+  if (nominatimCache.has(cacheKey)) {
+    // Found it in cache
+    return nominatimCache.get(cacheKey);
+  }
+
+  // 2. Enforce rate-limiting before any new request
+  await enforceRateLimit();
+
+  // 3. Try fetching from Nominatim
   try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`
-    );
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`;
+    const response = await fetch(url, {
+      headers: {
+        // Nominatim usage policy suggests setting a descriptive user-agent
+        "User-Agent": "Life Swap/1.0 (aaadjrbr@gmail.com)"
+      }
+    });
+
     if (!response.ok) {
       throw new Error("Failed to fetch city from coordinates");
     }
 
     const data = await response.json();
     const { address } = data;
-    // Nominatim might return city, town, or village
-    return address.city || address.town || address.village || "Unknown city";
+
+    // 4. Get the city name from the response
+    // If none found, we'll fallback to lat/lon below
+    let cityName = 
+      address.city || address.town || address.village || "";
+
+    // 5. Fallback to lat/long if cityName is empty
+    if (!cityName) {
+      cityName = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+    }
+
+    // 6. Store in cache
+    nominatimCache.set(cacheKey, cityName);
+
+    // 7. Return final city name
+    return cityName;
   } catch (err) {
-    console.error(err);
-    return "Unknown city";
+    console.error("Nominatim error:", err);
+    // If there's an error, fallback to lat/long
+    const fallbackName = `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+    // Optionally, store in cache to avoid repeated failing calls
+    nominatimCache.set(cacheKey, fallbackName);
+    return fallbackName;
   }
 }
 
