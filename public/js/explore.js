@@ -813,97 +813,268 @@ function debouncedSuggestHashtags(inputValue) {
   debounceTimeoutSuggestHashtags = setTimeout(() => suggestHashtags(inputValue), 300); // 300ms delay
 }
 
-// View Post Details
+/****************************/
+/* 1. Helper Functions      */
+/****************************/
+
+// A) Reverse Geocoding: Convert lat/lng -> city name
+async function getCityFromCoordinates(lat, lon) {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`
+    );
+    if (!response.ok) {
+      throw new Error("Failed to fetch city from coordinates");
+    }
+
+    const data = await response.json();
+    const { address } = data;
+    // Nominatim might return city, town, or village
+    return address.city || address.town || address.village || "Unknown city";
+  } catch (err) {
+    console.error(err);
+    return "Unknown city";
+  }
+}
+
+// B) Haversine Formula: Calculate distance in miles between two lat/lng
+function calculateDistanceInMiles(lat1, lon1, lat2, lon2) {
+  const R = 3958.8; // Earth radius in miles
+  const toRad = (val) => val * (Math.PI / 180);
+  
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const radLat1 = toRad(lat1);
+  const radLat2 = toRad(lat2);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) *
+      Math.sin(dLon / 2) *
+      Math.cos(radLat1) *
+      Math.cos(radLat2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c; // distance in miles
+}
+
+/****************************/
+/* 2. Main View Details     */
+/****************************/
 async function viewDetails(postId, hideOfferSwap = false) {
   const modal = document.getElementById("modal");
   const modalContent = document.getElementById("modalContent");
 
+  // A) Define friendly category names
+  const categoryNames = {
+    "clothing_accessories": "Clothing & Accessories",
+    "electronics": "Electronics & Gadgets",
+    "furniture_decor": "Furniture & Home Decor",
+    "kitchen_dining": "Kitchen & Dining",
+    "tools_diy": "Tools & DIY",
+    "books_media": "Books, Movies & Music",
+    "arts_crafts": "Arts & Crafts",
+    "toys_games": "Toys & Games",
+    "sports_outdoors": "Sports & Outdoors",
+    "health_beauty": "Health & Beauty",
+    "baby_kids": "Baby & Kids",
+    "pet_supplies": "Pet Supplies",
+    "misc": "Miscellaneous"
+  };
+
+  // B) Fetch the post from Firestore
   const postDoc = await getDoc(doc(db, "posts", postId));
   const post = postDoc.data();
-
-  // Fetch ratings for the post user
-  const ratingsQuery = query(collection(db, "ratings"), where("rateeId", "==", post.userId));
-  const ratingsSnapshot = await getDocs(ratingsQuery);
-
-  let totalRating = 0;
-  let ratingCount = 0;
-
-  ratingsSnapshot.forEach((doc) => {
-    const ratingData = doc.data();
-    totalRating += ratingData.rating; // Add each rating
-    ratingCount += 1; // Increment the count
-  });
-
-  // Calculate average rating
-  const averageRating = ratingCount > 0 ? (totalRating / ratingCount).toFixed(1) : "No reviews";
 
   if (!post) {
     alert("Post not found.");
     return;
   }
 
-  // Fetch user details
+  // C) Fetch & calculate user rating
+  const ratingsQuery = query(
+    collection(db, "ratings"),
+    where("rateeId", "==", post.userId)
+  );
+  const ratingsSnapshot = await getDocs(ratingsQuery);
+
+  let totalRating = 0;
+  let ratingCount = 0;
+  ratingsSnapshot.forEach((ratingDoc) => {
+    const ratingData = ratingDoc.data();
+    totalRating += ratingData.rating;
+    ratingCount += 1;
+  });
+  const averageRating = ratingCount > 0
+    ? (totalRating / ratingCount).toFixed(1)
+    : "No reviews";
+
+  // D) Fetch user info
   const userDoc = await getDoc(doc(db, "users", post.userId));
-  const user = userDoc.exists() ? userDoc.data() : { name: "Unknown User", profilePhoto: "default-profile-photo.jpg" };
+  const user = userDoc.exists()
+    ? userDoc.data()
+    : { name: "Unknown User", profilePhoto: "default-profile-photo.jpg" };
 
-  let currentIndex = 0;
-
-  function updateCarousel() {
-    modalContent.querySelector(".carousel-image").src = post.imageUrls[currentIndex];
+  // E) Reverse Geocode if city is not in DB
+  let cityName = post.city || "";
+  if (!cityName && post.latitude && post.longitude) {
+    cityName = await getCityFromCoordinates(post.latitude, post.longitude);
   }
 
-  // Determine the number of images
+  // F) Prepare to store distance from viewer's location to post's location
+  //    We'll do a dynamic update if user grants geolocation.
+  let distanceAway = ""; // will be updated asynchronously
+
+  // Attempt to get user’s current location, if post has lat/lng
+  if (post.latitude && post.longitude && "geolocation" in navigator) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const userLat = position.coords.latitude;
+        const userLon = position.coords.longitude;
+
+        const miles = calculateDistanceInMiles(
+          userLat,
+          userLon,
+          post.latitude,
+          post.longitude
+        );
+        distanceAway = `${miles.toFixed(1)} miles away`;
+
+        // Update the distance text in the modal (look for our .dynamic-distance span)
+        const distSpan = modalContent.querySelector(".post-location .dynamic-distance");
+        if (distSpan) {
+          distSpan.textContent = distanceAway;
+        }
+      },
+      (error) => {
+        console.warn("Geolocation error or user denied:", error);
+        distanceAway = "Location access denied";
+      }
+    );
+  }
+
+  // G) Build the modal HTML
+  //    We'll use a span for the dynamic distance so we can fill it in later
+  let currentIndex = 0;
   const imageCount = post.imageUrls?.length || 0;
 
   modalContent.innerHTML = `
     <div class="post-details">
       <h3 class="post-title">${post.title}</h3>
       <div class="carousel">
-        ${imageCount > 1 ? `<button class="carousel-button" id="prev">←</button>` : ''}
-        <img src="${post.imageUrls?.[0] || 'https://via.placeholder.com/150'}" 
-             class="carousel-image" 
-             alt="Post Image" />
-        ${imageCount > 1 ? `<button class="carousel-button" id="next">→</button>` : ''}
+        ${
+          imageCount > 1
+            ? `<button class="carousel-button" id="prev">←</button>`
+            : ""
+        }
+          <img 
+            src="${post.imageUrls?.[0] || 'https://via.placeholder.com/150'}" 
+            class="carousel-image" 
+            alt="Post Image"
+          />
+        ${
+          imageCount > 1
+            ? `<button class="carousel-button" id="next">→</button>`
+            : ""
+        }
       </div>
       <div class="container-viewdetails-buttons">
-            ${
-        !hideOfferSwap
-          ? `<button class="offer-swap-btn" onclick="openOfferSwapModal('${postId}', '${post.title}')">Offer Swap</button>`
-          : ""
-      }
-      <button class="close-modal-btn" onclick="closeModal()">Close ❌</button>
+        ${
+          !hideOfferSwap
+            ? `<button 
+                 class="offer-swap-btn" 
+                 onclick="openOfferSwapModal('${postId}', '${post.title}')">
+                 Offer Swap
+               </button>`
+            : ""
+        }
+        <button class="close-modal-btn" onclick="closeModal()">Close ❌</button>
       </div>
+      
       <p class="post-description">${post.description}</p>
-      <p class="post-category"><strong>Category:</strong> ${post.category}</p>
-      <p class="post-location"><strong>Location:</strong> ${post.city ? `${post.city} (${post.distanceFromCity || 0} miles away)` : `${post.latitude?.toFixed(4)}, ${post.longitude?.toFixed(4)}`}</p>
-      <p class="post-desired-trade"><strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}</p>
+      <p class="post-category">
+        <strong>Category:</strong> ${categoryNames[post.category] || post.category}
+      </p>
+      
+      <p class="post-location">
+        <strong>Location:</strong>
+        ${cityName}
+        ${
+          // If there's lat/lng, show a placeholder for the dynamic distance
+          post.latitude && post.longitude
+            ? ` (<span class="dynamic-distance">${distanceAway}</span>)`
+            : ""
+        }
+      </p>
+
+      <p class="post-desired-trade">
+        <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}
+      </p>
+
       <div class="user-info">
-        <img src="${user.profilePhoto}" alt="${user.name}" class="profile-photo" />
+        <img src="${user.profilePhoto}" 
+             alt="${user.name}" 
+             class="profile-photo" />
         <p class="post-rating">★ ${averageRating} (${ratingCount} reviews)</p>
         <p class="user-name">
-          <strong>Posted by:</strong> 
-          <span class="clickable-author" onclick="viewProfile('${post.userId}')">${user.name}</span>
+          <strong>Posted by:</strong>
+          <span class="clickable-author" onclick="viewProfile('${post.userId}')">
+            ${user.name}
+          </span>
         </p>
       </div>
-
     </div>
   `;
 
-  // Carousel navigation
+  // H) Handle carousel navigation if multiple images
+  const carouselImage = modalContent.querySelector(".carousel-image");
+  carouselImage.addEventListener("click", () => openImageViewer(post.imageUrls[currentIndex]));
+  
+  // Update your updateCarousel function:
+  function updateCarousel() {
+    const carouselImage = modalContent.querySelector(".carousel-image");
+    carouselImage.src = post.imageUrls[currentIndex];
+    
+    // Remove existing click listener and add new one
+    carouselImage.replaceWith(carouselImage.cloneNode(true));
+    modalContent.querySelector(".carousel-image").addEventListener("click", () => {
+      openImageViewer(post.imageUrls[currentIndex]);
+    });
+  }
+
   if (imageCount > 1) {
     document.getElementById("prev").addEventListener("click", () => {
       currentIndex = (currentIndex - 1 + imageCount) % imageCount;
       updateCarousel();
     });
-
     document.getElementById("next").addEventListener("click", () => {
       currentIndex = (currentIndex + 1) % imageCount;
       updateCarousel();
     });
   }
 
+  // I) Finally, show the modal
   modal.classList.remove("hidden");
 }
+
+const openImageViewer = (imageUrl) => {
+  const imageModal = document.getElementById("imageViewerModal");
+  const expandedImage = document.getElementById("expandedImageView");
+  expandedImage.src = imageUrl;
+  imageModal.classList.remove("hidden");
+};
+
+const closeImageViewer = () => {
+  document.getElementById("imageViewerModal").classList.add("hidden");
+};
+
+// Initialize modal closing (put this at the end of your script)
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelector('.close-image-modal')?.addEventListener('click', closeImageViewer);
+  document.getElementById('imageViewerModal')?.addEventListener('click', function(e) {
+    if (e.target === this) closeImageViewer();
+  });
+});
 
 // Profile Editing
 async function openProfileEditor() {
@@ -2491,64 +2662,59 @@ function centerMapOnUserLocation(map) {
     cursor: pointer;
   `;
 
-  // Create a persistent marker reference
+  // Track both marker and accuracy circle
   let userLocationMarker = null;
+  let accuracyCircle = null;
 
   recenterButton.onclick = () => {
     if (navigator.geolocation) {
-      // Show loading state
       recenterButton.textContent = "⌛";
       recenterButton.disabled = true;
 
-      // Configure high-precision options
       const geoOptions = {
-        enableHighAccuracy: true,  // Request GPS if available
-        timeout: 10000,            // 10 second timeout
-        maximumAge: 0              // No cached positions
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
       };
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
           const { latitude, longitude, accuracy } = position.coords;
-          
-          // Remove previous marker if exists
+
+          // Remove previous elements
           if (userLocationMarker) {
             map.removeLayer(userLocationMarker);
           }
+          if (accuracyCircle) {
+            map.removeLayer(accuracyCircle);
+          }
 
-          // Create accuracy circle
-          const accuracyCircle = L.circle([latitude, longitude], {
+          // Create new accuracy circle
+          accuracyCircle = L.circle([latitude, longitude], {
             color: '#135aac',
             fillColor: '#135aac',
-            fillOpacity: 0.15,
+            fillOpacity: 0.3, // Increased opacity
+            weight: 2, // Added border thickness
             radius: accuracy
           }).addTo(map);
 
-          // Add new marker with accuracy info
+          // Create new marker
           userLocationMarker = L.marker([latitude, longitude])
-            .bindPopup(`
-              <b>Your location</b><br>
-              Accuracy: ${Math.round(accuracy)} meters
-            `)
+            .bindPopup(`<b>Your location</b><br>Accuracy: ${Math.round(accuracy)} meters`)
             .addTo(map)
             .openPopup();
 
-          // Calculate optimal zoom based on accuracy
+          // Ensure MIN_ZOOM_LEVEL is defined (e.g., const MIN_ZOOM_LEVEL = 12;)
           const targetZoom = Math.min(
             Math.max(16 - Math.log2(accuracy/50), MIN_ZOOM_LEVEL),
             18
           );
 
-          // Set view with smooth transition
           map.flyTo([latitude, longitude], targetZoom, {
             animate: true,
             duration: 1.5
           });
 
-          // Set flag to suppress initial load
-          suppressFetchOnce = true;
-
-          // Update UI
           recenterButton.textContent = "📍";
           recenterButton.disabled = false;
         },
@@ -2565,9 +2731,7 @@ function centerMapOnUserLocation(map) {
     }
   };
 
-  // Add button to map container
-  const mapContainer = document.getElementById("map");
-  mapContainer.appendChild(recenterButton);
+  document.getElementById("map").appendChild(recenterButton);
 }
 
 document.getElementById("getLocationButton").addEventListener("click", () => {

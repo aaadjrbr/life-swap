@@ -430,9 +430,16 @@ img {
 }
 
 .carousel-image {
-  max-width: 100%;
-  height: auto;
-  border-radius: 8px;
+  max-width: 200px;
+  border-radius: 12px;
+  width: auto;
+  height: 250px;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.carousel-image:hover {
+  transform: scale(1.04);
 }
 
 .user-info {
@@ -521,11 +528,6 @@ div#filterCitySuggestions {
   border: none;
   padding: 10px;
   cursor: pointer;
-}
-
-.carousel-image {
-  max-width: 100%;
-  height: auto;
 }
 
 .offer-swap-btn,
@@ -1530,4 +1532,40 @@ footer p {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.image-modal {
+  position: fixed;
+  z-index: 1001;
+  padding-top: 50px;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0 0 0 / 97%);
+}
+
+.image-modal-content {
+  width: auto;
+  height: auto;
+  max-width: 90%;
+  max-height: 90%;
+  border-radius: 20px;
+  /* object-fit: contain; */
+  margin: auto;
+  display: flex;
+}
+
+.close-image-modal {
+  position: absolute;
+  top: 15px;
+  right: 35px;
+  color: #f1f1f1;
+  font-size: 40px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.close-image-modal:hover {
+  color: #bbb;
 }
