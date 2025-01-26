@@ -2609,16 +2609,128 @@ async function loadYourPosts() {
 
 // Delete a post
 async function deletePost(postId) {
-  if (confirm("Are you sure you want to delete this post? This action cannot be undone.")) {
-    try {
-      await deleteDoc(doc(db, "posts", postId));
-      alert("Post deleted successfully.");
-      loadYourPosts(); // Refresh "Your Posts" section
-    } catch (error) {
-      console.error("Error deleting post:", error);
-      alert("Failed to delete the post. Please try again.");
-    }
+  // Initial confirmation
+  if (!confirm("❗ This will permanently delete:\n- The post\n- All associated images\n- Chat history\n- Related offers\n\nProceed with deletion?")) {
+    return;
   }
+
+  const loadingOverlay = document.getElementById('loadingOverlay2');
+  const loadingText = document.getElementById('loadingText2');
+  const progressBar = document.querySelector('#loadingOverlay2 .progress-fill');
+  
+  try {
+    // Show loading overlay
+    loadingOverlay.style.display = 'flex';
+    loadingText.textContent = "Initializing deletion process...";
+    progressBar.style.width = '0%';
+    progressBar.style.backgroundColor = '#ff4444';
+
+    // Get post reference
+    loadingText.textContent = "Locating post in database...";
+    progressBar.style.width = '10%';
+    const postRef = doc(db, "posts", postId);
+    const postDoc = await getDoc(postRef);
+
+    if (!postDoc.exists()) {
+      throw new Error("Post not found in database");
+    }
+
+    // Delete post images from Storage
+    loadingText.textContent = "Deleting associated images...";
+    progressBar.style.width = '30%';
+    const postData = postDoc.data();
+    if (postData.imageUrls && postData.imageUrls.length > 0) {
+      await Promise.all(postData.imageUrls.map(async (url) => {
+        const imageRef = ref(storage, url);
+        await deleteObject(imageRef);
+      }));
+    }
+
+    // Find and delete related offers
+    loadingText.textContent = "Searching for related offers...";
+    progressBar.style.width = '40%';
+    const offersQuery = query(
+      collection(db, "offers"),
+      where("targetPostId", "==", postId)
+    );
+    const offersSnapshot = await getDocs(offersQuery);
+
+    // Process each offer
+    let offerCount = 0;
+    for (const offerDoc of offersSnapshot.docs) {
+      offerCount++;
+      loadingText.textContent = `Processing offer ${offerCount}/${offersSnapshot.size}...`;
+      
+      // Delete associated deals and chats
+      const dealQuery = query(
+        collection(db, "deals"),
+        where("offerId", "==", offerDoc.id)
+      );
+      const dealSnapshot = await getDocs(dealQuery);
+
+      if (!dealSnapshot.empty) {
+        const dealId = dealSnapshot.docs[0].id;
+        
+        // Delete chat messages and media
+        loadingText.textContent = `Deleting chat messages for deal ${dealId}...`;
+        const messagesRef = collection(db, "chats", dealId, "messages");
+        const messagesSnapshot = await getDocs(messagesRef);
+
+        let messageCount = 0;
+        for (const msgDoc of messagesSnapshot.docs) {
+          messageCount++;
+          const msgData = msgDoc.data();
+          
+          // Delete images
+          if (msgData.imageUrl) {
+            await deleteObject(ref(storage, msgData.imageUrl));
+          }
+          
+          // Delete voice messages
+          if (msgData.voiceUrl) {
+            await deleteObject(ref(storage, msgData.voiceUrl));
+          }
+
+          // Delete message document
+          await deleteDoc(msgDoc.ref);
+        }
+
+        // Delete deal document
+        await deleteDoc(doc(db, "deals", dealId));
+      }
+
+      // Delete offer document
+      await deleteDoc(offerDoc.ref);
+      progressBar.style.width = `${40 + (offerCount/offersSnapshot.size)*30}%`;
+    }
+
+    // Finally delete the post document
+    loadingText.textContent = "Deleting post from database...";
+    progressBar.style.width = '90%';
+    await deleteDoc(postRef);
+
+    // Complete UI update
+    loadingText.textContent = "Deletion complete! Cleaning up...";
+    progressBar.style.width = '100%';
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+  } catch (error) {
+    loadingText.textContent = `❌ Deletion failed: ${error.message}`;
+    progressBar.style.backgroundColor = '#ff0000';
+    console.error("Full deletion error:", error);
+    return;
+  } finally {
+    setTimeout(() => {
+      loadingOverlay.style.display = 'none';
+      progressBar.style.width = '0%';
+      progressBar.style.backgroundColor = '#ff4444';
+    }, 2000);
+  }
+
+  // Refresh UI
+  alert("✅ Post and all related data successfully deleted!");
+  loadYourPosts();
+  loadPosts(); // Refresh main post list if needed
 }
 
 async function loadPostsToMap(map, filterType = "", filterHashtags = [], filterCategory = "", mapBounds) { 
