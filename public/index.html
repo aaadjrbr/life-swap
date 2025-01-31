@@ -3,10 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Life Swap</title>
+    <title>Scroll Effect</title>
+    <link rel="stylesheet" href="./css/index.css">
+    <script type="module" src="./js/main.js"></script> <!-- ✅ Removed defer -->
 </head>
 <body>
-    <h1>Hello World!</h1>
-    <p><a href="./login.html">Login</a></p>
+
+    <header>
+        <h1 class="fluid">Life Swap <br />
+        <span style="font-size: 0.6em;">
+            Your new way to <span class="strike">Buy</span>?<br /> Swap instead!
+        </span>
+        </h1>        
+    </header>
+
+    <main>
+        <section class="content fluid">
+            <h2><span aria-hidden="true">you can&nbsp;</span>
+                <span class="sr-only">you can swap things.</span>
+            </h2>
+            <ul aria-hidden="true" style="--count: 22"> <!-- 🔢 Match actual <li> count -->
+                <li>swap.</li>
+                <li>trade.</li>
+                <li>barter.</li>
+                <li>exchange.</li>
+                <li>connect.</li>
+                <li>share.</li>
+                <li>give.</li>
+                <li>receive.</li>
+                <li>donate.</li>
+                <li>trade skills.</li>
+                <li>swap time.</li>
+                <li>learn.</li>
+                <li>teach.</li>
+                <li>collaborate.</li>
+                <li>repurpose.</li>
+                <li>declutter.</li>
+                <li>upgrade.</li>
+                <li>reuse.</li>
+                <li>support.</li>
+                <li>grow.</li>
+                <li>find value.</li>
+                <li>do it.</li>
+            </ul>
+        </section>
+        
+        <section>
+            <h2 class="fluid">Coming Soon.<br/> <a href="./login.html">Login</a></h2>
+    
+        </section>
+    </main>
+
+    <footer>Life Swap &copy; 2025</footer>
+    <!-- Special Thanks to Jhey and his theme: https://x.com/intent/follow?screen_name=jh3yy&mx=2 theme ref: https://codepen.io/jh3y/pen/MYgaaem -->
+
 </body>
 </html>
