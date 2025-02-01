@@ -198,10 +198,12 @@
       <button id="clear-results" type="button" style="display: none;">Clear Results</button>
       <br/><br/>
       <input type="text" id="user-message" placeholder="Enter your message" required>
+      <!-- Hidden field for radius; you can adjust or expose this to the user if needed -->
+      <input type="hidden" id="radius" value="50">
       <br/>
       <button type="submit">Search</button>
       <div id="response"></div>
-    </form>
+    </form>    
     
 
 <div id="pinpointModal" class="hidden">

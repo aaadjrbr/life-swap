@@ -33,7 +33,7 @@ const db = initializeFirestore(app, {
 });
 const storage = getStorage(app);
 const auth = getAuth(app);
-const MIN_ZOOM_LEVEL = 16; // Minimum zoom level to load posts
+const MIN_ZOOM_LEVEL = 14; // Minimum zoom level to load posts
 
 // Authentication Check
 onAuthStateChanged(auth, async (user) => {
@@ -74,11 +74,44 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
+// ===== Global Listener Helpers =====
+
+// Global array to store unsubscribe functions
+const globalUnsubscribeFunctions = [];
+
+/**
+ * Helper to add an onSnapshot listener and store its unsubscribe function.
+ * Returns the unsubscribe function.
+ */
+function addGlobalListener(query, callback) {
+  const unsubscribe = onSnapshot(query, callback);
+  globalUnsubscribeFunctions.push(unsubscribe);
+  return unsubscribe;
+}
+
+/**
+ * Call this function to unsubscribe from all globally stored listeners.
+ */
+function cleanupGlobalListeners() {
+  globalUnsubscribeFunctions.forEach((unsub) => {
+    if (typeof unsub === 'function') unsub();
+  });
+  globalUnsubscribeFunctions.length = 0;
+}
+
 // Logout Function
 function logout() {
+  // Clean up all global listeners.
+  cleanupGlobalListeners();
+  // Also, if you have a dedicated notification listener, clean that up:
+  if (notificationUnsubscribe) {
+    notificationUnsubscribe();
+    notificationUnsubscribe = null;
+  }
+
   signOut(auth).then(() => {
     alert("You have been logged out!");
-    window.location.href = "/login.html";
+    window.location.href = "/index.html";
   });
 }
 
@@ -2100,6 +2133,8 @@ async function addNotification(userId, notification) {
 }
 
 // Real-time Notification Listener
+let notificationUnsubscribe = null;
+
 function setupNotificationListener() {
   const notificationCountEl = document.getElementById("notificationCount");
 
@@ -2108,10 +2143,9 @@ function setupNotificationListener() {
     where("read", "==", false)
   );
 
-  onSnapshot(notificationsQuery, (snapshot) => {
+  // Use the helper to add the listener and store the unsubscribe function.
+  notificationUnsubscribe = addGlobalListener(notificationsQuery, (snapshot) => {
     const unreadCount = snapshot.size;
-
-    // Update notification count
     if (unreadCount > 0) {
       notificationCountEl.textContent = unreadCount;
       notificationCountEl.classList.remove("hidden");
@@ -2212,83 +2246,114 @@ async function sendMessage(dealId, message) {
   }
 }
 
-// Add a "Clear Results" button
 const form = document.getElementById('chat-form');
 const userMessageInput = document.getElementById('user-message');
 const responseContainer = document.getElementById('response');
-const clearResultsButton = document.getElementById('clear-results'); // Reference the existing button
-const viewDetailsButton = `<button type="button" class="view-details">View Details</button>`;
+const clearResultsButton = document.getElementById('clear-results');
+const firebaseFunctionUrl = 'https://us-central1-life-swap-6065e.cloudfunctions.net/chatSearch';
 
-// Add click event listener to the Clear Results button
+// Clear results button
 clearResultsButton.addEventListener('click', () => {
-  responseContainer.innerHTML = ''; // Clear the results
-  userMessageInput.value = ''; // Clear the input field
-  clearResultsButton.style.display = 'none'; // Hide the button after clearing
+  responseContainer.innerHTML = '';
+  userMessageInput.value = '';
+  clearResultsButton.style.display = 'none';
 });
 
-// Add event delegation for dynamically created "View Details" buttons
+// Event delegation for "View Details" buttons
 responseContainer.addEventListener('click', (event) => {
   if (event.target.classList.contains('view-details')) {
-    event.preventDefault(); // Prevent default behavior (e.g., form submission)
-    const postId = event.target.dataset.postId; // Get post ID from data attribute
-    viewDetails(postId); // Call the viewDetails function
+    event.preventDefault();
+    const postId = event.target.dataset.postId;
+    viewDetails(postId);
   }
 });
 
-form.addEventListener('submit', async (event) => {
+form.addEventListener('submit', (event) => {
   event.preventDefault();
-
   const userMessage = userMessageInput.value.trim();
-  const userId = auth.currentUser.uid; // Get the userId of the logged-in user
+  const userId = auth.currentUser.uid; // Make sure the user is logged in
 
   if (!userId) {
     alert('You must be logged in to use this feature.');
     return;
   }
-
   if (!userMessage) {
     alert('Please enter a message.');
     return;
   }
 
-  const firebaseFunctionUrl = 'https://us-central1-life-swap-6065e.cloudfunctions.net/chatSearch'; // Replace with your function URL
+  // Ask for geolocation when search is submitted
+  navigator.geolocation.getCurrentPosition(async (position) => {
+    const latitude = position.coords.latitude;
+    const longitude = position.coords.longitude;
+    const radius = document.getElementById('radius').value; // default is 50 miles
 
-  try {
-    const response = await fetch(firebaseFunctionUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ message: userMessage, userId: userId }), // Include userId here
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    try {
+      const response = await fetch(firebaseFunctionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMessage,
+          userId: userId,
+          latitude: latitude,
+          longitude: longitude,
+          radius: radius
+        }),
+      });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await response.json();
+      responseContainer.innerHTML = `<p>${data.message}</p>`;
+      if (data.posts && data.posts.length > 0) {
+        const postsList = data.posts.map(post => `
+          <div class="post-details">
+            <h3 class="post-title">${post.title}</h3>
+            ${post.imageUrls && post.imageUrls.length > 0 ? `<img src="${post.imageUrls[0]}" alt="${post.title}" class="ai-image" />` : ''}
+            <p class="post-description">${post.description}</p>
+            <p class="post-desired-trade">💡 <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}</p>
+            <p class="post-location">📌 ${post.city}, Distance: ${post.distanceFromCity} miles</p>
+            <button type="button" class="view-details" data-post-id="${post.id}">View Details</button>
+          </div>
+        `).join('');
+        responseContainer.innerHTML += `<h2>✨ Swap AI Suggestions:</h2>${postsList}`;
+      }
+      clearResultsButton.style.display = 'block';
+    } catch (error) {
+      responseContainer.innerHTML = `<p>Error: ${error.message}</p>`;
     }
-
-    const data = await response.json();
-    responseContainer.innerHTML = `<p>${data.message}</p>`;
-    if (data.posts && data.posts.length > 0) {
-      const postsList = data.posts.map(post => `
-        <div class="post-details">
-          <h3 class="post-title">${post.title}</h3>
-          ${post.imageUrls && post.imageUrls.length > 0 ? `
-            <img src="${post.imageUrls[0]}" alt="${post.title}" class="ai-image" />
-          ` : ''}
-          <p class="post-description">${post.description}</p>
-          <p class="post-desired-trade">💡 <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}</p>
-          <p class="post-location">📌 ${post.city}, Distance: ${post.distanceFromCity} miles</p>
-          <button type="button" class="view-details" data-post-id="${post.id}">View Details</button>
-        </div>
-      `).join('');
-      responseContainer.innerHTML += `<h2>✨ Swap AI Suggestions:</h2>${postsList}`;
+  }, async (error) => {
+    console.error("Geolocation error:", error);
+    alert("Geolocation permission denied. Using fallback criteria.");
+    // Fallback: call cloud function without geolocation data
+    try {
+      const response = await fetch(firebaseFunctionUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: userMessage,
+          userId: userId,
+        }),
+      });
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+      const data = await response.json();
+      responseContainer.innerHTML = `<p>${data.message}</p>`;
+      if (data.posts && data.posts.length > 0) {
+        const postsList = data.posts.map(post => `
+          <div class="post-details">
+            <h3 class="post-title">${post.title}</h3>
+            ${post.imageUrls && post.imageUrls.length > 0 ? `<img src="${post.imageUrls[0]}" alt="${post.title}" class="ai-image" />` : ''}
+            <p class="post-description">${post.description}</p>
+            <p class="post-desired-trade">💡 <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}</p>
+            <p class="post-location">📌 ${post.city}, Distance: ${post.distanceFromCity} miles</p>
+            <button type="button" class="view-details" data-post-id="${post.id}">View Details</button>
+          </div>
+        `).join('');
+        responseContainer.innerHTML += `<h2>✨ Swap AI Suggestions:</h2>${postsList}`;
+      }
+      clearResultsButton.style.display = 'block';
+    } catch (error) {
+      responseContainer.innerHTML = `<p>Error: ${error.message}</p>`;
     }
-
-    // Show the "Clear Results" button
-    clearResultsButton.style.display = 'block';
-  } catch (error) {
-    responseContainer.innerHTML = `<p>Error: ${error.message}</p>`;
-  }
+  });
 });
 
 async function getIdToken() {
@@ -2970,6 +3035,28 @@ document.getElementById("getLocationButton").addEventListener("click", () => {
   } else {
     alert("Geolocation is not supported by your browser.");
   }
+});
+
+// When the page is about to unload (user navigates away or refreshes)
+window.addEventListener("beforeunload", () => {
+  console.log("User is leaving the page. Cleaning up global listeners...");
+  cleanupGlobalListeners();
+});
+
+// Using the Page Visibility API to detect when the user hides or returns to the page
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    console.log("Page is now hidden (user is away). Cleaning up global listeners...");
+    cleanupGlobalListeners();
+  } else if (document.visibilityState === "visible") {
+    console.log("Page is visible again (user is back).");
+    // Optionally, reinitialize any global listeners here if needed
+  }
+});
+
+// Also, log when the page is loaded
+window.addEventListener("load", () => {
+  console.log("Page loaded. Global listeners can now be set up if needed.");
 });
 
 // Attach global functions to the window object
