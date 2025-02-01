@@ -7,12 +7,24 @@
   - 77BFA3
 */
 
+:root {
+  --primary: #6C63FF;
+  --secondary: #FF6584;
+  --accent: #00BFB3;
+  --dark: #2A2D3E;
+  --light: #F8F9FF;
+  --success: #4CAF50;
+  --warning: #FFC107;
+  --radius: 12px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.1);
+}
+
 /* Basic styles for the page layout */
 body {
-  font-family: 'Open Sans', sans-serif; /* Body font */
-  background-color: #f8f9fa;
-  margin: 0;
-  color: #333;
+  font-family: 'Poppins', sans-serif;
+  background: var(--light);
+  color: var(--dark);
+  line-height: 1.6;
 }
 
 .padding-body {
@@ -738,7 +750,9 @@ div#map {
   z-index: 0;
   display: flex;
   margin: auto;
-  border-radius: 8px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 3px solid white;
   margin-top: 35px;
 }
 
@@ -896,7 +910,7 @@ form#chat-form button:hover {
 
 #filters select:focus,
 #filters input:focus {
-  border-color: #007bff;
+  border-color: var(--primary);
   outline: none;
   box-shadow: 0 0 4px rgba(0, 123, 255, 0.2);
 }
@@ -1123,7 +1137,7 @@ form#chat-form button:hover {
   position: absolute;
   top: -5px;
   right: -5px;
-  background: red;
+  background: var(--secondary);
   color: white;
   font-size: 12px;
   width: 20px;
