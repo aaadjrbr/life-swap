@@ -33,7 +33,7 @@ const db = initializeFirestore(app, {
 });
 const storage = getStorage(app);
 const auth = getAuth(app);
-const MIN_ZOOM_LEVEL = 14; // Minimum zoom level to load posts
+const MIN_ZOOM_LEVEL = 15; // Minimum zoom level to load posts
 
 // Authentication Check
 onAuthStateChanged(auth, async (user) => {
