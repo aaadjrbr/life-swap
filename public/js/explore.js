@@ -74,6 +74,21 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
+document.addEventListener("DOMContentLoaded", function () {
+  const params = new URLSearchParams(window.location.search);
+  
+  if (params.has("chat")) {
+    const dealId = params.get("chat");
+    console.log("Opening chat for deal:", dealId); // Debugging
+    openChat(dealId);
+
+    // Remove the "chat" parameter from the URL after loading
+    params.delete("chat");
+    const newUrl = window.location.pathname + (params.toString() ? `?${params.toString()}` : "");
+    window.history.replaceState({}, "", newUrl);
+  }
+});
+
 // ===== Global Listener Helpers =====
 
 // Global array to store unsubscribe functions
