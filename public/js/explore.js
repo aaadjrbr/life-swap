@@ -155,50 +155,127 @@ zoomAlertControl.addTo(map);
 centerMapOnUserLocation(map);
 
 // Add the moveend event listener AFTER the map is initialized
+const postCache = new Map(); // Cache for storing previous post data
+let lastBoundsKey = null; // Stores the last fetched bounds
+let lastFetchTime = 0; // Timestamp of the last fetch
+
+const FETCH_THROTTLE_TIME = 5000; // Minimum time between fetches (5 sec)
+const MIN_MOVE_DISTANCE = 0.005; // Minimum lat/lng change before refetching
+const CACHE_EXPANSION_FACTOR = 1.8; // Expands fetch radius
+const CACHE_EXPIRATION_TIME = 30000; // 30 seconds expiration (in ms)
+
 map.on("moveend", async () => {
-    // If the flag is set, skip fetching on this event and reset the flag
     if (suppressFetchOnce) {
-      suppressFetchOnce = false;
-      return;  // Skip this execution
+        suppressFetchOnce = false;
+        return; // Skip this execution
     }
 
-  // Set a new timeout
-  clearTimeout(debounceTimeout);
-  debounceTimeout = setTimeout(async () => {
-    const zoomAlert = document.getElementById('mapZoomAlert');
-    const currentZoom = map.getZoom();
-    const postGrid = document.getElementById("postGrid");
+    clearTimeout(debounceTimeout);
 
-    if (currentZoom < MIN_ZOOM_LEVEL) {
-      postMarkersGroup.clearLayers();
-      postGrid.innerHTML = "";
-      zoomAlert.style.display = 'block'; // Show map alert
-      return;
-    } else {
-      zoomAlert.style.display = 'none'; // Hide alert when zoomed in
-    }
+    debounceTimeout = setTimeout(async () => {
+        console.log("⏳ Debounced Fetch Triggered...");
+        const currentZoom = map.getZoom();
+        const bounds = map.getBounds();
+        const southwest = bounds.getSouthWest();
+        const northeast = bounds.getNorthEast();
 
-    const bounds = map.getBounds();
-    const southwest = bounds.getSouthWest();
-    const northeast = bounds.getNorthEast();
+        // ✅ Expand the fetch area to reduce frequent fetches
+        const expandedSW = L.latLng(
+            southwest.lat - (northeast.lat - southwest.lat) * (CACHE_EXPANSION_FACTOR - 1) / 2,
+            southwest.lng - (northeast.lng - southwest.lng) * (CACHE_EXPANSION_FACTOR - 1) / 2
+        );
 
-    // Proceed to load posts and map pins only if zoom is sufficient
-    await loadPosts(
-      appliedFilters.filterType,
-      appliedFilters.filterHashtags,
-      1,
-      appliedFilters.filterCategory,
-      { southwest, northeast }
-    );
+        const expandedNE = L.latLng(
+            northeast.lat + (northeast.lat - southwest.lat) * (CACHE_EXPANSION_FACTOR - 1) / 2,
+            northeast.lng + (northeast.lng - southwest.lng) * (CACHE_EXPANSION_FACTOR - 1) / 2
+        );
 
-    await loadPostsToMap(
-      map,
-      appliedFilters.filterType,
-      appliedFilters.filterHashtags,
-      appliedFilters.filterCategory,
-      { southwest, northeast }
-    );
-  }, 300); // Debounce 300ms
+        // Generate a unique cache key for the larger bounds
+        const boundsKey = `${expandedSW.lat.toFixed(3)},${expandedSW.lng.toFixed(3)}-${expandedNE.lat.toFixed(3)},${expandedNE.lng.toFixed(3)}`;
+
+        // Get current time
+        const now = Date.now();
+
+        // Check if movement is significant before refetching
+        if (lastBoundsKey) {
+            const [lastSWLat, lastSWLng, lastNELat, lastNELng] = lastBoundsKey.split(/,|-/).map(Number);
+            
+            const latMove = Math.abs(southwest.lat - lastSWLat);
+            const lngMove = Math.abs(southwest.lng - lastSWLng);
+            
+            if (latMove < MIN_MOVE_DISTANCE && lngMove < MIN_MOVE_DISTANCE) {
+                console.log("📌 Skipping fetch: No significant map movement.");
+                return;
+            }
+        }
+
+        // Throttle fetching to avoid spam
+        if (now - lastFetchTime < FETCH_THROTTLE_TIME) {
+            console.log("📌 Skipping fetch: Too soon since last request.");
+            return;
+        }
+
+        // If zoom is too low, clear everything
+        if (currentZoom < MIN_ZOOM_LEVEL) {
+            postMarkersGroup.clearLayers();
+            postGrid.innerHTML = "";
+            document.getElementById('mapZoomAlert').style.display = 'block';
+            return;
+        }
+        
+        document.getElementById('mapZoomAlert').style.display = 'none'; // Hide alert when zoomed in
+
+        // ✅ Check cache expiration before using cached data
+        if (postCache.has(boundsKey)) {
+            const cachedData = postCache.get(boundsKey);
+            const elapsedTime = now - cachedData.timestamp;
+
+            if (elapsedTime < CACHE_EXPIRATION_TIME) {
+                console.log(`🟢 Using cached posts for ${boundsKey} (Cache Age: ${(elapsedTime / 1000).toFixed(1)}s)`);
+                renderPosts(cachedData.posts);
+                renderMarkers(cachedData.markers);
+                return;
+            } else {
+                console.log(`⚠️ Cache expired (${(elapsedTime / 1000).toFixed(1)}s old). Fetching new data...`);
+                postCache.delete(boundsKey); // Remove expired cache
+            }
+        }
+
+        console.log("🔄 Fetching new posts for", boundsKey);
+
+        // Fetch new data and store it in cache
+        const [posts, markers] = await Promise.all([
+            loadPosts(
+                appliedFilters.filterType,
+                appliedFilters.filterHashtags,
+                1,
+                appliedFilters.filterCategory,
+                { southwest: expandedSW, northeast: expandedNE }
+            ),
+            loadPostsToMap(
+                map,
+                appliedFilters.filterType,
+                appliedFilters.filterHashtags,
+                appliedFilters.filterCategory,
+                { southwest: expandedSW, northeast: expandedNE }
+            )
+        ]);
+
+        // Update last fetch time
+        lastFetchTime = now;
+
+        // ✅ Only cache valid data
+        if (Array.isArray(posts) && posts.length > 0) {
+            console.log("✅ Caching fetched posts...");
+            postCache.set(boundsKey, { posts, markers, timestamp: now });
+        } else {
+            console.warn("⚠️ No new posts found. Skipping fetch and cache update.");
+        }
+
+        // Update lastBoundsKey for movement tracking
+        lastBoundsKey = boundsKey;
+
+    }, 800); // Debounce 800ms to avoid rapid requests
 });
 
 let cityData = {}; // To store JSON data
@@ -419,6 +496,8 @@ let totalPosts = 0; // Initialize with a default value
 let debounceTimeout;
 
 // Function to load posts within the current map bounds
+const postCacheMap = new Map(); // Cache to store previous post data
+
 async function loadPosts(
   filterType = "",
   filterHashtags = [],
@@ -432,7 +511,6 @@ async function loadPosts(
   }
 
   const { southwest, northeast } = mapBounds; // Destructure mapBounds
-
   const postGrid = document.getElementById("postGrid");
   const postsPerPageSelector = document.getElementById("postsPerPageSelector");
   postGrid.innerHTML = "Loading...";
@@ -454,22 +532,37 @@ async function loadPosts(
     return;
   }
 
+  // Generate a cache key based on bounds and filters
+  const cacheKey = `${southwest.lat.toFixed(2)},${southwest.lng.toFixed(2)}-${northeast.lat.toFixed(2)},${northeast.lng.toFixed(2)}|${filterType}|${filterCategory}|${filterHashtags.join(",")}|${page}`;
+
+  // ✅ Check cache and expiration time (30 seconds)
+  const cacheEntry = postCacheMap.get(cacheKey);
+  if (cacheEntry) {
+    const elapsedTime = (Date.now() - cacheEntry.timestamp) / 1000; // Convert to seconds
+    if (elapsedTime < 30) { // ✅ Use cache if within 30 seconds
+      console.log(`🟢 Using cached posts for ${cacheKey} (Cache Age: ${elapsedTime.toFixed(1)}s)`);
+      renderCachedPosts(cacheEntry.posts);
+      return;
+    } else {
+      console.log(`🟡 Cache expired for ${cacheKey} (Cache Age: ${elapsedTime.toFixed(1)}s), fetching new posts...`);
+      postCacheMap.delete(cacheKey); // Remove expired cache entry
+    }
+  }
+
   // Reset pagination for a new query
   if (page === 1) {
     lastVisibleDocs = [];
     currentPage = 1;
   }
 
-  // Construct the query
+  // Construct Firestore query
   let postsQuery = collection(db, "posts");
   const conditions = [];
 
-  // Add conditions dynamically based on filters
   if (filterType) conditions.push(where("type", "==", filterType));
   if (filterCategory) conditions.push(where("category", "==", filterCategory));
   if (filterHashtags.length > 0) conditions.push(where("hashtags", "array-contains-any", filterHashtags));
 
-  // Add map bounds condition
   conditions.push(where("latitude", ">=", southwest.lat));
   conditions.push(where("latitude", "<=", northeast.lat));
   conditions.push(where("longitude", ">=", southwest.lng));
@@ -478,7 +571,6 @@ async function loadPosts(
   conditions.push(orderBy("timestamp", "desc"));
   conditions.push(limit(postsPerPage));
 
-  // Handle pagination
   if (page > 1 && lastVisibleDocs[page - 2]) {
     conditions.push(startAfter(lastVisibleDocs[page - 2]));
   }
@@ -486,6 +578,7 @@ async function loadPosts(
   postsQuery = query(postsQuery, ...conditions);
 
   try {
+    console.log("🔄 Fetching new posts for", cacheKey);
     const querySnapshot = await getDocs(postsQuery);
 
     if (querySnapshot.empty) {
@@ -496,53 +589,73 @@ async function loadPosts(
     lastVisibleDocs[page - 1] = querySnapshot.docs[querySnapshot.docs.length - 1];
     currentPage = page;
 
-    // Render posts
-    postGrid.innerHTML = "";
-    querySnapshot.docs.forEach((doc) => {
-      const post = doc.data();
-      const imageUrl = post.imageUrls?.[0] || "https://via.placeholder.com/150";
-      const postDate = post.timestamp ? new Date(post.timestamp.toDate()).toLocaleString() : "Unknown date";
-      const hashtags = post.hashtags
-        ? post.hashtags
-            .map(
-              (tag) => `
-                <span 
-                  class="clickable-hashtag" 
-                  onclick="filterByHashtag('${tag}')"
-                  style="cursor: pointer; color: blue; text-decoration: underline;">
-                  ${tag}
-                </span>`
-            )
-            .join(", ")
-        : "No hashtags";
+    const posts = querySnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
 
-      const postCard = document.createElement("div");
-      postCard.classList.add("post-card");
-      postCard.innerHTML = `
-        <div class="post-header">
-          <img src="${imageUrl}" alt="${post.title}" class="post-image" />
-          <div class="post-info">
-            <h3 class="post-title">${post.title}</h3>
-            <p class="post-desired-trade"><strong>📌 Desired Trade:</strong> ${post.desiredTrade || "Not specified"}</p>
-            <p class="post-location">${post.city ? `🌍 ${post.city} (${post.distanceFromCity || 0} miles away)` : `📍 Coordinates: ${post.latitude?.toFixed(4)}, ${post.longitude?.toFixed(4)}`}</p>
-            <p class="post-date">Posted on: ${postDate}</p>
-            <p class="post-hashtags"><strong>Hashtags:</strong> ${hashtags}</p>
-          </div>
-        </div>
-        <button onclick="viewDetails('${doc.id}')">View Details</button>
-      `;
-      postGrid.appendChild(postCard);
-    });
-
-    if (page === 1) {
-      fetchTotalPosts(mapBounds); // Pass mapBounds to fetchTotalPosts
+    // ✅ Store fetched posts in cache with a timestamp
+    if (page === 1 && posts.length > 0) { 
+      postCacheMap.set(cacheKey, { posts, timestamp: Date.now() });
     }
+
+    renderCachedPosts(posts);
+    if (page === 1) fetchTotalPosts(mapBounds);
     renderPaginationControls();
   } catch (error) {
     console.error("Error loading posts:", error);
     postGrid.innerHTML = "<p>Error loading posts. Please try again later.</p>";
   }
 }
+
+// ✅ Function to render cached posts instantly
+function renderCachedPosts(posts) {
+  if (!Array.isArray(posts)) {
+    console.warn("⚠️ renderCachedPosts received an invalid posts array, defaulting to an empty array.");
+    posts = []; // Ensure posts is always an array
+  }
+
+  const postGrid = document.getElementById("postGrid");
+  postGrid.innerHTML = "";
+
+  posts.forEach((post) => {
+    const imageUrl = post.imageUrls?.[0] || "https://via.placeholder.com/150";
+    const postDate = post.timestamp ? new Date(post.timestamp.toDate()).toLocaleString() : "Unknown date";
+    const hashtags = post.hashtags
+      ? post.hashtags
+          .map(
+            (tag) => ` 
+              <span 
+                class="clickable-hashtag" 
+                onclick="filterByHashtag('${tag}')"
+                style="cursor: pointer; color: blue; text-decoration: underline;">
+                ${tag}
+              </span>`
+          )
+          .join(", ")
+      : "No hashtags";
+
+    const postCard = document.createElement("div");
+    postCard.classList.add("post-card");
+    postCard.innerHTML = `
+      <div class="post-header">
+        <img src="${imageUrl}" alt="${post.title}" class="post-image" />
+        <div class="post-info">
+          <h3 class="post-title">${post.title}</h3>
+          <p class="post-desired-trade"><strong>📌 Desired Trade:</strong> ${post.desiredTrade || "Not specified"}</p>
+          <p class="post-location">${post.city ? `🌍 ${post.city} (${post.distanceFromCity || 0} miles away)` : `📍 Coordinates: ${post.latitude?.toFixed(4)}, ${post.longitude?.toFixed(4)}`}</p>
+          <p class="post-date">Posted on: ${postDate}</p>
+          <p class="post-hashtags"><strong>Hashtags:</strong> ${hashtags}</p>
+        </div>
+      </div>
+      <button onclick="viewDetails('${post.id}')">View Details</button>
+    `;
+    postGrid.appendChild(postCard);
+  });
+}
+
+// Cache to store total post count with timestamps
+let totalPostsCache = { count: 0, timestamp: 0 };
 
 // Fetch total posts count for pagination controls
 async function fetchTotalPosts(mapBounds) {
@@ -553,6 +666,17 @@ async function fetchTotalPosts(mapBounds) {
 
   const { southwest, northeast } = mapBounds;
 
+  // ✅ Check cache first (30s expiration)
+  const elapsedTime = (Date.now() - totalPostsCache.timestamp) / 1000;
+  if (elapsedTime < 30) {
+    console.log(`🟢 Using cached total posts count (${totalPostsCache.count}, Cache Age: ${elapsedTime.toFixed(1)}s)`);
+    totalPosts = totalPostsCache.count;
+    renderPaginationControls();
+    return;
+  }
+
+  console.log("🔄 Fetching total posts count from Firestore...");
+  
   // Fetch posts within the visible map bounds
   const totalQuery = query(
     collection(db, "posts"),
@@ -565,6 +689,11 @@ async function fetchTotalPosts(mapBounds) {
   const totalSnapshot = await getDocs(totalQuery);
   totalPosts = totalSnapshot.size;
   console.log("Total posts within bounds:", totalPosts);
+
+  // ✅ Cache the total posts count with timestamp
+  totalPostsCache = { count: totalPosts, timestamp: Date.now() };
+
+  renderPaginationControls();
 }
 
 // Render pagination controls
@@ -586,9 +715,9 @@ function renderPaginationControls() {
         loadPosts(
           appliedFilters.filterType,
           appliedFilters.filterHashtags,
-          appliedFilters.filterCity,
-          appliedFilters.filterDistance,
-          page
+          page, // ✅ Fix: Pass page correctly
+          appliedFilters.filterCategory, // ✅ Fix: Correct filter argument
+          mapBounds // ✅ Pass mapBounds for consistency
         );
       }
     };
@@ -2813,6 +2942,8 @@ async function deletePost(postId) {
   loadPosts(); // Refresh main post list if needed
 }
 
+const cachedPosts = new Map(); // Cache with timestamps
+
 async function loadPostsToMap(map, filterType = "", filterHashtags = [], filterCategory = "", mapBounds) { 
   if (!map) {
     console.error("Map is not initialized.");
@@ -2828,6 +2959,22 @@ async function loadPostsToMap(map, filterType = "", filterHashtags = [], filterC
   const bounds = map.getBounds();
   const southwest = bounds.getSouthWest();
   const northeast = bounds.getNorthEast();
+  const cacheKey = `${southwest.lat}-${northeast.lat}-${southwest.lng}-${northeast.lng}`;
+
+  // ✅ Check if cached data is still valid
+  if (cachedPosts.has(cacheKey)) {
+    const { posts, timestamp } = cachedPosts.get(cacheKey);
+    const elapsedTime = (Date.now() - timestamp) / 1000; // Convert ms to seconds
+
+    if (elapsedTime < 30) {
+      console.log(`🟢 Serving from cache: ${cacheKey} (Cache Age: ${elapsedTime.toFixed(1)}s)`);
+      renderPosts(posts);
+      return;
+    } else {
+      console.log(`⚠️ Cache expired (${elapsedTime.toFixed(1)}s old). Fetching new data...`);
+      cachedPosts.delete(cacheKey); // Remove expired cache
+    }
+  }
 
   // Construct the query
   let postsQuery = collection(db, "posts");
@@ -2837,70 +2984,56 @@ async function loadPostsToMap(map, filterType = "", filterHashtags = [], filterC
   if (filterCategory) conditions.push(where("category", "==", filterCategory));
   if (filterHashtags.length > 0) conditions.push(where("hashtags", "array-contains-any", filterHashtags));
 
+  // 📌 Firestore doesn't support multiple inequality queries with `orderBy`
   conditions.push(where("latitude", ">=", southwest.lat));
   conditions.push(where("latitude", "<=", northeast.lat));
   conditions.push(where("longitude", ">=", southwest.lng));
   conditions.push(where("longitude", "<=", northeast.lng));
-  conditions.push(orderBy("timestamp", "desc"));
 
-  postsQuery = query(postsQuery, ...conditions);
+  postsQuery = query(postsQuery, ...conditions, limit(50)); // 🔥 Load only 50 posts at a time
+
+  console.log("🔄 Fetching new posts for", cacheKey);
   const postsSnapshot = await getDocs(postsQuery);
 
-  postMarkersGroup.clearLayers();
-
-  const locationPostsMap = {};
+  const posts = [];
   postsSnapshot.forEach((doc) => {
-    const post = doc.data();
-    if (post.latitude && post.longitude) {
-      const locationKey = `${post.latitude},${post.longitude}`;
-      locationPostsMap[locationKey] = locationPostsMap[locationKey] || [];
-      locationPostsMap[locationKey].push({ ...post, id: doc.id });
-    }
+    posts.push({ id: doc.id, ...doc.data() });
   });
 
-  // Create markers with jittered positions
-  Object.keys(locationPostsMap).forEach((locationKey) => {
-    const [originalLat, originalLng] = locationKey.split(",").map(Number);
-    const posts = locationPostsMap[locationKey];
-    const postCount = posts.length;
+  // ✅ Cache fetched data with a timestamp
+  cachedPosts.set(cacheKey, { posts, timestamp: Date.now() });
 
-    posts.forEach((post, index) => {
-      // Apply jitter only if multiple posts exist at this location
-      let jitteredLat = originalLat;
-      let jitteredLng = originalLng;
-      if (postCount > 1) {
-        const angle = (index * (2 * Math.PI)) / postCount;
-        const radius = 0.0002; // Adjust radius for spread (~20 meters)
-        jitteredLat += radius * Math.cos(angle);
-        jitteredLng += radius * Math.sin(angle);
-      }
+  // ✅ Render the posts
+  renderPosts(posts);
+}
 
-      // Create marker with default icon
-      const marker = L.marker([jitteredLat, jitteredLng], {
-        title: post.title // This adds basic hover text
-      });
+function renderPosts(posts) {
+  postMarkersGroup.clearLayers(); // 🟡 Only clear necessary markers
 
-      // Add permanent tooltip with custom styling
-      marker.bindTooltip(post.title, {
-        permanent: true,
-        direction: "top",
-        offset: [-15, -5], // Position above the pin
-        className: `map-pin-title ${postCount > 1 ? 'multi-item-title' : ''}`
-      });
+  posts.forEach((post) => {
+    if (!post.latitude || !post.longitude) return;
 
-      // Add popup with custom class
-      marker.bindPopup(`
-        <div class="map-post-popup">
-          <h3>${post.title}</h3>
-          <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}
-          <button class="btn-view-details" onclick="viewDetails('${post.id}')">
-            View Details
-          </button>
-        </div>
-      `);
-
-      postMarkersGroup.addLayer(marker);
+    const marker = L.marker([post.latitude, post.longitude], {
+      title: post.title
     });
+
+    marker.bindTooltip(post.title, {
+      permanent: true,
+      direction: "top",
+      offset: [-15, -5]
+    });
+
+    marker.bindPopup(`
+      <div class="map-post-popup">
+        <h3>${post.title}</h3>
+        <strong>Desired Trade:</strong> ${post.desiredTrade || "Not specified"}
+        <button class="btn-view-details" onclick="viewDetails('${post.id}')">
+          View Details
+        </button>
+      </div>
+    `);
+
+    postMarkersGroup.addLayer(marker);
   });
 }
 
