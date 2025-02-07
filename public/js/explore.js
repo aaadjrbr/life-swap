@@ -1459,39 +1459,95 @@ async function viewProfile(userId) {
 
   const userData = userDoc.data();
 
-  // Fetch ratings for the user
-  const ratingsQuery = query(collection(db, "ratings"), where("rateeId", "==", userId));
-  const ratingsSnapshot = await getDocs(ratingsQuery);
+  // Initialize state for pagination
+  let lastVisibleRating = null; // Tracks last rating in the current batch
+  let allRatingsLoaded = false; // Flag for when no more ratings exist
+  const loadedRatingIds = new Set(); // Prevent duplicate ratings
+  let ratings = []; // Stores all loaded ratings
 
-  const ratings = [];
-  for (const ratingDoc of ratingsSnapshot.docs) {
-    const ratingData = ratingDoc.data();
+  // Reference to the ratings container
+  let ratingsContainerHTML = `<div id="ratingsContainer"></div>`;
 
-    // Fetch the rater's name from the users collection
-    const raterDoc = await getDoc(doc(db, "users", ratingData.raterId));
-    const raterName = raterDoc.exists() ? raterDoc.data().name : "Unknown User";
+  async function loadRatings(firstLoad = false, reset = false) {
+    if (allRatingsLoaded && !reset) return; // Stop if all ratings are already loaded
 
-    ratings.push({
-      raterName, // Add the rater's name
-      rating: ratingData.rating,
-      feedback: ratingData.feedback || "No feedback",
-      timestamp: ratingData.timestamp.toDate().toLocaleString(), // Format timestamp
+    // If resetting, clear everything
+    if (reset) {
+      lastVisibleRating = null;
+      allRatingsLoaded = false;
+      loadedRatingIds.clear();
+      ratings = [];
+      document.getElementById("ratingsContainer").innerHTML = "";
+    }
+
+    // Build query with ordering
+    let ratingsQuery = query(
+      collection(db, "ratings"),
+      where("rateeId", "==", userId),
+      orderBy("timestamp", "desc"),
+      limit(2) // Fetch only 2 at a time
+    );
+
+    // If not first load, fetch after the last visible rating
+    if (!firstLoad && lastVisibleRating) {
+      ratingsQuery = query(ratingsQuery, startAfter(lastVisibleRating));
+    }
+
+    const ratingsSnapshot = await getDocs(ratingsQuery);
+
+    if (ratingsSnapshot.empty) {
+      allRatingsLoaded = true; // Stop further loading
+      document.getElementById("seeMoreBtn").style.display = "none"; // Hide button
+      document.getElementById("hideBtn").style.display = "block"; // Show "Hide" button
+      return;
+    }
+
+    let newRatings = [];
+    ratingsSnapshot.forEach((ratingDoc) => {
+      const ratingData = ratingDoc.data();
+      const ratingId = ratingDoc.id;
+
+      // Prevent duplicates
+      if (loadedRatingIds.has(ratingId)) return;
+      loadedRatingIds.add(ratingId);
+
+      newRatings.push({
+        raterId: ratingData.raterId,
+        rating: ratingData.rating,
+        feedback: ratingData.feedback || "No feedback",
+        timestamp: ratingData.timestamp.toDate().toLocaleString(),
+      });
     });
+
+    // Fetch rater names in parallel
+    await Promise.all(
+      newRatings.map(async (r) => {
+        const raterDoc = await getDoc(doc(db, "users", r.raterId));
+        r.raterName = raterDoc.exists() ? raterDoc.data().name : "Unknown User";
+      })
+    );
+
+    // Append new ratings
+    ratings.push(...newRatings);
+    document.getElementById("ratingsContainer").innerHTML = ratings
+      .map((r) => createRatingHtml(r))
+      .join("");
+
+    // Update last visible rating for pagination
+    lastVisibleRating = ratingsSnapshot.docs[ratingsSnapshot.docs.length - 1];
+
+    // Show "Hide" button if everything is loaded
+    if (allRatingsLoaded) {
+      document.getElementById("hideBtn").style.display = "block";
+    }
   }
 
-  // Calculate average rating
-  const averageRating =
-    ratings.length > 0
-      ? (ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length).toFixed(1)
-      : "No reviews";
-
-  // Build the profile content
   userProfileContent.innerHTML = `
-  <button class="close-modal-btn" onclick="closeProfileModal()">Close</button>
+    <button class="close-modal-btn" onclick="closeProfileModal()">Close</button>
     <div class="profile-header">
       <img src="${userData.profilePhoto || "https://via.placeholder.com/150"}" alt="${userData.name}" class="profile-photo" />
       <h3>${userData.name || "Unknown User"}</h3>
-      <p>★ ${averageRating} (${ratings.length} reviews)</p>
+      <p>★ No reviews yet</p>
     </div>
     <div class="profile-details">
       <p><strong>Bio:</strong> ${userData.bio || "No bio provided."}</p>
@@ -1501,26 +1557,39 @@ async function viewProfile(userId) {
     </div>
     <div class="profile-ratings">
       <h4 class="h4-ratingsProfile">Ratings</h4>
-      ${
-        ratings.length > 0
-          ? ratings
-              .map(
-                (r) => `
-              <div class="rating-item">
-                <p><img class="verify-badge" src="https://firebasestorage.googleapis.com/v0/b/life-swap-6065e.firebasestorage.app/o/static%2Fverify-badg.png?alt=media&token=561b5a0b-42b5-434b-aed3-79531836ce1b"><strong>${r.raterName}</strong> - ${r.rating}/5</p>
-                <p>${r.feedback}</p>
-                <small>${r.timestamp}</small>
-              </div>
-            `
-              )
-              .join("")
-          : "<p>No ratings yet.</p>"
-      }
+      ${ratingsContainerHTML}
+      <button id="seeMoreBtn" class="see-more-btn">See More</button>
+      <button id="hideBtn" class="hide-btn" style="display: none;">Hide</button>
     </div>
   `;
 
-  // Show the profile modal
+  // Load first batch of ratings
+  await loadRatings(true);
+
+  // Handle "See More" button
+  document.getElementById("seeMoreBtn").addEventListener("click", async () => {
+    await loadRatings(false);
+  });
+
+  // Handle "Hide" button
+  document.getElementById("hideBtn").addEventListener("click", async () => {
+    await loadRatings(true, true); // Reset & reload initial 2 ratings
+    document.getElementById("seeMoreBtn").style.display = "block"; // Show "See More" again
+    document.getElementById("hideBtn").style.display = "none"; // Hide "Hide" button
+  });
+
   userProfileModal.classList.remove("hidden");
+}
+
+// Function to generate rating HTML
+function createRatingHtml(r) {
+  return `
+    <div class="rating-item">
+      <p><img class="verify-badge" src="https://firebasestorage.googleapis.com/v0/b/life-swap-6065e.firebasestorage.app/o/static%2Fverify-badg.png?alt=media&token=561b5a0b-42b5-434b-aed3-79531836ce1b"><strong>${r.raterName}</strong> - ${r.rating}/5</p>
+      <p>${r.feedback}</p>
+      <small>${r.timestamp}</small>
+    </div>
+  `;
 }
 
 function closeProfileModal() {
@@ -1590,155 +1659,133 @@ function closeOfferSwap() {
   document.getElementById("offerSwapForm").reset();
 }
 
+let cachedOffers = {
+  yourOffers: new Map(),
+  receivedOffers: new Map(),
+};
+let unsubscribeYourOffers = null;
+let unsubscribeReceivedOffers = null;
+
 async function loadOffers() {
   const user = auth.currentUser;
+  if (!user) return;
+
   const yourOffersDiv = document.getElementById("yourOffers");
   const offersReceivedDiv = document.getElementById("offersReceived");
 
   yourOffersDiv.innerHTML = "Loading...";
   offersReceivedDiv.innerHTML = "Loading...";
 
-  const yourOffersQuery = query(collection(db, "offers"), where("fromUserId", "==", user.uid));
-  const offersReceivedQuery = query(collection(db, "offers"), where("toUserId", "==", user.uid));
+  // Stop previous Firestore listeners if they exist
+  if (unsubscribeYourOffers) unsubscribeYourOffers();
+  if (unsubscribeReceivedOffers) unsubscribeReceivedOffers();
 
-  const yourOffersSnapshot = await getDocs(yourOffersQuery);
-  const offersReceivedSnapshot = await getDocs(offersReceivedQuery);
+  const yourOffersQuery = query(
+    collection(db, "offers"),
+    where("fromUserId", "==", user.uid),
+    orderBy("timestamp", "desc"),
+    limit(10) // 🚀 Fetch only the latest 10 offers
+  );
 
-  let hasValidYourOffers = false;
-  let hasValidReceivedOffers = false;
+  const offersReceivedQuery = query(
+    collection(db, "offers"),
+    where("toUserId", "==", user.uid),
+    orderBy("timestamp", "desc"),
+    limit(10) // 🚀 Fetch only the latest 10 offers
+  );
 
-  // Display "Your Offers"
-  yourOffersDiv.innerHTML = "";
-  for (const offerDoc of yourOffersSnapshot.docs) {
-    const offer = offerDoc.data();
+  unsubscribeYourOffers = onSnapshot(yourOffersQuery, async (yourOffersSnapshot) => {
+    await processOffers(yourOffersSnapshot, "yourOffers", yourOffersDiv, user);
+  });
 
-    const targetPost = await getDoc(doc(db, "posts", offer.targetPostId));
-    const offeredPost = await getDoc(doc(db, "posts", offer.offeredPostId));
+  unsubscribeReceivedOffers = onSnapshot(offersReceivedQuery, async (offersReceivedSnapshot) => {
+    await processOffers(offersReceivedSnapshot, "receivedOffers", offersReceivedDiv, user);
+  });
+}
 
-    if (!targetPost.exists() || !offeredPost.exists()) continue;
+// Unsubscribe function (to stop Firestore listening when user leaves the page)
+function stopOfferListeners() {
+  if (unsubscribeYourOffers) {
+    unsubscribeYourOffers();
+    unsubscribeYourOffers = null;
+  }
+  if (unsubscribeReceivedOffers) {
+    unsubscribeReceivedOffers();
+    unsubscribeReceivedOffers = null;
+  }
+}
 
-    hasValidYourOffers = true;
+// 🚀 Ensure we stop listening when user leaves the page
+window.addEventListener("beforeunload", stopOfferListeners);
 
-    const targetPostTitle = targetPost.data().title;
-    const offeredPostTitle = offeredPost.data().title;
+async function processOffers(snapshot, type, containerDiv, user) {
+  let offers = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
-    const dealQuery = query(collection(db, "deals"), where("offerId", "==", offerDoc.id));
-    const dealSnapshot = await getDocs(dealQuery);
+  // Filter out already cached offers to prevent duplicates
+  let newOffers = offers.filter((offer) => !cachedOffers[type].has(offer.id));
+
+  // If there are no new changes, do nothing
+  if (newOffers.length === 0 && cachedOffers[type].size > 0) return;
+
+  // Clear UI before re-rendering to prevent duplicates
+  containerDiv.innerHTML = "";
+
+  let postIds = new Set();
+  let userIds = new Set();
+
+  // Collect all post & user IDs to fetch in batch
+  offers.forEach((offer) => {
+    postIds.add(offer.targetPostId);
+    postIds.add(offer.offeredPostId);
+    userIds.add(offer.fromUserId);
+  });
+
+  // Batch fetch all required posts & users
+  const postDocs = postIds.size
+    ? await getDocs(query(collection(db, "posts"), where("__name__", "in", Array.from(postIds))))
+    : [];
+  const userDocs = userIds.size
+    ? await getDocs(query(collection(db, "users"), where("__name__", "in", Array.from(userIds))))
+    : [];
+
+  let postsMap = new Map();
+  let usersMap = new Map();
+
+  postDocs.forEach((doc) => postsMap.set(doc.id, doc.data()));
+  userDocs.forEach((doc) => usersMap.set(doc.id, doc.data()));
+
+  // Build HTML for each offer
+  let offersHTML = offers.map((offer) => {
+    const targetPost = postsMap.get(offer.targetPostId);
+    const offeredPost = postsMap.get(offer.offeredPostId);
+    const fromUser = usersMap.get(offer.fromUserId);
+
+    if (!targetPost || !offeredPost) return "";
 
     let dealStatus = "Offer pending.";
-    let actionButton = `<button class="cancel-offer-btn" onclick="cancelOffer('${offerDoc.id}')">Cancel Offer</button>`;
-    let rateButton = "";
-    let deleteButton = "";
+    let actionButton = `<button class="cancel-offer-btn" onclick="cancelOffer('${offer.id}')">Cancel Offer</button>`;
 
     if (offer.status === "declined") {
       dealStatus = "Offer declined.";
-      actionButton = `<button class="cancel-offer-btn" onclick="cancelOffer('${offerDoc.id}')">Remove Offer</button>`;
-    } else if (!dealSnapshot.empty) {
-      const deal = dealSnapshot.docs[0].data();
-      const dealId = dealSnapshot.docs[0].id;
-
-      if (deal.status === "closed") {
-        dealStatus = "Deal closed. Thank you!";
-        actionButton = ""; // No action needed after deal closure
-        rateButton = `<button class="rate-btn" onclick="openRatingModal('${dealId}')">Rate User</button>`;
-        deleteButton = `<button class="delete-offer-btn" onclick="deleteOffer('${dealId}')">Delete Offer</button>`;
-      } else if (deal.status === "active") {
-        dealStatus = "Deal accepted. Start chatting!";
-        actionButton = `<button class="chat-btn" onclick="openChat('${dealId}')">Open Chat</button>`;
-
-        // Keep the "Cancel Offer" button visible if the user sent the offer
-        if (user.uid === offer.fromUserId) {
-          actionButton += `
-            <button class="cancel-offer-btn" onclick="cancelOffer('${offerDoc.id}')">
-              Cancel Offer
-            </button>`;
-        }
-      }
+      actionButton = `<button class="cancel-offer-btn" onclick="cancelOffer('${offer.id}')">Remove Offer</button>`;
     }
 
-    yourOffersDiv.innerHTML += `
-      <div class="offer-item">
-        <p><strong>Offered for:</strong> <a href="#" onclick="viewDetails('${offer.targetPostId}', true)">${targetPostTitle}</a></p>
-        <p><strong>Your Offered Item:</strong> <a href="#" onclick="viewDetails('${offer.offeredPostId}', true)">${offeredPostTitle}</a></p>
+    return `
+      <div class="offer-item" id="offer-${offer.id}">
+        <p><strong>Offer from:</strong> <a href="#" onclick="viewProfile('${offer.fromUserId}')">${fromUser?.name || "Unknown User"}</a></p>
+        <p><strong>Offered Item:</strong> <a href="#" onclick="viewDetails('${offer.offeredPostId}', true)">${offeredPost.title}</a></p>
+        <p><strong>For Your Post:</strong> <a href="#" onclick="viewDetails('${offer.targetPostId}', true)">${targetPost.title}</a></p>
         <p>${dealStatus}</p>
         ${actionButton}
-        ${rateButton}
-        ${deleteButton}
       </div>
     `;
-  }
+  }).join("");
 
-  if (!hasValidYourOffers) {
-    yourOffersDiv.innerHTML = "<p>No offers yet.</p>";
-  }
+  // Cache the offers as objects instead of raw HTML
+  offers.forEach((offer) => cachedOffers[type].set(offer.id, offer));
 
-  // Display "Offers You Received"
-  offersReceivedDiv.innerHTML = "";
-  for (const offerDoc of offersReceivedSnapshot.docs) {
-    const offer = offerDoc.data();
-
-    const offeredPost = await getDoc(doc(db, "posts", offer.offeredPostId));
-    const targetPost = await getDoc(doc(db, "posts", offer.targetPostId));
-
-    if (!offeredPost.exists() || !targetPost.exists()) continue;
-
-    hasValidReceivedOffers = true;
-
-    const offeredPostTitle = offeredPost.data().title;
-    const targetPostTitle = targetPost.data().title;
-
-    const fromUser = await getDoc(doc(db, "users", offer.fromUserId));
-    const fromUserName = fromUser.exists() ? fromUser.data().name : "Unknown User";
-
-    const dealQuery = query(collection(db, "deals"), where("offerId", "==", offerDoc.id));
-    const dealSnapshot = await getDocs(dealQuery);
-
-    let dealStatus = "Offer pending.";
-    let actionButton = `<button class="accept-btn" onclick="acceptOffer('${offerDoc.id}', this)">Accept</button>`;
-    let declineButton = `<button class="decline-btn" onclick="declineOffer('${offerDoc.id}')">Decline</button>`;
-    let rateButton = "";
-    let deleteButton = "";
-
-    if (offer.status === "declined") {
-      dealStatus = "You declined this offer.";
-      actionButton = "";
-      declineButton = "";
-    } else if (!dealSnapshot.empty) {
-      const deal = dealSnapshot.docs[0].data();
-      const dealId = dealSnapshot.docs[0].id;
-
-      if (deal.status === "closed") {
-        dealStatus = "Deal closed. Thank you!";
-        actionButton = "";
-        declineButton = "";
-        rateButton = `<button class="rate-btn" onclick="openRatingModal('${dealId}')">Rate User</button>`;
-        deleteButton = `<button class="delete-offer-btn" onclick="deleteOffer('${dealId}')">Delete Offer</button>`;
-      } else if (deal.status === "active") {
-        dealStatus = "Deal accepted. Start chatting!";
-        actionButton = `<button class="chat-btn" onclick="openChat('${dealId}')">Open Chat</button>`;
-      }
-    }
-
-    offersReceivedDiv.innerHTML += `
-      <div class="offer-item">
-        <p><strong>Offer from:</strong> 
-          <a href="#" onclick="viewProfile('${offer.fromUserId}')">${fromUserName}</a>
-        </p>
-        <p><strong>Message:</strong> ${offer.message || "No message provided."}</p>
-        <p><strong>Item Offered:</strong> <a href="#" onclick="viewDetails('${offer.offeredPostId}', true)">${offeredPostTitle}</a></p>
-        <p><strong>For Your Post:</strong> <a href="#" onclick="viewDetails('${offer.targetPostId}', true)">${targetPostTitle}</a></p>
-        <p>${dealStatus}</p>
-        ${actionButton}
-        ${rateButton}
-        ${deleteButton}
-        ${declineButton}
-      </div>
-    `;
-  }
-
-  if (!hasValidReceivedOffers) {
-    offersReceivedDiv.innerHTML = "<p>No received offers yet.</p>";
-  }
+  // Update UI with fresh offers only
+  containerDiv.innerHTML = offersHTML;
 }
 
 async function cancelOffer(offerId) {
@@ -2778,42 +2825,101 @@ function toggleYourPosts() {
 }
 
 // Load "Your Posts" functionality
-async function loadYourPosts() {
+let lastVisiblePost = null;
+let allPostsLoaded = false;
+const POSTS_PER_PAGE = 5;
+
+// 🚀 Load posts when the page loads
+document.addEventListener("DOMContentLoaded", () => {
+  loadYourPosts(true);
+});
+
+// 🚀 Load "Your Posts" with Firestore pagination
+async function loadYourPosts(firstLoad = false) {
   const user = auth.currentUser;
+  if (!user) return; // ✅ Skip if user not logged in (fixes login issue)
+
   const yourPostsDiv = document.getElementById("yourPosts");
-  yourPostsDiv.innerHTML = "Loading...";
+  const loadMoreBtn = document.getElementById("loadMoreBtn");
+  const seeLessBtn = document.getElementById("seeLessBtn");
 
-  if (!user) {
-    yourPostsDiv.innerHTML = "<p>You need to log in to see your posts.</p>";
-    return;
+  if (firstLoad) {
+    yourPostsDiv.innerHTML = "Loading...";
+    lastVisiblePost = null;
+    allPostsLoaded = false;
   }
 
-  // Fetch user's posts
-  const yourPostsQuery = query(collection(db, "posts"), where("userId", "==", user.uid));
-  const yourPostsSnapshot = await getDocs(yourPostsQuery);
+  if (allPostsLoaded) return; // ✅ Stop fetching if no more posts
 
-  if (yourPostsSnapshot.empty) {
+  let postsQuery = query(
+    collection(db, "posts"),
+    where("userId", "==", user.uid),
+    orderBy("timestamp", "desc"),
+    limit(POSTS_PER_PAGE)
+  );
+
+  if (lastVisiblePost && !firstLoad) {
+    postsQuery = query(postsQuery, startAfter(lastVisiblePost), limit(POSTS_PER_PAGE));
+  }
+
+  const snapshot = await getDocs(postsQuery);
+
+  if (snapshot.empty && firstLoad) {
     yourPostsDiv.innerHTML = "<p>You have not created any posts yet.</p>";
+    loadMoreBtn.style.display = "none";
+    seeLessBtn.style.display = "none";
     return;
   }
 
-  yourPostsDiv.innerHTML = ""; // Clear loading message
+  lastVisiblePost = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null;
 
-  // Display each post
-  yourPostsSnapshot.forEach((postDoc) => {
-    const post = postDoc.data();
-    const postId = postDoc.id;
+  if (firstLoad) yourPostsDiv.innerHTML = ""; // ✅ Clear loading text
 
-    const postElement = document.createElement("div");
-    postElement.className = "your-post-item";
-    postElement.innerHTML = `
-      <p class="post-title">${post.title}</p>
-      <button class="view-post-btn" onclick="viewDetails('${postId}', true)">View</button>
-      <button class="delete-post-btn" onclick="deletePost('${postId}')">Delete</button>
-    `;
-
-    yourPostsDiv.appendChild(postElement);
+  // ✅ Append new posts without duplicating
+  snapshot.docs.forEach((postDoc) => {
+    if (!document.getElementById(`post-${postDoc.id}`)) {
+      const post = postDoc.data();
+      const postElement = document.createElement("div");
+      postElement.className = "your-post-item";
+      postElement.id = `post-${postDoc.id}`;
+      postElement.innerHTML = `
+        <p class="post-title">${post.title}</p>
+        <button class="view-post-btn" onclick="viewDetails('${postDoc.id}', true)">View</button>
+        <button class="delete-post-btn" onclick="deletePost('${postDoc.id}')">Delete</button>
+      `;
+      yourPostsDiv.appendChild(postElement);
+    }
   });
+
+  // ✅ Manage button visibility
+  loadMoreBtn.style.display = snapshot.docs.length < POSTS_PER_PAGE ? "none" : "block";
+  seeLessBtn.style.display = yourPostsDiv.children.length > POSTS_PER_PAGE ? "block" : "none";
+}
+
+// 🚀 "Load More" Button Click Handler (Fetches next 5 posts)
+function loadMorePosts() {
+  if (!allPostsLoaded) {
+    loadYourPosts(false);
+  }
+}
+
+// 🚀 "See Less" Button Click Handler (Resets to first 5 posts)
+function seeLessPosts() {
+  const yourPostsDiv = document.getElementById("yourPosts");
+  const loadMoreBtn = document.getElementById("loadMoreBtn");
+  const seeLessBtn = document.getElementById("seeLessBtn");
+
+  // ✅ Remove extra posts, keep only the first 5
+  while (yourPostsDiv.children.length > POSTS_PER_PAGE) {
+    yourPostsDiv.removeChild(yourPostsDiv.lastChild);
+  }
+
+  lastVisiblePost = null;
+  allPostsLoaded = false;
+
+  // ✅ Hide "See Less" button since we're back to 5 posts
+  seeLessBtn.style.display = "none";
+  loadMoreBtn.style.display = "block";
 }
 
 // Delete a post
@@ -3010,12 +3116,30 @@ async function loadPostsToMap(map, filterType = "", filterHashtags = [], filterC
 function renderPosts(posts) {
   postMarkersGroup.clearLayers(); // 🟡 Only clear necessary markers
 
+  const seenLocations = new Map(); // Track locations to add jitter
+
   posts.forEach((post) => {
     if (!post.latitude || !post.longitude) return;
 
-    const marker = L.marker([post.latitude, post.longitude], {
-      title: post.title
-    });
+    const locationKey = `${post.latitude},${post.longitude}`;
+    let lat = post.latitude;
+    let lng = post.longitude;
+
+    // Apply a slightly larger spread if multiple markers exist at the same location
+    if (seenLocations.has(locationKey)) {
+      const count = seenLocations.get(locationKey) + 1;
+      seenLocations.set(locationKey, count);
+
+      const jitterFactor = 0.0001 * count; // Increases jitter as more markers appear
+      const angle = Math.random() * Math.PI * 2; // Random angle for spreading
+
+      lat += jitterFactor * Math.cos(angle); // Spread out in a circular pattern
+      lng += jitterFactor * Math.sin(angle);
+    } else {
+      seenLocations.set(locationKey, 1);
+    }
+
+    const marker = L.marker([lat, lng], { title: post.title });
 
     marker.bindTooltip(post.title, {
       permanent: true,
@@ -3242,3 +3366,5 @@ window.setupAutocomplete = setupAutocomplete;
 window.clearAllNotifications = clearAllNotifications;
 window.filterByHashtag = filterByHashtag;
 window.deleteOffer= deleteOffer;
+window.loadMorePosts= loadMorePosts;
+window.seeLessPosts= seeLessPosts;
