@@ -1659,17 +1659,44 @@ function closeOfferSwap() {
   document.getElementById("offerSwapForm").reset();
 }
 
-async function loadOffers() {
+async function loadOffers(forceRefresh = false) {
   const user = auth.currentUser;
   if (!user) return;
 
   const yourOffersDiv = document.getElementById("yourOffers");
   const offersReceivedDiv = document.getElementById("offersReceived");
 
+  // Check the cache if not a forced refresh
+  if (!forceRefresh) {
+    const cacheStr = localStorage.getItem("offersCache");
+    if (cacheStr) {
+      try {
+        const cache = JSON.parse(cacheStr);
+        const now = Date.now();
+        // 2 minutes = 120000 ms
+        if (now - cache.timestamp < 120000) {
+          console.log("Using cached data since cache is still valid");
+          yourOffersDiv.innerHTML = cache.yourOffersHtml;
+          offersReceivedDiv.innerHTML = cache.offersReceivedHtml;
+          return; // Use cached content
+        } else {
+          console.log("Cache expired, fetching new data");
+        }
+      } catch (e) {
+        console.error("Error parsing offers cache:", e);
+      }
+    } else {
+      console.log("No cache available, fetching new data");
+    }
+  } else {
+    console.log("Manual refresh triggered, fetching new data");
+  }
+
+  // Otherwise, fetch new data
   yourOffersDiv.innerHTML = "Loading...";
   offersReceivedDiv.innerHTML = "Loading...";
 
-  // Fetch only the offers **related** to the user
+  // Fetch offers related to the user
   const [yourOffersSnapshot, offersReceivedSnapshot] = await Promise.all([
     getDocs(query(collection(db, "offers"), where("fromUserId", "==", user.uid))),
     getDocs(query(collection(db, "offers"), where("toUserId", "==", user.uid))),
@@ -1677,11 +1704,10 @@ async function loadOffers() {
 
   let hasValidYourOffers = false;
   let hasValidReceivedOffers = false;
-
   let postIds = new Set();
   let userIds = new Set();
 
-  // Collect **only relevant** post & user IDs for batch fetching
+  // Collect post and user IDs for batch fetching
   yourOffersSnapshot.forEach((doc) => {
     const offer = doc.data();
     if (offer.targetPostId) postIds.add(offer.targetPostId);
@@ -1695,7 +1721,7 @@ async function loadOffers() {
     if (offer.fromUserId) userIds.add(offer.fromUserId);
   });
 
-  // 🚀 Batch fetch **only needed** posts & users
+  // Batch fetch needed posts & users
   const [postDocs, userDocs] = await Promise.all([
     postIds.size ? getDocs(query(collection(db, "posts"), where("__name__", "in", Array.from(postIds)))) : [],
     userIds.size ? getDocs(query(collection(db, "users"), where("__name__", "in", Array.from(userIds)))) : [],
@@ -1703,7 +1729,6 @@ async function loadOffers() {
 
   let postsMap = new Map();
   let usersMap = new Map();
-
   postDocs.forEach((doc) => postsMap.set(doc.id, doc.data()));
   userDocs.forEach((doc) => usersMap.set(doc.id, doc.data()));
 
@@ -1713,13 +1738,11 @@ async function loadOffers() {
     const offer = offerDoc.data();
     const targetPost = postsMap.get(offer.targetPostId);
     const offeredPost = postsMap.get(offer.offeredPostId);
-
-    if (!targetPost || !offeredPost) continue; // ✅ Skip if post doesn’t exist
+    if (!targetPost || !offeredPost) continue; // Skip if post doesn’t exist
 
     hasValidYourOffers = true;
     const targetPostTitle = targetPost.title;
     const offeredPostTitle = offeredPost.title;
-
     const dealQuery = query(collection(db, "deals"), where("offerId", "==", offerDoc.id));
     const dealSnapshot = await getDocs(dealQuery);
 
@@ -1734,7 +1757,6 @@ async function loadOffers() {
     } else if (!dealSnapshot.empty) {
       const deal = dealSnapshot.docs[0].data();
       const dealId = dealSnapshot.docs[0].id;
-
       if (deal.status === "closed") {
         dealStatus = "Deal closed. Thank you!";
         actionButton = "";
@@ -1749,18 +1771,16 @@ async function loadOffers() {
       }
     }
 
-    yourOffersDiv.innerHTML += `
-      <div class="offer-item">
+    yourOffersDiv.innerHTML += 
+      `<div class="offer-item">
         <p><strong>Offered for:</strong> <a href="#" onclick="viewDetails('${offer.targetPostId}', true)">${targetPostTitle}</a></p>
         <p><strong>Your Offered Item:</strong> <a href="#" onclick="viewDetails('${offer.offeredPostId}', true)">${offeredPostTitle}</a></p>
         <p>${dealStatus}</p>
         ${actionButton}
         ${rateButton}
         ${deleteButton}
-      </div>
-    `;
+      </div>`;
   }
-
   if (!hasValidYourOffers) {
     yourOffersDiv.innerHTML = "<p>No offers yet.</p>";
   }
@@ -1772,14 +1792,12 @@ async function loadOffers() {
     const offeredPost = postsMap.get(offer.offeredPostId);
     const targetPost = postsMap.get(offer.targetPostId);
     const fromUser = usersMap.get(offer.fromUserId);
-
-    if (!offeredPost || !targetPost) continue; // ✅ Skip if post doesn’t exist
+    if (!offeredPost || !targetPost) continue; // Skip if post doesn’t exist
 
     hasValidReceivedOffers = true;
     const offeredPostTitle = offeredPost.title;
     const targetPostTitle = targetPost.title;
     const fromUserName = fromUser?.name || "Unknown User";
-
     const dealQuery = query(collection(db, "deals"), where("offerId", "==", offerDoc.id));
     const dealSnapshot = await getDocs(dealQuery);
 
@@ -1796,7 +1814,6 @@ async function loadOffers() {
     } else if (!dealSnapshot.empty) {
       const deal = dealSnapshot.docs[0].data();
       const dealId = dealSnapshot.docs[0].id;
-
       if (deal.status === "closed") {
         dealStatus = "Deal closed. Thank you!";
         actionButton = "";
@@ -1809,8 +1826,8 @@ async function loadOffers() {
       }
     }
 
-    offersReceivedDiv.innerHTML += `
-      <div class="offer-item">
+    offersReceivedDiv.innerHTML += 
+      `<div class="offer-item">
         <p><strong>Offer from:</strong> <a href="#" onclick="viewProfile('${offer.fromUserId}')">${fromUserName}</a></p>
         <p><strong>Message:</strong> ${offer.message || "No message provided."}</p>
         <p><strong>Item Offered:</strong> <a href="#" onclick="viewDetails('${offer.offeredPostId}', true)">${offeredPostTitle}</a></p>
@@ -1820,14 +1837,27 @@ async function loadOffers() {
         ${rateButton}
         ${deleteButton}
         ${declineButton}
-      </div>
-    `;
+      </div>`;
   }
-
   if (!hasValidReceivedOffers) {
     offersReceivedDiv.innerHTML = "<p>No received offers yet.</p>";
   }
+
+  // Update the cache with the new content and timestamp
+  localStorage.setItem("offersCache", JSON.stringify({
+    timestamp: Date.now(),
+    yourOffersHtml: yourOffersDiv.innerHTML,
+    offersReceivedHtml: offersReceivedDiv.innerHTML
+  }));
 }
+
+// Wire up the refresh button to force a data fetch
+document.getElementById("refreshOffersBtn").addEventListener("click", () => {
+  loadOffers(true); // true = force refresh (ignore cache)
+});
+
+// Initial load of offers
+loadOffers();
 
 async function cancelOffer(offerId) {
   const loadingOverlay = document.getElementById('loadingOverlay');
@@ -2849,119 +2879,189 @@ async function declineOffer(offerId) {
   }
 }
 
-// Toggle "Your Posts" section
-function toggleYourPosts() {
-  const yourPostsContainer = document.getElementById("yourPostsContainer");
-  const toggleBtn = document.getElementById("toggleYourPostsBtn");
-
-  // Check if the section is currently hidden
-  if (yourPostsContainer.classList.contains("hidden")) {
-    yourPostsContainer.classList.remove("hidden");
-    toggleBtn.textContent = "Hide Your Posts";
-    loadYourPosts(); // Load posts when showing the section
-  } else {
-    yourPostsContainer.classList.add("hidden");
-    toggleBtn.textContent = "See Your Posts";
-  }
-}
-
-// Load "Your Posts" functionality
-let lastVisiblePost = null;
-let allPostsLoaded = false;
-const POSTS_PER_PAGE = 5;
-
-// 🚀 Load posts when the page loads
-document.addEventListener("DOMContentLoaded", () => {
-  loadYourPosts(true);
-});
-
-// 🚀 Load "Your Posts" with Firestore pagination
-async function loadYourPosts(firstLoad = false) {
-  const user = auth.currentUser;
-  if (!user) return; // ✅ Skip if user not logged in (fixes login issue)
-
-  const yourPostsDiv = document.getElementById("yourPosts");
-  const loadMoreBtn = document.getElementById("loadMoreBtn");
-  const seeLessBtn = document.getElementById("seeLessBtn");
-
-  if (firstLoad) {
-    yourPostsDiv.innerHTML = "Loading...";
-    lastVisiblePost = null;
-    allPostsLoaded = false;
-  }
-
-  if (allPostsLoaded) return; // ✅ Stop fetching if no more posts
-
-  let postsQuery = query(
-    collection(db, "posts"),
-    where("userId", "==", user.uid),
-    orderBy("timestamp", "desc"),
-    limit(POSTS_PER_PAGE)
-  );
-
-  if (lastVisiblePost && !firstLoad) {
-    postsQuery = query(postsQuery, startAfter(lastVisiblePost), limit(POSTS_PER_PAGE));
-  }
-
-  const snapshot = await getDocs(postsQuery);
-
-  if (snapshot.empty && firstLoad) {
-    yourPostsDiv.innerHTML = "<p>You have not created any posts yet.</p>";
-    loadMoreBtn.style.display = "none";
-    seeLessBtn.style.display = "none";
-    return;
-  }
-
-  lastVisiblePost = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null;
-
-  if (firstLoad) yourPostsDiv.innerHTML = ""; // ✅ Clear loading text
-
-  // ✅ Append new posts without duplicating
-  snapshot.docs.forEach((postDoc) => {
-    if (!document.getElementById(`post-${postDoc.id}`)) {
-      const post = postDoc.data();
-      const postElement = document.createElement("div");
-      postElement.className = "your-post-item";
-      postElement.id = `post-${postDoc.id}`;
-      postElement.innerHTML = `
-        <p class="post-title">${post.title}</p>
-        <button class="view-post-btn" onclick="viewDetails('${postDoc.id}', true)">View</button>
-        <button class="delete-post-btn" onclick="deletePost('${postDoc.id}')">Delete</button>
-      `;
-      yourPostsDiv.appendChild(postElement);
-    }
+  // Global variables for pagination and caching
+  let lastVisiblePost = null;
+  let allPostsLoaded = false;
+  const POSTS_PER_PAGE = 5;
+  
+  // When the page loads, attempt to load the first page of posts
+  document.addEventListener("DOMContentLoaded", () => {
+    loadYourPosts(true);
   });
-
-  // ✅ Manage button visibility
-  loadMoreBtn.style.display = snapshot.docs.length < POSTS_PER_PAGE ? "none" : "block";
-  seeLessBtn.style.display = yourPostsDiv.children.length > POSTS_PER_PAGE ? "block" : "none";
-}
-
-// 🚀 "Load More" Button Click Handler (Fetches next 5 posts)
-function loadMorePosts() {
-  if (!allPostsLoaded) {
-    loadYourPosts(false);
+  
+  // Main function to load "Your Posts"
+  // firstLoad: whether this is the initial load (clear container) 
+  // forceRefresh: if true, bypasses cache and fetches fresh data
+  async function loadYourPosts(firstLoad = false, forceRefresh = false) {
+    const user = auth.currentUser;
+    if (!user) return;
+  
+    const yourPostsDiv = document.getElementById("yourPosts");
+    const loadMoreBtn = document.getElementById("loadMoreBtn");
+    const seeLessBtn = document.getElementById("seeLessBtn");
+  
+    // On first load (and when not forcing a refresh), try to use cached data
+    if (firstLoad && !forceRefresh) {
+      const cacheStr = localStorage.getItem("yourPostsCache");
+      if (cacheStr) {
+        try {
+          const cache = JSON.parse(cacheStr);
+          const now = Date.now();
+          // Cache valid for 60 seconds (60000 ms)
+          if (now - cache.timestamp < 60000) {
+            console.log("Using cached posts data");
+            yourPostsDiv.innerHTML = cache.html;
+            if (cache.lastVisiblePostId) {
+              const docRef = doc(db, "posts", cache.lastVisiblePostId);
+              const docSnap = await getDoc(docRef);
+              lastVisiblePost = docSnap.exists() ? docSnap : null;
+            } else {
+              lastVisiblePost = null;
+            }
+            // Adjust button visibility
+            loadMoreBtn.style.display = yourPostsDiv.children.length < POSTS_PER_PAGE ? "none" : "block";
+            seeLessBtn.style.display = yourPostsDiv.children.length > POSTS_PER_PAGE ? "block" : "none";
+            return;
+          } else {
+            console.log("Cached posts data expired, fetching new posts");
+          }
+        } catch (e) {
+          console.error("Error parsing posts cache:", e);
+        }
+      } else {
+        console.log("No posts cache found, fetching new posts");
+      }
+    }
+  
+    // For first load, reset the container and pagination state
+    if (firstLoad) {
+      yourPostsDiv.innerHTML = "Loading...";
+      lastVisiblePost = null;
+      allPostsLoaded = false;
+    }
+  
+    if (allPostsLoaded) return;
+  
+    // Build the query – if there's no lastVisiblePost yet, fetch the first page,
+    // otherwise fetch the next page using startAfter.
+    let postsQuery;
+    if (!lastVisiblePost) {
+      postsQuery = query(
+        collection(db, "posts"),
+        where("userId", "==", user.uid),
+        orderBy("timestamp", "desc"),
+        limit(POSTS_PER_PAGE)
+      );
+    } else {
+      postsQuery = query(
+        collection(db, "posts"),
+        where("userId", "==", user.uid),
+        orderBy("timestamp", "desc"),
+        startAfter(lastVisiblePost),
+        limit(POSTS_PER_PAGE)
+      );
+    }
+  
+    const snapshot = await getDocs(postsQuery);
+  
+    // If no posts are returned on the very first load, display a message.
+    if (snapshot.empty && firstLoad) {
+      yourPostsDiv.innerHTML = "<p>You have not created any posts yet.</p>";
+      loadMoreBtn.style.display = "none";
+      seeLessBtn.style.display = "none";
+      return;
+    }
+  
+    // Update lastVisiblePost to be used for the next pagination call.
+    lastVisiblePost = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null;
+  
+    // If this is the first load, clear the "Loading..." text.
+    if (firstLoad) yourPostsDiv.innerHTML = "";
+  
+    // Append each new post (avoid duplicates by checking element ID)
+    snapshot.docs.forEach((postDoc) => {
+      if (!document.getElementById(`post-${postDoc.id}`)) {
+        const post = postDoc.data();
+        const postElement = document.createElement("div");
+        postElement.className = "your-post-item";
+        postElement.id = `post-${postDoc.id}`;
+        postElement.innerHTML = `
+          <p class="post-title">${post.title}</p>
+          <button class="view-post-btn" onclick="viewDetails('${postDoc.id}', true)">View</button>
+          <button class="delete-post-btn" onclick="deletePost('${postDoc.id}')">Delete</button>
+        `;
+        yourPostsDiv.appendChild(postElement);
+      }
+    });
+  
+    // Manage button visibility:
+    loadMoreBtn.style.display = snapshot.docs.length < POSTS_PER_PAGE ? "none" : "block";
+    seeLessBtn.style.display = yourPostsDiv.children.length > POSTS_PER_PAGE ? "block" : "none";
+  
+    // Update the cache (only on first load) with the posts HTML and the ID of the last visible post.
+    if (firstLoad) {
+      localStorage.setItem("yourPostsCache", JSON.stringify({
+        timestamp: Date.now(),
+        html: yourPostsDiv.innerHTML,
+        lastVisiblePostId: lastVisiblePost ? lastVisiblePost.id : null
+      }));
+    }
   }
-}
-
-// 🚀 "See Less" Button Click Handler (Resets to first 5 posts)
-function seeLessPosts() {
-  const yourPostsDiv = document.getElementById("yourPosts");
-  const loadMoreBtn = document.getElementById("loadMoreBtn");
-  const seeLessBtn = document.getElementById("seeLessBtn");
-
-  // ✅ Remove extra posts, keep only the first 5
-  while (yourPostsDiv.children.length > POSTS_PER_PAGE) {
-    yourPostsDiv.removeChild(yourPostsDiv.lastChild);
+  
+  // "Load More" button handler: fetch next page (force a fresh fetch)
+  function loadMorePosts() {
+    loadYourPosts(false, true);
   }
-
-  lastVisiblePost = null;
-  allPostsLoaded = false;
-
-  // ✅ Hide "See Less" button since we're back to 5 posts
-  seeLessBtn.style.display = "none";
-  loadMoreBtn.style.display = "block";
-}
+  
+  // "See Less" button handler: trim the posts list to only the first page
+  function seeLessPosts() {
+    const yourPostsDiv = document.getElementById("yourPosts");
+    const loadMoreBtn = document.getElementById("loadMoreBtn");
+    const seeLessBtn = document.getElementById("seeLessBtn");
+  
+    // Remove extra posts until only POSTS_PER_PAGE remain
+    while (yourPostsDiv.children.length > POSTS_PER_PAGE) {
+      yourPostsDiv.removeChild(yourPostsDiv.lastChild);
+    }
+  
+    // Instead of resetting lastVisiblePost to null, update it to the last visible post.
+    if (yourPostsDiv.children.length > 0) {
+      // Extract the post id from the DOM element's id (assumes format "post-<docId>")
+      const lastPostId = yourPostsDiv.children[yourPostsDiv.children.length - 1].id.replace("post-", "");
+      getDoc(doc(db, "posts", lastPostId))
+        .then((docSnap) => {
+          lastVisiblePost = docSnap.exists() ? docSnap : null;
+          seeLessBtn.style.display = "none";
+          loadMoreBtn.style.display = "block";
+        })
+        .catch((error) => {
+          console.error("Error retrieving last post snapshot:", error);
+          lastVisiblePost = null;
+          seeLessBtn.style.display = "none";
+          loadMoreBtn.style.display = "block";
+        });
+    } else {
+      lastVisiblePost = null;
+      seeLessBtn.style.display = "none";
+      loadMoreBtn.style.display = "block";
+    }
+  }
+  
+  // "Refresh Posts" button handler: forces a fresh load (bypassing the cache)
+  function refreshPosts() {
+    console.log("Manual refresh triggered, fetching new posts");
+    loadYourPosts(true, true);
+  }
+  
+  // Toggle the visibility of the "Your Posts" container
+  function toggleYourPosts() {
+    const container = document.getElementById("yourPostsContainer");
+    container.classList.toggle("hidden");
+    // If the container is now visible, load posts (cache may be used if valid)
+    if (!container.classList.contains("hidden")) {
+      loadYourPosts(true);
+    }
+  }
 
 // Delete a post
 async function deletePost(postId) {
@@ -3409,3 +3509,4 @@ window.filterByHashtag = filterByHashtag;
 window.deleteOffer= deleteOffer;
 window.loadMorePosts= loadMorePosts;
 window.seeLessPosts= seeLessPosts;
+window.refreshPosts= refreshPosts;

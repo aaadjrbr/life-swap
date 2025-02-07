@@ -690,6 +690,10 @@ div#filterCitySuggestions {
   display: none;
 }
 
+button#loadMoreBtn, button#seeLessBtn {
+  margin-top: 20px;
+}
+
 #yourPostsContainer {
   margin-top: 20px;
   border: 1px solid #ddd;

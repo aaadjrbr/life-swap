@@ -41,18 +41,22 @@
 <section id="yourPostsContainer" class="hidden">
   <div id="yourPosts"></div>
   <br/><br/>
+  <!-- Button to manually refresh posts -->
+  <button id="refreshPostsBtn" onclick="refreshPosts()">Refresh Posts</button>
   <button id="loadMoreBtn" style="display: none;" onclick="loadMorePosts()">Load More</button>
   <button id="seeLessBtn" style="display: none;" onclick="seeLessPosts()">See Less</button>
 </section>
 <button id="toggleYourPostsBtn" onclick="toggleYourPosts()">See Your Posts</button>
 
 
-    <section id="offers">
-      <h3>Your Offers</h3>
-      <div id="yourOffers"></div>
-      <h3>Offers You Received</h3>
-      <div id="offersReceived"></div>
-    </section>
+<section id="offers">
+  <h3>Your Offers</h3>
+  <button id="refreshOffersBtn">🔄 Refresh Offers</button>
+  <div id="yourOffers"></div>
+  <h3>Offers You Received</h3>
+  <div id="offersReceived"></div>
+</section>
+
 
     <h3 style="font-size: 1.3em;"><a href="#createPost">Start Swapping! Post now</a></h3>
     <h3>Explore Listings (Map)</h3>
