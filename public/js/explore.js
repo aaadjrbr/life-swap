@@ -1659,13 +1659,6 @@ function closeOfferSwap() {
   document.getElementById("offerSwapForm").reset();
 }
 
-let cachedOffers = {
-  yourOffers: new Map(),
-  receivedOffers: new Map(),
-};
-let unsubscribeYourOffers = null;
-let unsubscribeReceivedOffers = null;
-
 async function loadOffers() {
   const user = auth.currentUser;
   if (!user) return;
@@ -1676,77 +1669,37 @@ async function loadOffers() {
   yourOffersDiv.innerHTML = "Loading...";
   offersReceivedDiv.innerHTML = "Loading...";
 
-  // Stop previous Firestore listeners if they exist
-  if (unsubscribeYourOffers) unsubscribeYourOffers();
-  if (unsubscribeReceivedOffers) unsubscribeReceivedOffers();
+  // Fetch only the offers **related** to the user
+  const [yourOffersSnapshot, offersReceivedSnapshot] = await Promise.all([
+    getDocs(query(collection(db, "offers"), where("fromUserId", "==", user.uid))),
+    getDocs(query(collection(db, "offers"), where("toUserId", "==", user.uid))),
+  ]);
 
-  const yourOffersQuery = query(
-    collection(db, "offers"),
-    where("fromUserId", "==", user.uid),
-    orderBy("timestamp", "desc"),
-    limit(10) // 🚀 Fetch only the latest 10 offers
-  );
-
-  const offersReceivedQuery = query(
-    collection(db, "offers"),
-    where("toUserId", "==", user.uid),
-    orderBy("timestamp", "desc"),
-    limit(10) // 🚀 Fetch only the latest 10 offers
-  );
-
-  unsubscribeYourOffers = onSnapshot(yourOffersQuery, async (yourOffersSnapshot) => {
-    await processOffers(yourOffersSnapshot, "yourOffers", yourOffersDiv, user);
-  });
-
-  unsubscribeReceivedOffers = onSnapshot(offersReceivedQuery, async (offersReceivedSnapshot) => {
-    await processOffers(offersReceivedSnapshot, "receivedOffers", offersReceivedDiv, user);
-  });
-}
-
-// Unsubscribe function (to stop Firestore listening when user leaves the page)
-function stopOfferListeners() {
-  if (unsubscribeYourOffers) {
-    unsubscribeYourOffers();
-    unsubscribeYourOffers = null;
-  }
-  if (unsubscribeReceivedOffers) {
-    unsubscribeReceivedOffers();
-    unsubscribeReceivedOffers = null;
-  }
-}
-
-// 🚀 Ensure we stop listening when user leaves the page
-window.addEventListener("beforeunload", stopOfferListeners);
-
-async function processOffers(snapshot, type, containerDiv, user) {
-  let offers = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-
-  // Filter out already cached offers to prevent duplicates
-  let newOffers = offers.filter((offer) => !cachedOffers[type].has(offer.id));
-
-  // If there are no new changes, do nothing
-  if (newOffers.length === 0 && cachedOffers[type].size > 0) return;
-
-  // Clear UI before re-rendering to prevent duplicates
-  containerDiv.innerHTML = "";
+  let hasValidYourOffers = false;
+  let hasValidReceivedOffers = false;
 
   let postIds = new Set();
   let userIds = new Set();
 
-  // Collect all post & user IDs to fetch in batch
-  offers.forEach((offer) => {
-    postIds.add(offer.targetPostId);
-    postIds.add(offer.offeredPostId);
-    userIds.add(offer.fromUserId);
+  // Collect **only relevant** post & user IDs for batch fetching
+  yourOffersSnapshot.forEach((doc) => {
+    const offer = doc.data();
+    if (offer.targetPostId) postIds.add(offer.targetPostId);
+    if (offer.offeredPostId) postIds.add(offer.offeredPostId);
   });
 
-  // Batch fetch all required posts & users
-  const postDocs = postIds.size
-    ? await getDocs(query(collection(db, "posts"), where("__name__", "in", Array.from(postIds))))
-    : [];
-  const userDocs = userIds.size
-    ? await getDocs(query(collection(db, "users"), where("__name__", "in", Array.from(userIds))))
-    : [];
+  offersReceivedSnapshot.forEach((doc) => {
+    const offer = doc.data();
+    if (offer.targetPostId) postIds.add(offer.targetPostId);
+    if (offer.offeredPostId) postIds.add(offer.offeredPostId);
+    if (offer.fromUserId) userIds.add(offer.fromUserId);
+  });
+
+  // 🚀 Batch fetch **only needed** posts & users
+  const [postDocs, userDocs] = await Promise.all([
+    postIds.size ? getDocs(query(collection(db, "posts"), where("__name__", "in", Array.from(postIds)))) : [],
+    userIds.size ? getDocs(query(collection(db, "users"), where("__name__", "in", Array.from(userIds)))) : [],
+  ]);
 
   let postsMap = new Map();
   let usersMap = new Map();
@@ -1754,38 +1707,126 @@ async function processOffers(snapshot, type, containerDiv, user) {
   postDocs.forEach((doc) => postsMap.set(doc.id, doc.data()));
   userDocs.forEach((doc) => usersMap.set(doc.id, doc.data()));
 
-  // Build HTML for each offer
-  let offersHTML = offers.map((offer) => {
+  // Display "Your Offers"
+  yourOffersDiv.innerHTML = "";
+  for (const offerDoc of yourOffersSnapshot.docs) {
+    const offer = offerDoc.data();
     const targetPost = postsMap.get(offer.targetPostId);
     const offeredPost = postsMap.get(offer.offeredPostId);
-    const fromUser = usersMap.get(offer.fromUserId);
 
-    if (!targetPost || !offeredPost) return "";
+    if (!targetPost || !offeredPost) continue; // ✅ Skip if post doesn’t exist
+
+    hasValidYourOffers = true;
+    const targetPostTitle = targetPost.title;
+    const offeredPostTitle = offeredPost.title;
+
+    const dealQuery = query(collection(db, "deals"), where("offerId", "==", offerDoc.id));
+    const dealSnapshot = await getDocs(dealQuery);
 
     let dealStatus = "Offer pending.";
-    let actionButton = `<button class="cancel-offer-btn" onclick="cancelOffer('${offer.id}')">Cancel Offer</button>`;
+    let actionButton = `<button class="cancel-offer-btn" onclick="cancelOffer('${offerDoc.id}')">Cancel Offer</button>`;
+    let rateButton = "";
+    let deleteButton = "";
 
     if (offer.status === "declined") {
       dealStatus = "Offer declined.";
-      actionButton = `<button class="cancel-offer-btn" onclick="cancelOffer('${offer.id}')">Remove Offer</button>`;
+      actionButton = `<button class="cancel-offer-btn" onclick="cancelOffer('${offerDoc.id}')">Remove Offer</button>`;
+    } else if (!dealSnapshot.empty) {
+      const deal = dealSnapshot.docs[0].data();
+      const dealId = dealSnapshot.docs[0].id;
+
+      if (deal.status === "closed") {
+        dealStatus = "Deal closed. Thank you!";
+        actionButton = "";
+        rateButton = `<button class="rate-btn" onclick="openRatingModal('${dealId}')">Rate User</button>`;
+        deleteButton = `<button class="delete-offer-btn" onclick="deleteOffer('${dealId}')">Delete Offer</button>`;
+      } else if (deal.status === "active") {
+        dealStatus = "Deal accepted. Start chatting!";
+        actionButton = `<button class="chat-btn" onclick="openChat('${dealId}')">Open Chat</button>`;
+        if (user.uid === offer.fromUserId) {
+          actionButton += `<button class="cancel-offer-btn" onclick="cancelOffer('${offerDoc.id}')">Cancel Offer</button>`;
+        }
+      }
     }
 
-    return `
-      <div class="offer-item" id="offer-${offer.id}">
-        <p><strong>Offer from:</strong> <a href="#" onclick="viewProfile('${offer.fromUserId}')">${fromUser?.name || "Unknown User"}</a></p>
-        <p><strong>Offered Item:</strong> <a href="#" onclick="viewDetails('${offer.offeredPostId}', true)">${offeredPost.title}</a></p>
-        <p><strong>For Your Post:</strong> <a href="#" onclick="viewDetails('${offer.targetPostId}', true)">${targetPost.title}</a></p>
+    yourOffersDiv.innerHTML += `
+      <div class="offer-item">
+        <p><strong>Offered for:</strong> <a href="#" onclick="viewDetails('${offer.targetPostId}', true)">${targetPostTitle}</a></p>
+        <p><strong>Your Offered Item:</strong> <a href="#" onclick="viewDetails('${offer.offeredPostId}', true)">${offeredPostTitle}</a></p>
         <p>${dealStatus}</p>
         ${actionButton}
+        ${rateButton}
+        ${deleteButton}
       </div>
     `;
-  }).join("");
+  }
 
-  // Cache the offers as objects instead of raw HTML
-  offers.forEach((offer) => cachedOffers[type].set(offer.id, offer));
+  if (!hasValidYourOffers) {
+    yourOffersDiv.innerHTML = "<p>No offers yet.</p>";
+  }
 
-  // Update UI with fresh offers only
-  containerDiv.innerHTML = offersHTML;
+  // Display "Offers You Received"
+  offersReceivedDiv.innerHTML = "";
+  for (const offerDoc of offersReceivedSnapshot.docs) {
+    const offer = offerDoc.data();
+    const offeredPost = postsMap.get(offer.offeredPostId);
+    const targetPost = postsMap.get(offer.targetPostId);
+    const fromUser = usersMap.get(offer.fromUserId);
+
+    if (!offeredPost || !targetPost) continue; // ✅ Skip if post doesn’t exist
+
+    hasValidReceivedOffers = true;
+    const offeredPostTitle = offeredPost.title;
+    const targetPostTitle = targetPost.title;
+    const fromUserName = fromUser?.name || "Unknown User";
+
+    const dealQuery = query(collection(db, "deals"), where("offerId", "==", offerDoc.id));
+    const dealSnapshot = await getDocs(dealQuery);
+
+    let dealStatus = "Offer pending.";
+    let actionButton = `<button class="accept-btn" onclick="acceptOffer('${offerDoc.id}', this)">Accept</button>`;
+    let declineButton = `<button class="decline-btn" onclick="declineOffer('${offerDoc.id}')">Decline</button>`;
+    let rateButton = "";
+    let deleteButton = "";
+
+    if (offer.status === "declined") {
+      dealStatus = "You declined this offer.";
+      actionButton = "";
+      declineButton = "";
+    } else if (!dealSnapshot.empty) {
+      const deal = dealSnapshot.docs[0].data();
+      const dealId = dealSnapshot.docs[0].id;
+
+      if (deal.status === "closed") {
+        dealStatus = "Deal closed. Thank you!";
+        actionButton = "";
+        declineButton = "";
+        rateButton = `<button class="rate-btn" onclick="openRatingModal('${dealId}')">Rate User</button>`;
+        deleteButton = `<button class="delete-offer-btn" onclick="deleteOffer('${dealId}')">Delete Offer</button>`;
+      } else if (deal.status === "active") {
+        dealStatus = "Deal accepted. Start chatting!";
+        actionButton = `<button class="chat-btn" onclick="openChat('${dealId}')">Open Chat</button>`;
+      }
+    }
+
+    offersReceivedDiv.innerHTML += `
+      <div class="offer-item">
+        <p><strong>Offer from:</strong> <a href="#" onclick="viewProfile('${offer.fromUserId}')">${fromUserName}</a></p>
+        <p><strong>Message:</strong> ${offer.message || "No message provided."}</p>
+        <p><strong>Item Offered:</strong> <a href="#" onclick="viewDetails('${offer.offeredPostId}', true)">${offeredPostTitle}</a></p>
+        <p><strong>For Your Post:</strong> <a href="#" onclick="viewDetails('${offer.targetPostId}', true)">${targetPostTitle}</a></p>
+        <p>${dealStatus}</p>
+        ${actionButton}
+        ${rateButton}
+        ${deleteButton}
+        ${declineButton}
+      </div>
+    `;
+  }
+
+  if (!hasValidReceivedOffers) {
+    offersReceivedDiv.innerHTML = "<p>No received offers yet.</p>";
+  }
 }
 
 async function cancelOffer(offerId) {
