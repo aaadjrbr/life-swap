@@ -11,7 +11,7 @@ import { getFirestore,
   doc, getDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
+//import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-functions.js";
 
 // Firebase config
 const firebaseConfig = {
@@ -26,6 +26,8 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+//const functions = getFunctions(app, "us-central1");
+//const sendChatNotification = httpsCallable(functions, "sendChatNotification");
 const db = initializeFirestore(app, {
   cacheSizeBytes: CACHE_SIZE_UNLIMITED, // Optional: Adjust cache size as needed
   experimentalForceLongPolling: true,   // Optional: Improve reliability in certain network conditions
@@ -2013,6 +2015,9 @@ async function acceptOffer(offerId, buttonElement) {
 // Global variables for cleanup
 let chatUnsubscribe = null;
 let chatAbortController = null;
+let chatMessages = [];            // Array to hold all loaded messages
+let lastVisibleMessage = null;    // For pagination: oldest message in the current batch
+let fetchingOlderMessages = false; // Prevent concurrent fetches
 
 async function openChat(dealId) {
   // Cleanup previous chat session
@@ -2033,94 +2038,46 @@ async function openChat(dealId) {
   const imageInput = document.getElementById("imageInput");
   const recordButton = document.getElementById("recordButton");
 
-  // Image click handling (using event delegation)
-  chatContainer.addEventListener('click', (e) => {
-    const img = e.target.closest('.chat-image');
-    if (img) {
-      const modal = document.getElementById('imageModal');
-      const modalImg = document.getElementById('expandedImage');
-      modal.classList.remove('hidden');
-      modalImg.src = img.src;
-    }
-  }, { signal });
-
-// Add modal close handling
-document.querySelector('.close-modal').addEventListener('click', () => {
-  document.getElementById('imageModal').classList.add('hidden');
-}, { signal });
-
-  let mediaRecorder;
-  let audioChunks = [];
-
+  // Check if dealId is defined
   if (!dealId) {
     console.error("Deal ID is required to open the chat.");
     return;
   }
 
+  // Image click handling (using event delegation)
+  chatContainer.addEventListener(
+    "click",
+    (e) => {
+      const img = e.target.closest(".chat-image");
+      if (img) {
+        const modal = document.getElementById("imageModal");
+        const modalImg = document.getElementById("expandedImage");
+        modal.classList.remove("hidden");
+        modalImg.src = img.src;
+      }
+    },
+    { signal }
+  );
+
+  // Modal close handling for the image modal
+  document.querySelector(".close-modal").addEventListener(
+    "click",
+    () => {
+      document.getElementById("imageModal").classList.add("hidden");
+    },
+    { signal }
+  );
+
   // Fetch deal details
   const dealRef = doc(db, "deals", dealId);
   const dealSnapshot = await getDoc(dealRef);
-
   if (!dealSnapshot.exists()) {
     console.error("Deal not found!");
     return;
   }
-
   const deal = dealSnapshot.data();
 
-  // Fetch participant names
-  const participants = {};
-  async function fetchUserName(userId) {
-    if (!participants[userId]) {
-      const userRef = doc(db, "users", userId);
-      const userDoc = await getDoc(userRef);
-      participants[userId] = userDoc.exists() ? userDoc.data().name : "Unknown User";
-    }
-    return participants[userId];
-  }
-
-  // Real-time message listener with proper cleanup
-  const messagesQuery = query(collection(db, "chats", dealId, "messages"), orderBy("timestamp"));
-  chatUnsubscribe = onSnapshot(messagesQuery, async (snapshot) => {
-    chatContainer.innerHTML = "";
-    const currentUser = auth.currentUser;
-
-    for (const doc of snapshot.docs) {
-      const msg = doc.data();
-      const senderName = await fetchUserName(msg.senderId);
-      const formattedTimestamp = msg.timestamp
-        ? new Date(msg.timestamp.toDate()).toLocaleString()
-        : "Unknown Time";
-      const isSender = currentUser && currentUser.uid === msg.senderId;
-      const messageClass = isSender ? "sender-message" : "recipient-message";
-
-      let messageContent = `
-        <p class="${messageClass}">
-          <strong>${senderName}:</strong>
-      `;
-
-      if (msg.message) {
-        messageContent += `${msg.message}`;
-      } else if (msg.imageUrl) {
-        messageContent += `<br><img src="${msg.imageUrl}" alt="Image" class="chat-image" />`;
-      } else if (msg.voiceUrl) {
-        try {
-          const voiceUrl = msg.voiceUrl.startsWith("https://")
-            ? msg.voiceUrl
-            : await getDownloadURL(ref(storage, msg.voiceUrl));
-          messageContent += `<br><audio controls src="${voiceUrl}" class="chat-audio"></audio>`;
-        } catch (error) {
-          console.error("Error resolving voiceUrl:", error);
-          messageContent += `<br><small>Error loading voice message</small>`;
-        }
-      }
-
-      messageContent += `<br><small>${formattedTimestamp}</small></p>`;
-      chatContainer.innerHTML += messageContent;
-    }
-  });
-
-  // Close deal button handling
+  // Handle the close deal button based on deal status
   if (deal.status === "active") {
     closeDealBtn.classList.remove("hidden");
     closeDealBtn.onclick = () => closeDeal(dealId);
@@ -2128,32 +2085,229 @@ document.querySelector('.close-modal').addEventListener('click', () => {
     closeDealBtn.classList.add("hidden");
   }
 
+  // Show the chat modal
   chatModal.classList.remove("hidden");
 
-  // Notification handler
-  async function handleMessageNotification(content) {
-    try {
-      const updatedDealSnapshot = await getDoc(dealRef);
-      if (!updatedDealSnapshot.exists()) return;
+  // Reset message variables for this chat session
+  chatMessages = [];
+  lastVisibleMessage = null;
 
-      const updatedDeal = updatedDealSnapshot.data();
-      const currentUserId = auth.currentUser.uid;
-      const otherUserId = updatedDeal.fromUserId === currentUserId 
-        ? updatedDeal.toUserId 
+  // Load initial messages (last 10 messages)
+  await loadInitialMessages(dealId);
+
+  // Set up a scroll listener to load older messages when the user scrolls near the top
+  chatContainer.addEventListener(
+    "scroll",
+    () => {
+      if (chatContainer.scrollTop < 100) {
+        loadOlderMessages(dealId);
+      }
+    },
+    { signal }
+  );
+
+  // Set up real-time listener for new messages
+  listenForNewMessages(dealId);
+
+  // --- Helper Functions ---
+
+  // Load the initial (most recent) 10 messages.
+  async function loadInitialMessages(dealId) {
+    const messagesQuery = query(
+      collection(db, "chats", dealId, "messages"),
+      orderBy("timestamp", "desc"),
+      limit(10)
+    );
+    const querySnapshot = await getDocs(messagesQuery);
+    let messages = [];
+    querySnapshot.forEach(docSnap => {
+      messages.push({ id: docSnap.id, ...docSnap.data() });
+    });
+    messages.reverse(); // so that the oldest message is first
+    chatMessages = messages;
+    if (querySnapshot.docs.length > 0) {
+      lastVisibleMessage = querySnapshot.docs[querySnapshot.docs.length - 1];
+    }
+    renderMessages();
+    scrollToBottom();
+  }
+
+  // Load older messages when scrolling up (pagination)
+  async function loadOlderMessages(dealId) {
+    if (fetchingOlderMessages || !lastVisibleMessage) return;
+    fetchingOlderMessages = true;
+    const olderQuery = query(
+      collection(db, "chats", dealId, "messages"),
+      orderBy("timestamp", "desc"),
+      startAfter(lastVisibleMessage),
+      limit(10)
+    );
+    const snapshot = await getDocs(olderQuery);
+    let olderMessages = [];
+    snapshot.forEach(docSnap => {
+      olderMessages.push({ id: docSnap.id, ...docSnap.data() });
+    });
+    olderMessages.reverse();
+    // Prepend older messages, avoiding duplicates
+    olderMessages.forEach(msg => {
+      if (!chatMessages.find(m => m.id === msg.id)) {
+        chatMessages.unshift(msg);
+      }
+    });
+    if (snapshot.docs.length > 0) {
+      lastVisibleMessage = snapshot.docs[snapshot.docs.length - 1];
+    } else {
+      lastVisibleMessage = null;
+    }
+    prependMessages(olderMessages);
+    fetchingOlderMessages = false;
+  }
+
+  // Listen for new messages in real time and append them
+  function listenForNewMessages(dealId) {
+    let q;
+    if (chatMessages.length > 0) {
+      const lastTimestamp = chatMessages[chatMessages.length - 1].timestamp;
+      q = query(
+        collection(db, "chats", dealId, "messages"),
+        orderBy("timestamp"),
+        where("timestamp", ">", lastTimestamp)
+      );
+    } else {
+      q = query(collection(db, "chats", dealId, "messages"), orderBy("timestamp"));
+    }
+    chatUnsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          const newMsg = { id: change.doc.id, ...change.doc.data() };
+          if (!chatMessages.find(msg => msg.id === newMsg.id)) {
+            chatMessages.push(newMsg);
+            appendMessage(newMsg);
+            // Auto-scroll if the user is near the bottom
+            if (shouldScrollToBottom()) {
+              scrollToBottom();
+            }
+          }
+        }
+        // Optionally, handle "modified" or "removed" changes if needed.
+      });
+    });
+  }
+
+  // Scroll the chat container to the bottom
+  function scrollToBottom() {
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+  }
+
+  // Determine whether the user is near the bottom to auto-scroll
+  function shouldScrollToBottom() {
+    return (chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight) < 150;
+  }
+
+  // Render all messages (initial load)
+  function renderMessages() {
+    chatContainer.innerHTML = "";
+    chatMessages.forEach(msg => {
+      const messageEl = createMessageElement(msg);
+      chatContainer.appendChild(messageEl);
+    });
+  }
+
+  // Append a new message element to the chat container
+  function appendMessage(msg) {
+    const messageEl = createMessageElement(msg);
+    chatContainer.appendChild(messageEl);
+  }
+
+  // Prepend older messages (and adjust scroll so it doesn't jump)
+  function prependMessages(messages) {
+    const previousScrollHeight = chatContainer.scrollHeight;
+    messages.forEach(msg => {
+      const messageEl = createMessageElement(msg);
+      chatContainer.insertBefore(messageEl, chatContainer.firstChild);
+    });
+    chatContainer.scrollTop = chatContainer.scrollHeight - previousScrollHeight;
+  }
+
+  // Utility: Create a DOM element for a message
+  function createMessageElement(msg) {
+    const currentUser = auth.currentUser;
+    const isSender = currentUser && currentUser.uid === msg.senderId;
+    const messageClass = isSender ? "sender-message" : "recipient-message";
+    // For simplicity, display "You" if sender is current user; otherwise "User"
+    const senderName = isSender ? "You" : "User";
+    const formattedTimestamp = msg.timestamp
+      ? new Date(msg.timestamp.toDate()).toLocaleString()
+      : "Unknown Time";
+    const p = document.createElement("p");
+    p.className = messageClass;
+    p.innerHTML = `<strong>${senderName}:</strong> `;
+    if (msg.message) {
+      p.innerHTML += msg.message;
+    } else if (msg.imageUrl) {
+      p.innerHTML += `<br><img src="${msg.imageUrl}" alt="Image" class="chat-image" />`;
+    } else if (msg.voiceUrl) {
+      p.innerHTML += `<br><audio controls src="${msg.voiceUrl}" class="chat-audio"></audio>`;
+    }
+    p.innerHTML += `<br><small>${formattedTimestamp}</small>`;
+    return p;
+  }
+
+// Notification handler
+// Simple in-memory caches for deal and user info
+const dealCache = new Map();
+const userCache = new Map();
+
+async function handleMessageNotification(content, dealId, dealRef) {
+  console.log("dealId:", typeof dealId, dealId);
+  console.log("dealRef:", typeof dealRef, dealRef);
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      console.error("User not authenticated.");
+      return;
+    }
+    const currentUserId = currentUser.uid;
+
+    // Cache the deal document for a fixed period (e.g., 5 minutes)
+    let updatedDealSnapshot;
+    if (dealCache.has(dealId)) {
+      updatedDealSnapshot = dealCache.get(dealId);
+    } else {
+      updatedDealSnapshot = await getDoc(dealRef);
+      if (!updatedDealSnapshot.exists()) return;
+      dealCache.set(dealId, updatedDealSnapshot);
+      // Expire this cache after 5 minutes
+      setTimeout(() => dealCache.delete(dealId), 5 * 60 * 1000);
+    }
+
+    const updatedDeal = updatedDealSnapshot.data();
+    const otherUserId =
+      updatedDeal.fromUserId === currentUserId
+        ? updatedDeal.toUserId
         : updatedDeal.fromUserId;
 
-      const senderDoc = await getDoc(doc(db, "users", currentUserId));
-      const senderName = senderDoc.exists() ? senderDoc.data().name : "Unknown User";
-
-      await addNotification(otherUserId, {
-        type: "newMessage",
-        content: `${senderName} sent you: ${content}`,
-        link: `https://life-swap-6065e.web.app/explore.html?chat=${dealId}`,
-      });
-    } catch (error) {
-      console.error("Error handling notification:", error);
+    // Cache the sender's user document for the same period
+    let senderDoc;
+    if (userCache.has(currentUserId)) {
+      senderDoc = userCache.get(currentUserId);
+    } else {
+      senderDoc = await getDoc(doc(db, "users", currentUserId));
+      userCache.set(currentUserId, senderDoc);
+      setTimeout(() => userCache.delete(currentUserId), 5 * 60 * 1000);
     }
+    const senderName = senderDoc.exists() ? senderDoc.data().name : "Unknown User";
+
+    // Send the notification
+    await addNotification(otherUserId, {
+      type: "newMessage",
+      content: `${senderName} sent you: ${content}`,
+      link: `https://life-swap-6065e.web.app/explore.html?chat=${dealId}`,
+    });
+  } catch (error) {
+    console.error("Error handling notification:", error);
   }
+}
 
   // Image handling with cleanup
   document.getElementById("imageButton").addEventListener("click", 
@@ -2185,7 +2339,7 @@ imageInput.addEventListener("change", async (e) => {
       timestamp: new Date(),
     });
 
-    await handleMessageNotification("an image");
+    await handleMessageNotification("an image", dealId, dealRef);
   } catch (error) {
     console.error("Error handling image:", error);
     alert("Failed to send image.");
@@ -2224,7 +2378,7 @@ imageInput.addEventListener("change", async (e) => {
             timestamp: new Date(),
           });
 
-          await handleMessageNotification("a voice message");
+          await handleMessageNotification("a voice message", dealId, dealRef);
         } finally {
           stream.getTracks().forEach(track => track.stop());
         }
@@ -2250,7 +2404,11 @@ imageInput.addEventListener("change", async (e) => {
       });
 
       document.getElementById("chatMessage").value = "";
-      await handleMessageNotification(`"${message.substring(0, 30)}${message.length > 30 ? '...' : ''}"`);
+      await handleMessageNotification(
+        `"${message.substring(0, 30)}${message.length > 30 ? '...' : ''}"`,
+        dealId,
+        dealRef
+      );
     } catch (error) {
       console.error("Error sending message:", error);
     }
