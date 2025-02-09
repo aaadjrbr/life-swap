@@ -165,15 +165,18 @@
         </select>
         
 
-        <label for="location">Location (latitude, longitude):</label>
-        <input type="text" id="latitude" name="latitude" placeholder="Latitude" readonly>
-        <input type="text" id="longitude" name="longitude" placeholder="Longitude" readonly>
+        <fieldset>
+          <legend>Location (latitude, longitude):</legend>
+          <input type="text" id="latitude" name="latitude" placeholder="Latitude" readonly>
+          <input type="text" id="longitude" name="longitude" placeholder="Longitude" readonly>       
         <!-- Add loading indicator HTML -->
         <div id="locationLoading" style="display: none;">
         <div class="spinner"></div>
         <span>Finding your location...</span>
         </div>
+        <br/>
         <button type="button" id="getLocationButton">📍 Click here to add your current location</button>
+        </fieldset> 
         
         <!-- City and Distance -->
         <div class="city-autocomplete">
