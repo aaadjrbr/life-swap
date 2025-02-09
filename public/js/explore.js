@@ -1524,6 +1524,23 @@ async function viewProfile(userId) {
 
   const userData = userDoc.data();
 
+  const ratingsQuery = query(
+    collection(db, "ratings"),
+    where("rateeId", "==", userId)
+  );
+  const ratingsSnapshot = await getDocs(ratingsQuery);
+
+  let totalRating = 0;
+  let ratingCount = 0;
+  ratingsSnapshot.forEach((ratingDoc) => {
+    const ratingData = ratingDoc.data();
+    totalRating += ratingData.rating;
+    ratingCount += 1;
+  });
+  const averageRating = ratingCount > 0
+    ? (totalRating / ratingCount).toFixed(1)
+    : "No reviews";
+
   // Initialize state for pagination
   let lastVisibleRating = null; // Tracks last rating in the current batch
   let allRatingsLoaded = false; // Flag for when no more ratings exist
@@ -1612,7 +1629,11 @@ async function viewProfile(userId) {
     <div class="profile-header">
       <img src="${userData.profilePhoto || "https://via.placeholder.com/150"}" alt="${userData.name}" class="profile-photo" />
       <h3>${userData.name || "Unknown User"}</h3>
-      <p>★ No reviews yet</p>
+      <p class="post-rating">
+      ${ratingCount > 0 
+        ? `★ ${averageRating} (${ratingCount} reviews)` 
+        : "★ No reviews yet"}
+      </p>
     </div>
     <div class="profile-details">
       <p><strong>Bio:</strong> ${userData.bio || "No bio provided."}</p>
