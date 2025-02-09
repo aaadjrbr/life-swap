@@ -1322,6 +1322,73 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
+// Helper functions for caching the profile data
+
+/**
+ * Returns the cached profile data for the given userId if it is less than 24 hours old.
+ * Otherwise, returns null and removes the stale cache.
+ */
+function getCachedProfile(userId) {
+  const cacheKey = "profileCache_" + userId;
+  const cachedStr = localStorage.getItem(cacheKey);
+  if (cachedStr) {
+    try {
+      const cache = JSON.parse(cachedStr);
+      const age = Date.now() - cache.timestamp;
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+      if (age < twentyFourHours) {
+        return cache.data;
+      } else {
+        localStorage.removeItem(cacheKey);
+        console.log("Profile cache expired and removed.");
+      }
+    } catch (error) {
+      console.error("Error parsing profile cache:", error);
+    }
+  }
+  return null;
+}
+
+/**
+ * Returns the remaining time (in hours) until the cache for the given userId expires.
+ */
+function getCacheExpiry(userId) {
+  const cacheKey = "profileCache_" + userId;
+  const cachedStr = localStorage.getItem(cacheKey);
+  if (cachedStr) {
+    try {
+      const cache = JSON.parse(cachedStr);
+      const twentyFourHours = 24 * 60 * 60 * 1000;
+      const remainingMs = twentyFourHours - (Date.now() - cache.timestamp);
+      return (remainingMs / (60 * 60 * 1000)).toFixed(2); // in hours
+    } catch (error) {
+      console.error("Error parsing profile cache:", error);
+    }
+  }
+  return "0";
+}
+
+/**
+ * Caches the given profile data for the specified userId with the current timestamp.
+ */
+function cacheProfileData(userId, data) {
+  const cacheKey = "profileCache_" + userId;
+  localStorage.setItem(cacheKey, JSON.stringify({
+    timestamp: Date.now(),
+    data: data
+  }));
+  console.log("Profile data cached for 24 hours.");
+}
+
+/**
+ * Invalidates (removes) the cached profile data for the given userId.
+ */
+function invalidateProfileCache(userId) {
+  const cacheKey = "profileCache_" + userId;
+  localStorage.removeItem(cacheKey);
+  console.log("Profile cache invalidated.");
+}
+
 // Profile Editing
 async function openProfileEditor() {
   const user = auth.currentUser;
@@ -1329,22 +1396,33 @@ async function openProfileEditor() {
     alert("You must be logged in to edit your profile!");
     return;
   }
-
-  const userRef = doc(db, "users", user.uid);
-  const userDoc = await getDoc(userRef);
-
-  if (userDoc.exists()) {
-    const userData = userDoc.data();
-    document.getElementById("userName").value = userData.name || "";
-    document.getElementById("userBio").value = userData.bio || "";
-    document.getElementById("profileCity").value = userData.city || "";
-    document.getElementById("profileDistance").value = userData.distance || "";
-    document.getElementById("instagram").value = userData.instagram || ""; 
-    document.getElementById("phone").value = userData.phone || "";
+  const userId = user.uid;
+  let profileData = getCachedProfile(userId);
+  
+  if (profileData) {
+    // Log the cache info
+    console.log(`Using cached profile data. Cache will expire in ${getCacheExpiry(userId)} hours.`);
+  } else {
+    console.log("No valid cached profile data; fetching from Firestore...");
+    const userRef = doc(db, "users", userId);
+    const userDoc = await getDoc(userRef);
+    if (userDoc.exists()) {
+      profileData = userDoc.data();
+      cacheProfileData(userId, profileData);
+    }
   }
-
+  
+  if (profileData) {
+    // Populate the form fields with cached or freshly fetched data
+    document.getElementById("userName").value = profileData.name || "";
+    document.getElementById("userBio").value = profileData.bio || "";
+    document.getElementById("profileCity").value = profileData.city || "";
+    document.getElementById("profileDistance").value = profileData.distance || "";
+    document.getElementById("instagram").value = profileData.instagram || "";
+    document.getElementById("phone").value = profileData.phone || "";
+  }
+  
   document.getElementById("profileEditor").classList.remove("hidden");
-
   // Reinitialize autocomplete for the city input in the modal
   setupAutocomplete("city", "citySuggestions");
 }
@@ -1357,8 +1435,8 @@ document.getElementById("profileForm").addEventListener("submit", async (e) => {
     alert("You must be logged in to edit your profile!");
     return;
   }
-
-  const userRef = doc(db, "users", user.uid);
+  const userId = user.uid;
+  const userRef = doc(db, "users", userId);
   const userDoc = await getDoc(userRef);
 
   if (!userDoc.exists()) {
@@ -1380,57 +1458,40 @@ document.getElementById("profileForm").addEventListener("submit", async (e) => {
   // Object to store updated fields
   const updates = {};
 
-  // Check if name has changed
+  // Check if fields have changed
   if (name && name !== userData.name) {
     updates.name = name;
   }
-
-  // Check if bio has changed
   if (bio !== userData.bio) {
     updates.bio = bio;
   }
-
-  // Check if city has changed
   if (city && city !== userData.city) {
+    // (Assume you have already loaded and defined cityData)
     const allCities = Object.values(cityData).flat();
     const normalizedCity = city.toLowerCase().trim();
     const normalizedAllCities = allCities.map(c => c.toLowerCase().trim());
-
-    // Validate city only if it has been changed
     if (!normalizedAllCities.includes(normalizedCity)) {
       alert("Please select a valid city from the suggestions.");
       return;
     }
-
     updates.city = city;
   }
-
-  // Check if Instagram has changed
   if (instagram !== userData.instagram) {
-    // Remove any "@" symbols from the Instagram handle
-    const cleanedInstagram = instagram.replace(/@/g, ""); // Remove all "@" symbols
-    updates.instagram = cleanedInstagram;
+    updates.instagram = instagram.replace(/@/g, "");
   }
-
-  // Check if Phone has changed
   if (phone !== userData.phone) {
     updates.phone = phone;
   }
-
-  // Check if distance has changed
-  if (distance !== (userData.distance || 0)) { // Default to 0 if no distance is set
+  if (distance !== (userData.distance || 0)) {
     updates.distance = distance;
   }
-
-  // Check if a new profile photo has been uploaded
   if (photo) {
-    const photoRef = ref(storage, `profilePhotos/${user.uid}`);
+    const photoRef = ref(storage, `profilePhotos/${userId}`);
     await uploadBytes(photoRef, photo);
     const profilePhotoUrl = await getDownloadURL(photoRef);
     updates.profilePhoto = profilePhotoUrl;
   }
 
-  // If no fields were updated, show a message and return
   if (Object.keys(updates).length === 0) {
     alert("No changes were made to your profile.");
     return;
@@ -1438,6 +1499,8 @@ document.getElementById("profileForm").addEventListener("submit", async (e) => {
 
   // Update Firestore document with the changes
   await updateDoc(userRef, updates);
+  // Invalidate the cache so next time we get fresh data.
+  invalidateProfileCache(userId);
 
   alert("Profile updated successfully!");
   closeProfileEditor();
