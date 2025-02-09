@@ -2409,49 +2409,54 @@ imageInput.addEventListener("change", async (e) => {
   }
 }, { signal });
 
-  // Voice recording with cleanup
-  const handleRecording = async () => {
-    if (mediaRecorder?.state === "recording") {
-      mediaRecorder.stop();
-      recordButton.textContent = "🎤";
-      return;
-    }
+let mediaRecorder; // Declare mediaRecorder so it's available globally or in a needed scope
+let audioChunks = []; // Declare audioChunks to store the audio data chunks
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
-      mediaRecorder.start();
-      recordButton.textContent = "⏹️";
+// Voice recording with cleanup
+const handleRecording = async () => {
+  // Check if mediaRecorder exists and is recording
+  if (mediaRecorder?.state === "recording") {
+    mediaRecorder.stop();
+    recordButton.textContent = "🎤";
+    return;
+  }
 
-      mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-      mediaRecorder.onstop = async () => {
-        try {
-          const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-          audioChunks = [];
-          const user = auth.currentUser;
-          const audioPath = `voiceMessages/${user.uid}/${Date.now()}.webm`;
-          const audioRef = ref(storage, audioPath);
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.start();
+    recordButton.textContent = "⏹️";
 
-          const snapshot = await uploadBytes(audioRef, audioBlob);
-          const downloadURL = await getDownloadURL(snapshot.ref);
+    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+    mediaRecorder.onstop = async () => {
+      try {
+        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+        // Reset audioChunks for the next recording
+        audioChunks = [];
+        const user = auth.currentUser;
+        const audioPath = `voiceMessages/${user.uid}/${Date.now()}.webm`;
+        const audioRef = ref(storage, audioPath);
 
-          await addDoc(collection(db, "chats", dealId, "messages"), {
-            senderId: user.uid,
-            voiceUrl: downloadURL,
-            timestamp: new Date(),
-          });
+        const snapshot = await uploadBytes(audioRef, audioBlob);
+        const downloadURL = await getDownloadURL(snapshot.ref);
 
-          await handleMessageNotification("a voice message", dealId, dealRef);
-        } finally {
-          stream.getTracks().forEach(track => track.stop());
-        }
-      };
-    } catch (error) {
-      alert("Microphone access required!");
-    }
-  };
+        await addDoc(collection(db, "chats", dealId, "messages"), {
+          senderId: user.uid,
+          voiceUrl: downloadURL,
+          timestamp: new Date(),
+        });
 
-  recordButton.addEventListener("click", handleRecording, { signal });
+        await handleMessageNotification("a voice message", dealId, dealRef);
+      } finally {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  } catch (error) {
+    alert("Microphone access required!");
+  }
+};
+
+recordButton.addEventListener("click", handleRecording, { signal });
 
   // Text messages with cleanup
   const handleSubmit = async (e) => {
