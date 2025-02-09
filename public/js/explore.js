@@ -2409,53 +2409,125 @@ imageInput.addEventListener("change", async (e) => {
   }
 }, { signal });
 
-let mediaRecorder; // Declare mediaRecorder so it's available globally or in a needed scope
-let audioChunks = []; // Declare audioChunks to store the audio data chunks
+// Global variables to hold the media recorder and audio chunks
+let mediaRecorder;
+let audioChunks = [];
 
-// Voice recording with cleanup
+// Helper function to determine a supported MIME type and the corresponding file extension
+function getSupportedMimeType() {
+  // Default to WebM (works on many browsers)
+  let mimeType = "audio/webm";
+  let fileExtension = "webm";
+
+  // Check if the default is supported; if not, try other options.
+  if (!MediaRecorder.isTypeSupported(mimeType)) {
+    if (MediaRecorder.isTypeSupported("audio/mp4")) {
+      mimeType = "audio/mp4";
+      fileExtension = "m4a"; // .m4a is more common for audio/mp4
+    } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
+      mimeType = "audio/ogg";
+      fileExtension = "ogg";
+    } else {
+      throw new Error("No supported audio recording MIME types found.");
+    }
+  }
+
+  // For iOS devices, prefer audio/mp4 if available since iOS struggles with webm.
+  const ua = navigator.userAgent;
+  if (/iP(hone|od|ad)/.test(ua)) {
+    if (MediaRecorder.isTypeSupported("audio/mp4")) {
+      mimeType = "audio/mp4";
+      fileExtension = "m4a";
+    }
+  }
+
+  return { mimeType, fileExtension };
+}
+
+// Main recording handler
 const handleRecording = async () => {
-  // Check if mediaRecorder exists and is recording
-  if (mediaRecorder?.state === "recording") {
+  // Check if MediaRecorder is supported at all
+  if (typeof MediaRecorder === 'undefined') {
+    alert("Your browser doesn't support the MediaRecorder API. Please try a different browser or update your device.");
+    return;
+  }
+
+  // If already recording, stop the recording.
+  if (mediaRecorder && mediaRecorder.state === "recording") {
     mediaRecorder.stop();
     recordButton.textContent = "🎤";
     return;
   }
 
   try {
+    // Request microphone access
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.start();
-    recordButton.textContent = "⏹️";
 
-    mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+    // Determine the best MIME type and file extension
+    const { mimeType, fileExtension } = getSupportedMimeType();
+
+    // Initialize MediaRecorder with the supported MIME type
+    mediaRecorder = new MediaRecorder(stream, { mimeType });
+    mediaRecorder.start();
+    recordButton.textContent = "⏹️"; // Indicate recording is active
+
+    // Reset audioChunks for the new recording session
+    audioChunks = [];
+
+    // Collect audio data chunks as they become available
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) {
+        audioChunks.push(e.data);
+      }
+    };
+
+    // When recording stops, process the audio data
     mediaRecorder.onstop = async () => {
       try {
-        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-        // Reset audioChunks for the next recording
+        // Create a Blob from the recorded audio chunks using the determined MIME type
+        const audioBlob = new Blob(audioChunks, { type: mimeType });
+        // Reset for next recording
         audioChunks = [];
+
+        // Check that the user is authenticated (this assumes you have auth set up)
         const user = auth.currentUser;
-        const audioPath = `voiceMessages/${user.uid}/${Date.now()}.webm`;
+        if (!user) {
+          alert("User is not authenticated.");
+          return;
+        }
+
+        // Create a storage path that matches the MIME type (and thus file extension)
+        const audioPath = `voiceMessages/${user.uid}/${Date.now()}.${fileExtension}`;
         const audioRef = ref(storage, audioPath);
 
+        // Upload the audio blob to Firebase Storage
         const snapshot = await uploadBytes(audioRef, audioBlob);
         const downloadURL = await getDownloadURL(snapshot.ref);
 
+        // Add the voice message record to Firestore
         await addDoc(collection(db, "chats", dealId, "messages"), {
           senderId: user.uid,
           voiceUrl: downloadURL,
           timestamp: new Date(),
         });
 
+        // Optionally, trigger a notification for the new message
         await handleMessageNotification("a voice message", dealId, dealRef);
+      } catch (uploadError) {
+        console.error("Error uploading audio:", uploadError);
+        alert("There was an error uploading your audio message.");
       } finally {
+        // Always stop the stream's tracks to release the microphone
         stream.getTracks().forEach(track => track.stop());
       }
     };
   } catch (error) {
-    alert("Microphone access required!");
+    console.error("Error accessing the microphone:", error);
+    alert("Microphone access is required to record audio.");
   }
 };
 
+// Bind the recording function to your record button
 recordButton.addEventListener("click", handleRecording, { signal });
 
   // Text messages with cleanup
