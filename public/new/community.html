@@ -94,15 +94,23 @@
     </div>
   </div>
 
-  <!-- Notifications Modal -->
-  <div id="notificationsModal" class="modal hidden">
-    <div class="modal-content">
-      <h2>Notifications <span id="modalNotificationCount">0</span></h2>
-      <div id="notificationList" class="notification-list"></div>
-      <button id="clearNotificationsBtn">Clear Notifications</button>
-      <button id="closeNotificationsBtn">Close</button>
+<!-- Notifications Modal -->
+<div id="notificationsModal" class="modal hidden">
+  <div class="modal-content">
+    <h2>Notifications <span id="modalNotificationCount">0</span></h2>
+    <div class="notifications-filter">
+      <label for="communityFilter">Filter by Community:</label>
+      <select id="communityFilter">
+        <option value="all">All Communities</option>
+        <!-- Options populated dynamically -->
+      </select>
+      <button id="goToCommunityBtn" style="display: none;">Go to Community</button>
     </div>
+    <div id="notificationList" class="notification-list"></div>
+    <button id="clearNotificationsBtn">Clear Notifications</button>
+    <button id="closeNotificationsBtn">Close</button>
   </div>
+</div>
 
   <!-- Autocomplete Suggestions for @ Tagging -->
   <div id="tagSuggestions" class="suggestions hidden"></div>
@@ -153,6 +161,52 @@
       const commDoc = await getDoc(commRef);
       if (commDoc.exists()) {
         const commData = commDoc.data();
+        const isMember = commData.members.includes(user.uid);
+        const isBanned = (commData.bannedUsers || []).includes(user.uid);
+
+        // Check if user is banned or not a member
+        if (isBanned) {
+          document.querySelector(".community-page").innerHTML = `
+            <div class="ban-message">
+              <h2>You are banned from this community!</h2>
+              <p>Think this is a mistake? Send an appeal below:</p>
+              <form id="banAppealForm" class="ban-appeal-form">
+                <textarea placeholder="Explain why this ban might be an error..." required></textarea>
+                <button type="submit">Send Appeal</button>
+              </form>
+              <p><a href="./start.html">Go back</a></p>
+            </div>
+          `;
+          // Add form submission handler
+          const appealForm = document.getElementById("banAppealForm");
+          appealForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const text = appealForm.querySelector("textarea").value.trim();
+            if (text) {
+              await addDoc(collection(db, "banAppeals"), {
+                userId: user.uid,
+                communityId: communityId,
+                message: text,
+                timestamp: new Date()
+              });
+              alert("Appeal sent!");
+              appealForm.querySelector("textarea").disabled = true;
+              appealForm.querySelector("button").disabled = true;
+              appealForm.querySelector("button").textContent = "Appeal Sent";
+            }
+          });
+          return; // Stop here if banned
+        } else if (!isMember) {
+          document.querySelector(".community-page").innerHTML = `
+            <div class="not-member-message">
+              <h2>You aren't a member of this community.</h2>
+              <p><a href="./start.html">Go back</a></p>
+            </div>
+          `;
+          return; // Stop here if not a member
+        }
+
+        // If user is a member and not banned, proceed as normal
         document.getElementById("communityName").textContent = commData.name;
         document.getElementById("communityId").textContent = `ID: ${communityId}`;
         document.getElementById("totalUsers").textContent = commData.members.length;
@@ -1416,7 +1470,7 @@ async function requestProfileAccess(targetId) {
   requestBtn.classList.add("pending");
   requestBtn.disabled = true;
 
-  const requesterData = await fetchCurrentUserData(); // Only current user
+  const requesterData = await fetchCurrentUserData();
   console.log(`Requester data for notification:`, requesterData);
 
   const requestDoc = await addDoc(collection(db, "profileRequests"), {
@@ -1433,6 +1487,7 @@ async function requestProfileAccess(targetId) {
     type: "profile_request",
     message: `${requesterData.name || "Someone"} wants to see your full profile!`,
     requestId: requestDoc.id,
+    communityId: communityId, // Add this if you’re in a community context
     timestamp: new Date(),
     seen: false
   });
@@ -1557,20 +1612,22 @@ async function revokeProfileAccessFromModal(requestId, userId) {
     }
 
     async function banUser(communityId, uid) {
-      const commRef = doc(db, "communities", communityId);
-      const commDoc = await getDoc(commRef);
-      const bannedUsers = commDoc.data().bannedUsers || [];
-      if (!bannedUsers.includes(uid) && commDoc.data().members.includes(uid) && uid !== commDoc.data().creatorId) {
-        bannedUsers.push(uid);
-        const members = commDoc.data().members.filter(m => m !== uid);
-        const admins = commData.admins ? commData.admins.filter(a => a !== uid) : [];
-        await updateDoc(commRef, { bannedUsers, members, admins });
-        alert("User banned!");
-        closeModal("viewProfileModal");
-      } else {
-        alert("User not found, already banned, or is the creator!");
-      }
-    }
+  const commRef = doc(db, "communities", communityId);
+  const commDoc = await getDoc(commRef);
+  const commData = commDoc.data();
+  const bannedUsers = commData.bannedUsers || [];
+
+  if (!bannedUsers.includes(uid) && commData.members.includes(uid) && uid !== commData.creatorId) {
+    bannedUsers.push(uid);
+    const members = commData.members.filter(m => m !== uid);
+    const admins = commData.admins ? commData.admins.filter(a => a !== uid) : [];
+    await updateDoc(commRef, { bannedUsers, members, admins });
+    alert("User banned!");
+    closeModal("viewProfileModal");
+  } else {
+    alert("User not found, already banned, or is the creator!");
+  }
+}
 
     async function unbanUser(communityId, uid) {
       const commRef = doc(db, "communities", communityId);
@@ -1673,60 +1730,136 @@ async function revokeProfileAccessFromModal(requestId, userId) {
     }
 
     async function viewBannedUsers(communityId) {
-      const modal = document.getElementById("viewBannedModal");
-      const bannedList = document.getElementById("bannedList");
-      const seeMoreBtn = document.getElementById("seeMoreBannedBtn");
-      const bannedSearch = document.getElementById("bannedSearch");
+  const modal = document.getElementById("viewBannedModal");
+  const bannedList = document.getElementById("bannedList");
+  const seeMoreBtn = document.getElementById("seeMoreBannedBtn");
+  const bannedSearch = document.getElementById("bannedSearch");
 
-      const commRef = doc(db, "communities", communityId);
-      const commDoc = await getDoc(commRef);
-      const bannedUsers = commDoc.data().bannedUsers || [];
+  const commRef = doc(db, "communities", communityId);
+  const commDoc = await getDoc(commRef);
+  const commData = commDoc.data();
+  const bannedUsers = commData.bannedUsers || [];
 
-      if (bannedUsers.length === 0) {
-        bannedList.innerHTML = "<p>No banned users.</p>";
-        seeMoreBtn.style.display = "none";
-      } else {
-        lastBannedDoc = null;
-        bannedList.innerHTML = "";
-        await loadMoreBanned(bannedUsers);
-      }
+  modal.querySelector(".modal-content").innerHTML = `
+    <h2>Banned Users</h2>
+    <input type="text" id="bannedSearch" placeholder="Search banned users...">
+    <div id="bannedMessages" class="banned-messages"></div>
+    <div id="bannedList" class="user-list"></div>
+    <button id="seeMoreBannedBtn">See More</button>
+    <button id="closeBannedBtn">Close</button>
+  `;
 
-      document.querySelectorAll(".modal:not(#viewBannedModal)").forEach(m => m.style.display = "none");
-      modal.style.display = "flex";
-      modal.classList.remove("hidden");
-
-      seeMoreBtn.onclick = () => loadMoreBanned(bannedUsers);
-      bannedSearch.oninput = debounce((e) => searchBanned(bannedUsers, e.target.value), 300);
+  const messagesDiv = modal.querySelector("#bannedMessages");
+  const appealsQ = query(collection(db, "banAppeals"), where("communityId", "==", communityId));
+  const appealsSnapshot = await getDocs(appealsQ);
+  if (!appealsSnapshot.empty) {
+    messagesDiv.innerHTML = "<h3>Appeal Messages</h3>";
+    for (const doc of appealsSnapshot.docs) {
+      const appeal = doc.data();
+      const userData = await fetchUserData(appeal.userId);
+      messagesDiv.innerHTML += `
+        <div class="appeal-item" data-appeal-id="${doc.id}">
+          <p><strong>${userData.name || "Unknown"}:</strong> ${appeal.message}</p>
+          <span>${new Date(appeal.timestamp.toDate()).toLocaleString()}</span>
+          <button class="delete-appeal-btn" data-appeal-id="${doc.id}">Delete</button>
+        </div>
+      `;
     }
-
-    async function loadMoreBanned(bannedUsers) {
-      const bannedList = document.getElementById("bannedList");
-      const seeMoreBtn = document.getElementById("seeMoreBannedBtn");
-      const batch = bannedUsers.slice(lastBannedDoc ? bannedList.children.length : 0, (lastBannedDoc ? bannedList.children.length : 0) + itemsPerPage);
-      if (batch.length === 0) return;
-
-      const q = query(collection(db, "users"), where("__name__", "in", batch));
-      const snapshot = await getDocs(q);
-      lastBannedDoc = snapshot.docs[snapshot.docs.length - 1];
-
-      for (const doc of snapshot.docs) {
-        const userData = doc.data();
-        const itemId = `banned-${doc.id}`;
-        if (!document.getElementById(itemId)) {
-          bannedList.innerHTML += `
-            <div class="user-item" id="${itemId}">
-              <img src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" alt="Profile">
-              <span class="username" data-uid="${doc.id}">${userData.name}</span>
-              <button class="unban-btn" id="unban-${doc.id}">Unban</button>
-            </div>
-          `;
-          bannedList.querySelector(`#${itemId} .username`).addEventListener("click", () => viewProfile(doc.id));
-          document.getElementById(`unban-${doc.id}`).addEventListener("click", () => unbanUser(communityId, doc.id));
+    // Add delete listeners
+    messagesDiv.querySelectorAll(".delete-appeal-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (confirm("Delete this appeal?")) {
+          const appealId = btn.dataset.appealId;
+          await deleteDoc(doc(db, "banAppeals", appealId));
+          messagesDiv.querySelector(`.appeal-item[data-appeal-id="${appealId}"]`).remove();
+          if (!messagesDiv.querySelector(".appeal-item")) {
+            messagesDiv.innerHTML = "<p>No appeals yet.</p>";
+          }
         }
-      }
+      });
+    });
+  } else {
+    messagesDiv.innerHTML = "<p>No appeals yet.</p>";
+  }
 
-      seeMoreBtn.style.display = bannedList.children.length >= bannedUsers.length ? "none" : "block";
+  if (bannedUsers.length === 0) {
+    bannedList.innerHTML = "<p>No banned users.</p>";
+    seeMoreBtn.style.display = "none";
+  } else {
+    lastBannedDoc = null;
+    bannedList.innerHTML = "";
+    await loadMoreBanned(bannedUsers);
+  }
+
+  document.querySelectorAll(".modal:not(#viewBannedModal)").forEach(m => m.style.display = "none");
+  modal.style.display = "flex";
+  modal.classList.remove("hidden");
+
+  seeMoreBtn.onclick = () => loadMoreBanned(bannedUsers);
+  bannedSearch.oninput = debounce((e) => searchBanned(bannedUsers, e.target.value), 300);
+  modal.querySelector("#closeBannedBtn").addEventListener("click", () => closeModal("viewBannedModal"));
+}
+
+async function loadMoreBanned(bannedUsers) {
+  const bannedList = document.getElementById("bannedList");
+  const seeMoreBtn = document.getElementById("seeMoreBannedBtn");
+  const batch = bannedUsers.slice(lastBannedDoc ? bannedList.children.length : 0, (lastBannedDoc ? bannedList.children.length : 0) + itemsPerPage);
+  if (batch.length === 0) return;
+
+  const q = query(collection(db, "users"), where("__name__", "in", batch));
+  const snapshot = await getDocs(q);
+  lastBannedDoc = snapshot.docs[snapshot.docs.length - 1];
+
+  for (const doc of snapshot.docs) {
+    const userData = doc.data();
+    const itemId = `banned-${doc.id}`;
+    if (!document.getElementById(itemId)) {
+      bannedList.innerHTML += `
+        <div class="user-item" id="${itemId}">
+          <img src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" alt="Profile">
+          <span class="username" data-uid="${doc.id}">${userData.name}</span>
+          <button class="remove-member-btn" data-uid="${doc.id}">Remove as Member</button>
+          <button class="unban-btn" data-uid="${doc.id}">Unban</button>
+        </div>
+      `;
+      bannedList.querySelector(`#${itemId} .username`).addEventListener("click", () => viewProfile(doc.id));
+      bannedList.querySelector(`#${itemId} .remove-member-btn`).addEventListener("click", () => removeAsMember(communityId, doc.id));
+      bannedList.querySelector(`#${itemId} .unban-btn`).addEventListener("click", () => unbanUser(communityId, doc.id));
     }
+  }
+
+  seeMoreBtn.style.display = bannedList.children.length >= bannedUsers.length ? "none" : "block";
+}
+
+async function removeAsMember(communityId, uid) {
+  const commRef = doc(db, "communities", communityId);
+  const commDoc = await getDoc(commRef);
+  const commData = commDoc.data();
+  const bannedUsers = commData.bannedUsers || [];
+
+  if (bannedUsers.includes(uid)) {
+    const updatedBanned = bannedUsers.filter(b => b !== uid);
+    await updateDoc(commRef, { bannedUsers: updatedBanned });
+
+    // Update user's communityIds
+    const userRef = doc(db, "users", uid);
+    const userDoc = await getDoc(userRef);
+    const userData = userDoc.data();
+    const updatedCommunityIds = (userData.communityIds || []).filter(id => id !== communityId);
+    await updateDoc(userRef, { communityIds: updatedCommunityIds });
+
+    alert("User removed as member (no longer banned)!");
+    closeModal("viewBannedModal");
+    viewBannedUsers(communityId); // Refresh banned list
+
+    // If this is the current user, refresh their community list
+    if (uid === auth.currentUser.uid && typeof loadYourCommunities === "function") {
+      loadYourCommunities({ ...userData, communityIds: updatedCommunityIds });
+    }
+  } else {
+    alert("User not banned!");
+  }
+}
 
     async function searchBanned(bannedUsers, searchTerm) {
       const bannedList = document.getElementById("bannedList");
@@ -1770,45 +1903,113 @@ async function revokeProfileAccessFromModal(requestId, userId) {
     }
 
     async function openNotificationsModal(userId) {
-      const modal = document.getElementById("notificationsModal");
-      const notificationList = document.getElementById("notificationList");
-      const modalCount = document.getElementById("modalNotificationCount");
-      notificationList.innerHTML = '<div class="loading">Loading...</div>';
+  const modal = document.getElementById("notificationsModal");
+  const notificationList = document.getElementById("notificationList");
+  const modalCount = document.getElementById("modalNotificationCount");
+  const communityFilter = document.getElementById("communityFilter");
+  const goToCommunityBtn = document.getElementById("goToCommunityBtn");
+  notificationList.innerHTML = '<div class="loading">Loading...</div>';
 
-      document.querySelectorAll(".modal:not(#notificationsModal)").forEach(m => m.style.display = "none");
-      modal.style.display = "flex";
-      modal.classList.remove("hidden");
+  document.querySelectorAll(".modal:not(#notificationsModal)").forEach(m => m.style.display = "none");
+  modal.style.display = "flex";
+  modal.classList.remove("hidden");
 
-      const q = query(collection(db, "notifications"), where("userId", "==", userId), orderBy("timestamp", "desc"), limit(10));
-      const snapshot = await getDocs(q);
-      notificationList.innerHTML = "";
+  const userRef = doc(db, "users", userId);
+  const userDoc = await getDoc(userRef);
+  const communityIds = userDoc.data().communityIds || [];
+  const communityPromises = communityIds.map(id => getDoc(doc(db, "communities", id)));
+  const communityDocs = await Promise.all(communityPromises);
+  const communities = communityDocs
+    .filter(doc => doc.exists())
+    .map(doc => ({ id: doc.id, name: doc.data().name || "Unnamed Community" }));
 
-      const unseenCount = snapshot.docs.filter(doc => !doc.data().seen).length;
-      modalCount.textContent = unseenCount;
+  communityFilter.innerHTML = '<option value="all">All Communities</option>';
+  communities.forEach(comm => {
+    const option = document.createElement("option");
+    option.value = comm.id;
+    option.textContent = comm.name;
+    communityFilter.appendChild(option);
+  });
 
-      for (const doc of snapshot.docs) {
-        const notif = doc.data();
-        const timestamp = new Date(notif.timestamp.toDate()).toLocaleString();
-        const notifDiv = document.createElement("div");
-        notifDiv.className = `notification-item ${notif.seen ? 'seen' : ''}`;
-        notifDiv.innerHTML = `
-          <span>${notif.message}</span>
-          <span class="timestamp">${timestamp}</span>
-          <button class="copy-id-btn2" data-post-id="${notif.postId}">Copy ID (Search Post)</button>
-          <button class="mark-seen-btn2" data-id="${doc.id}">Mark as Seen</button>
-        `;
-        notificationList.appendChild(notifDiv);
+  async function loadNotifications() {
+    const selectedCommunity = communityFilter.value;
+    let q;
+    if (selectedCommunity === "all") {
+      q = query(collection(db, "notifications"), where("userId", "==", userId), orderBy("timestamp", "desc"), limit(10));
+    } else {
+      q = query(collection(db, "notifications"), where("userId", "==", userId), where("communityId", "==", selectedCommunity), orderBy("timestamp", "desc"), limit(10));
+    }
 
+    const snapshot = await getDocs(q);
+    notificationList.innerHTML = "";
+
+    const unseenCount = snapshot.docs.filter(doc => !doc.data().seen).length;
+    modalCount.textContent = unseenCount;
+
+    for (const doc of snapshot.docs) {
+      const notif = doc.data();
+      const timestamp = new Date(notif.timestamp.toDate()).toLocaleString();
+      let displayMessage = notif.message;
+      if (notif.communityId && notif.type !== "ban_appeal") {
+        const communityName = communities.find(c => c.id === notif.communityId)?.name || "Unknown Community";
+        displayMessage += ` (${communityName})`;
+      }
+
+      const notifDiv = document.createElement("div");
+      notifDiv.className = `notification-item ${notif.seen ? 'seen' : ''}`;
+      notifDiv.innerHTML = `
+        <span>${displayMessage}</span>
+        <span class="timestamp">${timestamp}</span>
+        ${notif.postId ? `<button class="copy-id-btn2" data-post-id="${notif.postId}">Copy ID (Search Post)</button>` : ""}
+        <button class="mark-seen-btn2" data-id="${doc.id}" ${notif.seen ? 'disabled' : ''}>${notif.seen ? 'Seen' : 'Mark as Seen'}</button>
+        ${notif.type === "ban_appeal" && !notif.appealSubmitted ? `
+          <form class="ban-appeal-form" data-id="${doc.id}">
+            <textarea placeholder="Explain why this ban might be an error..." required></textarea>
+            <button type="submit">Send Appeal</button>
+          </form>
+        ` : ""}
+      `;
+      notificationList.appendChild(notifDiv);
+
+      if (notif.postId) {
         notifDiv.querySelector(".copy-id-btn2").addEventListener("click", (e) => {
           e.stopPropagation();
           copyPostId(notif.postId);
         });
-        notifDiv.querySelector(".mark-seen-btn2").addEventListener("click", (e) => {
+      }
+      const markSeenBtn = notifDiv.querySelector(".mark-seen-btn2");
+      if (!notif.seen) {
+        markSeenBtn.addEventListener("click", (e) => {
           e.stopPropagation();
           markNotificationSeen(doc.id);
         });
-        notifDiv.addEventListener("click", () => {
-          if (notif.postId) {
+      } else {
+        markSeenBtn.classList.add("disabled");
+      }
+      if (notif.type === "ban_appeal" && !notif.appealSubmitted) {
+        const appealForm = notifDiv.querySelector(".ban-appeal-form");
+        appealForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const text = appealForm.querySelector("textarea").value.trim();
+          if (text) {
+            await addDoc(collection(db, "banAppeals"), {
+              userId: userId,
+              communityId: notif.communityId,
+              message: text,
+              timestamp: new Date(),
+              notificationId: doc.id
+            });
+            await updateDoc(doc.ref, { appealSubmitted: true });
+            alert("Appeal sent!");
+            openNotificationsModal(userId); // Refresh
+          }
+        });
+      }
+      notifDiv.addEventListener("click", () => {
+        if (notif.postId && notif.communityId) {
+          if (notif.communityId !== communityId) {
+            window.location.href = `/community.html?id=${notif.communityId}#post-${notif.postId}`;
+          } else {
             window.location.hash = `post-${notif.postId}`;
             loadPosts(communityId, currentPage).then(() => {
               const postComments = document.getElementById(`comments-${notif.postId}`);
@@ -1819,27 +2020,65 @@ async function revokeProfileAccessFromModal(requestId, userId) {
               closeModal("notificationsModal");
             });
           }
-        });
-      }
+        }
+      });
     }
 
-    async function markNotificationSeen(notifId) {
-      const notifRef = doc(db, "notifications", notifId);
-      await updateDoc(notifRef, { seen: true });
-      updateNotificationBadge(auth.currentUser.uid);
-      openNotificationsModal(auth.currentUser.uid);
-    }
+    goToCommunityBtn.style.display = (selectedCommunity !== "all" && selectedCommunity !== communityId) ? "block" : "none";
+    goToCommunityBtn.onclick = () => {
+      window.location.href = `./community.html?id=${selectedCommunity}`;
+    };
+  }
+
+  await loadNotifications();
+  communityFilter.onchange = loadNotifications;
+}
+
+async function markNotificationSeen(notifId) {
+  const notifRef = doc(db, "notifications", notifId);
+  const userId = auth.currentUser.uid;
+
+  // Update Firestore
+  await updateDoc(notifRef, { seen: true });
+
+  // Update UI immediately
+  const button = document.querySelector(`.mark-seen-btn2[data-id="${notifId}"]`);
+  if (button) {
+    button.disabled = true;
+    button.textContent = "Seen"; // Optional: Change text for clarity
+    button.classList.add("disabled"); // Optional: Style it
+  }
+
+  updateNotificationBadge(userId);
+  openNotificationsModal(userId);
+}
 
     async function clearNotifications() {
-      if (confirm("Clear all notifications?")) {
-        const q = query(collection(db, "notifications"), where("userId", "==", auth.currentUser.uid));
-        const snapshot = await getDocs(q);
-        const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
-        await Promise.all(deletePromises);
-        updateNotificationBadge(auth.currentUser.uid);
-        openNotificationsModal(auth.currentUser.uid);
-      }
+  const communityFilter = document.getElementById("communityFilter");
+  const selectedCommunity = communityFilter.value;
+  const userId = auth.currentUser.uid;
+
+  let confirmMessage = selectedCommunity === "all" 
+    ? "Clear all notifications?" 
+    : `Clear notifications for ${communityFilter.options[communityFilter.selectedIndex].text} only?`;
+  
+  if (confirm(confirmMessage)) {
+    let q;
+    if (selectedCommunity === "all") {
+      q = query(collection(db, "notifications"), where("userId", "==", userId));
+    } else {
+      q = query(collection(db, "notifications"), 
+                where("userId", "==", userId), 
+                where("communityId", "==", selectedCommunity));
     }
+
+    const snapshot = await getDocs(q);
+    const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(deletePromises);
+    updateNotificationBadge(userId);
+    openNotificationsModal(userId);
+  }
+}
 
     async function totalComments(postId) {
       const q = query(collection(db, "communities", communityId, "posts", postId, "comments"));
