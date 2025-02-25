@@ -1072,3 +1072,113 @@ margin-right: 5px;
   border: 1px solid #ccc;
   border-radius: 4px;
 }
+
+.posts-carousel {
+  position: relative;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto 20px;
+  overflow: hidden;
+}
+
+.carousel-track {
+  display: flex;
+  transition: transform 0.5s ease;
+  overflow: hidden;
+}
+
+.carousel-post {
+  flex: 0 0 50%; /* 2 posts on mobile */
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid #ddd;
+  background: #f9f9f9;
+  min-width: 0; /* Prevents overflow */
+}
+
+.carousel-post h4 {
+  margin: 0 0 5px;
+  font-size: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.carousel-post p {
+  margin: 5px 0;
+  font-size: 14px;
+}
+
+.carousel-post .username {
+  cursor: pointer;
+  color: #007bff;
+}
+
+.carousel-post .copy-btn {
+  font-size: 12px;
+  padding: 5px;
+}
+
+.carousel-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  border: none;
+  padding: 10px;
+  cursor: pointer;
+  z-index: 10;
+}
+.carousel-arrow.prev { left: 0; }
+.carousel-arrow.next { right: 0; }
+.carousel-arrow:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Responsive: 4 posts on larger screens */
+@media (min-width: 768px) {
+  .carousel-post {
+    flex: 0 0 25%; /* 4 posts on desktop */
+  }
+}
+
+.no-posts {
+  text-align: center;
+  padding: 20px;
+  font-size: 16px;
+  color: #666;
+}
+
+/* Posts container */
+#postList {
+  padding-bottom: 60px; /* Space for button */
+  position: relative; /* For button positioning */
+}
+
+#postList .loading {
+text-align: center;
+padding: 20px;
+font-size: 16px;
+color: #777;
+}
+
+/* Hide Posts button */
+.hide-posts-btn {
+display: block;
+margin: 20px auto 0; /* Top margin to separate from posts */
+padding: 10px 20px;
+background: #1a73e8;
+color: white;
+border: none;
+border-radius: 5px;
+font-size: 16px;
+cursor: pointer;
+transition: background 0.2s ease;
+position: absolute; /* Stick to bottom */
+bottom: 10px; /* Distance from bottom */
+left: 50%;
+transform: translateX(-50%); /* Center horizontally */
+}
+
+.hide-posts-btn:hover {
+background: #1557b0;
+}
