@@ -5,13 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Life Swap - Community</title>
   <link rel="stylesheet" href="community.css">
+  <link rel="stylesheet" href="./customHeader.css">
 </head>
 <body>
   <div class="community-page">
     <div class="top-bar">
       <a href="./start.html" class="button-link">Go back</a>
       <h2 id="communityName"></h2>
-      <button id="viewNotificationsBtn">View Notifications <span id="notificationCount" class="notification-badge">0</span></button>
+      <button id="viewNotificationsBtn">Notifications <span id="notificationCount" class="notification-badge">0</span></button>
     </div>
     <p id="communityId"></p>
     <button class="copy-btn" id="copyCommunityIdBtn">Copy ID</button>
@@ -196,6 +197,7 @@
   <!-- Autocomplete Suggestions for @ Tagging -->
   <div id="tagSuggestions" class="suggestions hidden"></div>
 
+  <script type="module" src="./customHeader.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -232,6 +234,7 @@
     const postsPerLoad = 3; // 10 posts per scroll
     let loadedPostIds = new Set();
     let initialPostsLoaded = false;
+    let isSearching = false; // Flag to track if we're in search mode
 
     document.addEventListener("DOMContentLoaded", () => {
   onAuthStateChanged(auth, async (user) => {
@@ -833,159 +836,205 @@ async function loadAdminReportSummary() {
   const user = auth.currentUser;
   const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
 
-  const summaryDiv = document.getElementById("admin-report-summary") || document.createElement("div");
-  if (!summaryDiv.id) {
+  // Get or create the summary container
+  let summaryDiv = document.getElementById("admin-report-summary");
+  if (!summaryDiv) {
+    summaryDiv = document.createElement("div");
     summaryDiv.id = "admin-report-summary";
     summaryDiv.className = "admin-report-summary";
     document.querySelector(".community-page").insertBefore(summaryDiv, document.querySelector(".top-bar").nextSibling);
   }
 
-  // Clear existing content to prevent duplicates
+  // Initial loading state
   summaryDiv.innerHTML = '<div class="loading">Loading...</div>';
 
+  // Fetch report and appeal counts
   const reportsRef = collection(db, "communities", communityId, "postReports");
   const reportsQ = query(reportsRef);
   const reportsSnapshot = await getDocs(reportsQ);
+  const reportCount = Object.keys(reportsSnapshot.docs.reduce((acc, doc) => {
+    acc[doc.data().postId] = true;
+    return acc;
+  }, {})).length; // Unique reported posts
 
+  let appealCount = 0;
   if (isAdmin) {
-    // Admin view: Show reported posts and appeals
-    if (reportsSnapshot.empty) {
-      summaryDiv.innerHTML = "<p>No reported posts in this community.</p>";
-    } else {
-      // Group reports by postId
-      const reportCounts = {};
-      reportsSnapshot.forEach(doc => {
-        const postId = doc.data().postId;
-        reportCounts[postId] = (reportCounts[postId] || 0) + 1;
-      });
-
-      summaryDiv.innerHTML = "<h3>Reported Posts</h3>";
-      for (const [postId, count] of Object.entries(reportCounts)) {
-        const postRef = doc(db, "communities", communityId, "posts", postId);
-        const postDoc = await getDoc(postRef);
-        const postData = postDoc.exists() ? postDoc.data() : null;
-        const title = postData ? postData.title : "Deleted Post";
-        const ownerData = postData ? await fetchUserData(postData.userId) : { name: "Unknown" };
-
-        summaryDiv.innerHTML += `
-          <div class="report-item" data-post-id="${postId}">
-            <span>Post "${title}" by ${ownerData.name} (ID: ${postId}) - ${count} report${count > 1 ? 's' : ''}</span>
-            <button class="remove-post-btn" data-post-id="${postId}">Remove Post</button>
-            <button class="clear-reports-btn" data-post-id="${postId}">Clear Reports</button>
-          </div>
-        `;
-      }
-
-      // Show appeals from users
-      const appealsQ = query(collection(db, "banAppeals"), where("communityId", "==", communityId));
-      const appealsSnapshot = await getDocs(appealsQ);
-      if (!appealsSnapshot.empty) {
-        summaryDiv.innerHTML += "<h3>User Appeals for Reported Posts</h3>";
-        for (const doc of appealsSnapshot.docs) {
-          const appeal = doc.data();
-          const userData = await fetchUserData(appeal.userId);
-          const postId = appeal.postId || "N/A";
-          summaryDiv.innerHTML += `
-            <div class="appeal-item" data-appeal-id="${doc.id}">
-              <p><strong>${userData.name || "Unknown"}:</strong> "${appeal.message}" (Post ID: ${postId})</p>
-              <span>${new Date(appeal.timestamp.toDate()).toLocaleString()}</span>
-              <button class="delete-appeal-btn" data-appeal-id="${doc.id}">Delete Appeal</button>
-            </div>
-          `;
-        }
-      } else {
-        summaryDiv.innerHTML += "<h3>User Appeals for Reported Posts</h3><p>No appeals yet.</p>";
-      }
-    }
+    const appealsQ = query(collection(db, "banAppeals"), where("communityId", "==", communityId));
+    const appealsSnapshot = await getDocs(appealsQ);
+    appealCount = appealsSnapshot.size;
   } else {
-    // Regular user view: Show their own reported posts with appeal option
     const userPostsQ = query(collection(db, "communities", communityId, "posts"), where("userId", "==", user.uid));
     const userPostsSnapshot = await getDocs(userPostsQ);
     const reportedPosts = [];
-
     for (const postDoc of userPostsSnapshot.docs) {
       const postId = postDoc.id;
       const reportQ = query(reportsRef, where("postId", "==", postId));
       const reportSnapshot = await getDocs(reportQ);
-      if (!reportSnapshot.empty) {
-        reportedPosts.push({ postId, title: postDoc.data().title, count: reportSnapshot.size });
-      }
+      if (!reportSnapshot.empty) reportedPosts.push(postId);
     }
-
-    if (reportedPosts.length === 0) {
-      summaryDiv.innerHTML = "<p>No reports on your posts.</p>";
-    } else {
-      summaryDiv.innerHTML = "<h3>Your Reported Posts</h3>";
-      for (const post of reportedPosts) {
-        const appealQ = query(collection(db, "banAppeals"), where("userId", "==", user.uid), where("postId", "==", post.postId));
-        const appealSnapshot = await getDocs(appealQ);
-        const hasAppeal = !appealSnapshot.empty;
-
-        summaryDiv.innerHTML += `
-          <div class="report-item" data-post-id="${post.postId}">
-            <p>Post "${post.title}" (ID: ${post.postId}) has ${post.count} report${post.count > 1 ? 's' : ''}</p>
-            ${post.count >= 2 ? '<p style="color: red;">This post is hidden from others!</p>' : ''}
-            <div class="appeal-container" data-post-id="${post.postId}">
-              ${!hasAppeal ? `
-                <form class="appeal-form" data-post-id="${post.postId}">
-                  <textarea placeholder="Appeal to admins (e.g., 'This post isn’t breaking rules because...')" required></textarea>
-                  <button type="submit">Send Appeal</button>
-                </form>
-              ` : '<p>Appeal sent, awaiting admin review.</p>'}
-            </div>
-          </div>
-        `;
-      }
-    }
+    appealCount = reportedPosts.length; // Number of user's reported posts
   }
 
-  // Event listeners for admins
-  if (isAdmin) {
-    summaryDiv.querySelectorAll(".remove-post-btn").forEach(btn => {
-      btn.addEventListener("click", () => deletePost(btn.dataset.postId));
-    });
-    summaryDiv.querySelectorAll(".clear-reports-btn").forEach(btn => {
-      btn.addEventListener("click", () => clearReports(btn.dataset.postId));
-    });
-    summaryDiv.querySelectorAll(".delete-appeal-btn").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        if (confirm("Delete this appeal?")) {
-          const appealId = btn.dataset.appealId;
-          await deleteDoc(doc(db, "banAppeals", appealId));
-          
-          // Remove the appeal from the UI immediately
-          const appealItem = btn.closest(".appeal-item");
-          if (appealItem) appealItem.remove();
+  // Set up the toggler with counts in the summary
+  const totalNotifications = reportCount + (isAdmin ? appealCount : 0); // Appeals only for admins
+  summaryDiv.innerHTML = `
+    <details>
+      <summary>
+        ${totalNotifications > 0 ? `(${totalNotifications}) ` : ''}See Reports
+      </summary>
+      <div id="report-content" class="report-content"></div>
+    </details>
+  `;
 
-          // Debounced refresh to ensure data consistency
-          debouncedLoadAdminReportSummary();
-        }
-      });
-    });
-  } else {
-    summaryDiv.querySelectorAll(".appeal-form").forEach(form => {
-      form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const postId = form.dataset.postId;
-        const message = form.querySelector("textarea").value.trim();
-        if (message) {
-          await addDoc(collection(db, "banAppeals"), {
-            userId: user.uid,
-            communityId,
-            postId,
-            message,
-            timestamp: new Date()
+  const details = summaryDiv.querySelector("details");
+  const contentDiv = summaryDiv.querySelector("#report-content");
+
+  // Load detailed content only when toggled open
+  details.addEventListener("toggle", async () => {
+    if (details.open) {
+      contentDiv.innerHTML = '<div class="loading">Loading...</div>';
+      details.querySelector("summary").textContent = `${totalNotifications > 0 ? `(${totalNotifications}) ` : ''}Hide Reports`;
+
+      if (isAdmin) {
+        // Admin view: Show reported posts and appeals
+        if (reportsSnapshot.empty) {
+          contentDiv.innerHTML = "<p>No reported posts in this community.</p>";
+        } else {
+          const reportCounts = {};
+          reportsSnapshot.forEach(doc => {
+            const postId = doc.data().postId;
+            reportCounts[postId] = (reportCounts[postId] || 0) + 1;
           });
-          alert("Appeal sent to admins!");
-          const appealContainer = form.closest(".appeal-container");
-          appealContainer.innerHTML = '<p>Appeal sent, awaiting admin review.</p>';
+
+          contentDiv.innerHTML = "<h3>Reported Posts</h3>";
+          for (const [postId, count] of Object.entries(reportCounts)) {
+            const postRef = doc(db, "communities", communityId, "posts", postId);
+            const postDoc = await getDoc(postRef);
+            const postData = postDoc.exists() ? postDoc.data() : null;
+            const title = postData ? postData.title : "Deleted Post";
+            const ownerData = postData ? await fetchUserData(postData.userId) : { name: "Unknown" };
+
+            contentDiv.innerHTML += `
+              <div class="report-item" data-post-id="${postId}">
+                <span>Post "${title}" by ${ownerData.name} (ID: ${postId}) - ${count} report${count > 1 ? 's' : ''}</span>
+                <button class="remove-post-btn" data-post-id="${postId}">Remove Post</button>
+                <button class="clear-reports-btn" data-post-id="${postId}">Clear Reports</button>
+              </div>
+            `;
+          }
+
+          const appealsQ = query(collection(db, "banAppeals"), where("communityId", "==", communityId));
+          const appealsSnapshot = await getDocs(appealsQ);
+          if (!appealsSnapshot.empty) {
+            contentDiv.innerHTML += "<h3>User Appeals for Reported Posts</h3>";
+            for (const doc of appealsSnapshot.docs) {
+              const appeal = doc.data();
+              const userData = await fetchUserData(appeal.userId);
+              const postId = appeal.postId || "N/A";
+              contentDiv.innerHTML += `
+                <div class="appeal-item" data-appeal-id="${doc.id}">
+                  <p><strong>${userData.name || "Unknown"}:</strong> "${appeal.message}" (Post ID: ${postId})</p>
+                  <span>${new Date(appeal.timestamp.toDate()).toLocaleString()}</span>
+                  <button class="delete-appeal-btn" data-appeal-id="${doc.id}">Delete Appeal</button>
+                </div>
+              `;
+            }
+          } else {
+            contentDiv.innerHTML += "<h3>User Appeals for Reported Posts</h3><p>No appeals yet.</p>";
+          }
         }
-      });
-    });
-  }
+      } else {
+        // Regular user view: Show their own reported posts with appeal option
+        const userPostsQ = query(collection(db, "communities", communityId, "posts"), where("userId", "==", user.uid));
+        const userPostsSnapshot = await getDocs(userPostsQ);
+        const reportedPosts = [];
+
+        for (const postDoc of userPostsSnapshot.docs) {
+          const postId = postDoc.id;
+          const reportQ = query(reportsRef, where("postId", "==", postId));
+          const reportSnapshot = await getDocs(reportQ);
+          if (!reportSnapshot.empty) {
+            reportedPosts.push({ postId, title: postDoc.data().title, count: reportSnapshot.size });
+          }
+        }
+
+        if (reportedPosts.length === 0) {
+          contentDiv.innerHTML = "<p>No reports on your posts.</p>";
+        } else {
+          contentDiv.innerHTML = "<h3>Your Reported Posts</h3>";
+          for (const post of reportedPosts) {
+            const appealQ = query(collection(db, "banAppeals"), where("userId", "==", user.uid), where("postId", "==", post.postId));
+            const appealSnapshot = await getDocs(appealQ);
+            const hasAppeal = !appealSnapshot.empty;
+
+            contentDiv.innerHTML += `
+              <div class="report-item" data-post-id="${post.postId}">
+                <p>Post "${post.title}" (ID: ${post.postId}) has ${post.count} report${post.count > 1 ? 's' : ''}</p>
+                ${post.count >= 2 ? '<p style="color: red;">This post is hidden from others!</p>' : ''}
+                <div class="appeal-container" data-post-id="${post.postId}">
+                  ${!hasAppeal ? `
+                    <form class="appeal-form" data-post-id="${post.postId}">
+                      <textarea placeholder="Appeal to admins (e.g., 'This post isn’t breaking rules because...')" required></textarea>
+                      <button type="submit">Send Appeal</button>
+                    </form>
+                  ` : '<p>Appeal sent, awaiting admin review.</p>'}
+                </div>
+              </div>
+            `;
+          }
+        }
+      }
+
+      // Add event listeners after content is loaded
+      if (isAdmin) {
+        contentDiv.querySelectorAll(".remove-post-btn").forEach(btn => {
+          btn.addEventListener("click", () => deletePost(btn.dataset.postId));
+        });
+        contentDiv.querySelectorAll(".clear-reports-btn").forEach(btn => {
+          btn.addEventListener("click", () => clearReports(btn.dataset.postId));
+        });
+        contentDiv.querySelectorAll(".delete-appeal-btn").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            if (confirm("Delete this appeal?")) {
+              const appealId = btn.dataset.appealId;
+              await deleteDoc(doc(db, "banAppeals", appealId));
+              const appealItem = btn.closest(".appeal-item");
+              if (appealItem) appealItem.remove();
+              debouncedLoadAdminReportSummary(); // Refresh summary
+            }
+          });
+        });
+      } else {
+        contentDiv.querySelectorAll(".appeal-form").forEach(form => {
+          form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const postId = form.dataset.postId;
+            const message = form.querySelector("textarea").value.trim();
+            if (message) {
+              await addDoc(collection(db, "banAppeals"), {
+                userId: user.uid,
+                communityId,
+                postId,
+                message,
+                timestamp: new Date()
+              });
+              alert("Appeal sent to admins!");
+              const appealContainer = form.closest(".appeal-container");
+              appealContainer.innerHTML = '<p>Appeal sent, awaiting admin review.</p>';
+              debouncedLoadAdminReportSummary(); // Refresh summary
+            }
+          });
+        });
+      }
+    } else {
+      // When closed, reset to just the count
+      details.querySelector("summary").textContent = `${totalNotifications > 0 ? `(${totalNotifications}) ` : ''}See Reports`;
+      contentDiv.innerHTML = ""; // Clear content when closed to save resources
+    }
+  });
 }
 
-// Debounced version of loadAdminReportSummary
+// Keep the debounced version
 const debouncedLoadAdminReportSummary = debounce(loadAdminReportSummary, 500);
 
 async function createPost() {
@@ -1405,17 +1454,18 @@ function slideCarousel(direction) {
 }
 
 //Helper for scrolldown
+// Update infinite scroll to respect the search state
 const sentinel = document.getElementById("sentinel");
-const observer = new IntersectionObserver((entries) => {
-  if (entries[0].isIntersecting && !isLoading && loadedPostIds.size < totalPosts) {
-    isLoading = true;
-    loadPosts(communityId).then(() => {
-      isLoading = false;
-    });
-  }
-}, { threshold: 1.0 });
+  const observer = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting && !isLoading && loadedPostIds.size < totalPosts && !isSearching) {
+      isLoading = true;
+      loadPosts(communityId).then(() => {
+        isLoading = false;
+      });
+    }
+  }, { threshold: 1.0 });
 
-observer.observe(sentinel);
+  observer.observe(sentinel);
 
 let lastY = 0;
 window.addEventListener("touchmove", debounce(() => {
@@ -1432,113 +1482,107 @@ window.addEventListener("touchmove", debounce(() => {
 }, 200));
 
 async function loadPosts(communityId, reset = false) {
-  const postsDiv = document.getElementById("postList");
-  const caughtUpDiv = document.getElementById("caughtUpMessage");
-  const idSearchEl = document.getElementById("postSearch");
-  const categoryFilterEl = document.getElementById("categoryFilter");
-  const lookingForFilterEl = document.getElementById("lookingForFilter");
-  const offeringFilterEl = document.getElementById("offeringFilter");
+    const postsDiv = document.getElementById("postList");
+    const caughtUpDiv = document.getElementById("caughtUpMessage");
+    const idSearchEl = document.getElementById("postSearch");
+    const categoryFilterEl = document.getElementById("categoryFilter");
+    const lookingForFilterEl = document.getElementById("lookingForFilter");
+    const offeringFilterEl = document.getElementById("offeringFilter");
 
-  const idSearchTerm = idSearchEl?.value.trim() || "";
-  const categoryFilter = categoryFilterEl?.value || "";
-  const lookingForFilter = lookingForFilterEl?.value || "";
-  const offeringFilter = offeringFilterEl?.value || "";
+    const idSearchTerm = idSearchEl?.value.trim() || "";
+    const categoryFilter = categoryFilterEl?.value || "";
+    const lookingForFilter = lookingForFilterEl?.value || "";
+    const offeringFilter = offeringFilterEl?.value || "";
 
-  if (reset) {
-    postsDiv.innerHTML = "";
-    caughtUpDiv.style.display = "none";
-    loadedPostIds.clear();
-    lastPostDoc = null;
-    initialPostsLoaded = false;
-  } else {
-    document.getElementById("hidePostsBtn")?.remove();
-    caughtUpDiv.style.display = "none";
-  }
+    // If we're searching by ID, don’t load posts via scrolldown
+    if (idSearchTerm || isSearching) return;
 
-  if (idSearchTerm) {
-    const q = query(collection(db, "communities", communityId, "posts"), where("__name__", "==", idSearchTerm));
-    const snapshot = await getDocs(q);
-    postsDiv.innerHTML = "";
-    loadedPostIds.clear();
-    await renderPosts(snapshot, postsDiv);
-    return;
-  }
+    if (reset) {
+      postsDiv.innerHTML = "";
+      caughtUpDiv.style.display = "none";
+      loadedPostIds.clear();
+      lastPostDoc = null;
+      initialPostsLoaded = false;
+    } else {
+      document.getElementById("hidePostsBtn")?.remove();
+      caughtUpDiv.style.display = "none";
+    }
 
-  if (totalPosts === 0 || reset || categoryFilter || lookingForFilter || offeringFilter) {
-    const totalQ = query(
-      collection(db, "communities", communityId, "posts"),
-      ...(categoryFilter ? [where("category", "==", categoryFilter)] : []),
-      ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
-      ...(offeringFilter ? [where("offering", "==", offeringFilter)] : [])
-    );
-    const totalSnapshot = await getDocs(totalQ);
-    totalPosts = totalSnapshot.size;
-  }
+    if (totalPosts === 0 || reset || categoryFilter || lookingForFilter || offeringFilter) {
+      const totalQ = query(
+        collection(db, "communities", communityId, "posts"),
+        ...(categoryFilter ? [where("category", "==", categoryFilter)] : []),
+        ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
+        ...(offeringFilter ? [where("offering", "==", offeringFilter)] : [])
+      );
+      const totalSnapshot = await getDocs(totalQ);
+      totalPosts = totalSnapshot.size;
+    }
 
-  let q = query(
-    collection(db, "communities", communityId, "posts"),
-    ...(categoryFilter ? [where("category", "==", categoryFilter)] : []),
-    ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
-    ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
-    orderBy("createdAt", "desc"),
-    limit(postsPerLoad)
-  );
-
-  if (lastPostDoc && !reset) {
-    q = query(
+    let q = query(
       collection(db, "communities", communityId, "posts"),
       ...(categoryFilter ? [where("category", "==", categoryFilter)] : []),
       ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
       ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
       orderBy("createdAt", "desc"),
-      startAfter(lastPostDoc),
       limit(postsPerLoad)
     );
+
+    if (lastPostDoc && !reset) {
+      q = query(
+        collection(db, "communities", communityId, "posts"),
+        ...(categoryFilter ? [where("category", "==", categoryFilter)] : []),
+        ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
+        ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
+        orderBy("createdAt", "desc"),
+        startAfter(lastPostDoc),
+        limit(postsPerLoad)
+      );
+    }
+
+    let loadingDiv;
+    if (loadedPostIds.size > 0 && !reset) {
+      loadingDiv = document.createElement("div");
+      loadingDiv.className = "loading";
+      loadingDiv.textContent = "Loading...";
+      postsDiv.appendChild(loadingDiv);
+    }
+
+    const snapshot = await getDocs(q);
+    if (snapshot.empty && !initialPostsLoaded) {
+      postsDiv.innerHTML = "<p>No posts match your filters.</p>";
+      caughtUpDiv.style.display = "none";
+      return;
+    }
+
+    if (loadingDiv) postsDiv.removeChild(loadingDiv);
+
+    lastPostDoc = snapshot.docs[snapshot.docs.length - 1];
+    initialPostsLoaded = true;
+
+    const postsArray = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }));
+    postsArray.sort(() => Math.random() - 0.5);
+
+    await renderPosts({ docs: postsArray }, postsDiv);
+
+    if (loadedPostIds.size > postsPerLoad) {
+      const hideBtn = document.createElement("button");
+      hideBtn.id = "hidePostsBtn";
+      hideBtn.textContent = "See less";
+      hideBtn.className = "hide-posts-btn";
+      hideBtn.addEventListener("click", async () => {
+        postsDiv.innerHTML = '<div class="loading">Loading...</div>';
+        await loadPosts(communityId, true);
+      });
+      postsDiv.appendChild(hideBtn);
+    }
+
+    if (loadedPostIds.size >= totalPosts && totalPosts > 0) {
+      caughtUpDiv.style.display = "block";
+    } else {
+      caughtUpDiv.style.display = "none";
+    }
   }
-
-  let loadingDiv;
-  if (loadedPostIds.size > 0 && !reset) {
-    loadingDiv = document.createElement("div");
-    loadingDiv.className = "loading";
-    loadingDiv.textContent = "Loading...";
-    postsDiv.appendChild(loadingDiv);
-  }
-
-  const snapshot = await getDocs(q);
-  if (snapshot.empty && !initialPostsLoaded) {
-    postsDiv.innerHTML = "<p>No posts match your filters.</p>";
-    caughtUpDiv.style.display = "none";
-    return;
-  }
-
-  if (loadingDiv) postsDiv.removeChild(loadingDiv);
-
-  lastPostDoc = snapshot.docs[snapshot.docs.length - 1];
-  initialPostsLoaded = true;
-
-  const postsArray = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }));
-  postsArray.sort(() => Math.random() - 0.5);
-
-  await renderPosts({ docs: postsArray }, postsDiv);
-
-  if (loadedPostIds.size > postsPerLoad) {
-    const hideBtn = document.createElement("button");
-    hideBtn.id = "hidePostsBtn";
-    hideBtn.textContent = "See less";
-    hideBtn.className = "hide-posts-btn";
-    hideBtn.addEventListener("click", async () => {
-      postsDiv.innerHTML = '<div class="loading">Loading...</div>';
-      await loadPosts(communityId, true);
-    });
-    postsDiv.appendChild(hideBtn);
-  }
-
-  if (loadedPostIds.size >= totalPosts && totalPosts > 0) {
-    caughtUpDiv.style.display = "block";
-  } else {
-    caughtUpDiv.style.display = "none";
-  }
-}
 
 // Helper to render posts (extracted for reuse)
 async function renderPosts(snapshot, postsDiv) {
@@ -1742,173 +1786,141 @@ ${reportStatus.isOwner && reportStatus.reportCount >= 2 ? `
 }
 
 async function searchPostsById(postId) {
-  const postsDiv = document.getElementById("postList");
-  postsDiv.innerHTML = '<div class="loading">Searching...</div>'; // Show loading
+    const postsDiv = document.getElementById("postList");
+    const caughtUpDiv = document.getElementById("caughtUpMessage");
+    postsDiv.innerHTML = '<div class="loading">Searching...</div>';
+    caughtUpDiv.style.display = "none";
 
-  // Check if postId is empty
-  if (!postId || postId.trim() === "") {
-    postsDiv.innerHTML = ""; // Clear the loading message
-    // Re-enable infinite scroll when resetting to full list
-    observer.observe(sentinel);
-    window.addEventListener("scroll", scrollHandler); // Reattach scroll listener
-    await loadPosts(communityId, true); // Reload the full post list
-    return;
-  }
-
-  try {
-    // Disable infinite scroll while showing a single post
-    observer.unobserve(sentinel);
-    window.removeEventListener("scroll", scrollHandler); // Detach scroll listener
-
-    // Query Firebase for the post by ID
-    const q = query(
-      collection(db, "communities", communityId, "posts"),
-      where("__name__", "==", postId.trim())
-    );
-    const snapshot = await getDocs(q);
-
-    // Clear the display
-    postsDiv.innerHTML = "";
-
-    // If no post found
-    if (snapshot.empty) {
-      postsDiv.innerHTML = `<p>No post found with ID: ${postId}</p>`;
+    if (!postId || postId.trim() === "") {
+      isSearching = false;
+      postsDiv.innerHTML = "";
+      await loadPosts(communityId, true); // Reset to full list
       return;
     }
 
-    // Get the single post
-    const doc = snapshot.docs[0];
-    const post = doc.data();
-    const actualPostId = doc.id;
+    isSearching = true; // Set flag to pause scrolldown
 
-    // Fetch user data with fallback
-    const userData = await fetchUserData(post.userId || "unknown");
-    const currentUser = auth.currentUser;
-    const commData = await getCommData();
-    const isAdmin = commData?.admins?.includes(currentUser.uid) || commData?.creatorId === currentUser.uid;
-    const isOwner = post.userId === currentUser.uid;
+    try {
+      const q = query(
+        collection(db, "communities", communityId, "posts"),
+        where("__name__", "==", postId.trim())
+      );
+      const snapshot = await getDocs(q);
+      postsDiv.innerHTML = "";
 
-    // Get report status
-    const reportStatus = await getPostReportStatus(actualPostId);
-    if (reportStatus.isHidden) {
-      postsDiv.innerHTML = `<p>Post ID ${postId} is hidden due to reports (visible to admins/owner only).</p>`;
-      return;
-    }
+      if (snapshot.empty) {
+        postsDiv.innerHTML = `<p>No post found with ID: ${postId}</p>`;
+        return;
+      }
 
-    // Comments count
-    const commentsQ = query(collection(db, "communities", communityId, "posts", actualPostId, "comments"));
-    const commentsSnapshot = await getDocs(commentsQ);
-    const commentCount = commentsSnapshot.size;
+      const doc = snapshot.docs[0];
+      const post = doc.data();
+      const actualPostId = doc.id;
 
-    // Basic post data with fallbacks
-    const timestamp = post.createdAt ? new Date(post.createdAt.toDate()).toLocaleString() : "N/A";
-    const photoUrls = post.photoUrls || [];
-    const photoCount = photoUrls.length;
+      const userData = await fetchUserData(post.userId || "unknown");
+      const currentUser = auth.currentUser;
+      const commData = await getCommData();
+      const isAdmin = commData?.admins?.includes(currentUser.uid) || commData?.creatorId === currentUser.uid;
+      const isOwner = post.userId === currentUser.uid;
 
-    // Build the HTML
-    postsDiv.innerHTML = `
-      <div class="post" id="post-${actualPostId}">
-        <h3>${post.title || "No Title"}</h3>
-        <p>${post.description || "No Description"}</p>
-        <div class="photo-carousel" id="carousel-${actualPostId}-search" data-photos='${JSON.stringify(photoUrls)}'>
-          ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${actualPostId}-search"><</button>` : ""}
-          <img src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image">
-          ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${actualPostId}-search">></button>` : ""}
+      const reportStatus = await getPostReportStatus(actualPostId);
+      if (reportStatus.isHidden) {
+        postsDiv.innerHTML = `<p>Post ID ${postId} is hidden due to reports (visible to admins/owner only).</p>`;
+        return;
+      }
+
+      const commentsQ = query(collection(db, "communities", communityId, "posts", actualPostId, "comments"));
+      const commentsSnapshot = await getDocs(commentsQ);
+      const commentCount = commentsSnapshot.size;
+
+      const timestamp = post.createdAt ? new Date(post.createdAt.toDate()).toLocaleString() : "N/A";
+      const photoUrls = post.photoUrls || [];
+      const photoCount = photoUrls.length;
+
+      postsDiv.innerHTML = `
+        <div class="post" id="post-${actualPostId}">
+          <h3>${post.title || "No Title"}</h3>
+          <p>${post.description || "No Description"}</p>
+          <div class="photo-carousel" id="carousel-${actualPostId}-search" data-photos='${JSON.stringify(photoUrls)}'>
+            ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${actualPostId}-search"><</button>` : ""}
+            <img src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image">
+            ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${actualPostId}-search">></button>` : ""}
+          </div>
+          <p>By: <span class="username" data-uid="${post.userId || 'unknown'}">${userData.name || "Unknown"} (${userData.username || "unknown"})</span></p>
+          <p>Location: ${post.location?.name || "N/A"}</p>
+          <p>Category: ${post.category || "N/A"}</p>
+          <p>Looking For: ${post.lookingFor || "N/A"} | Offering: ${post.offering || "N/A"}</p>
+          <p>Posted: ${timestamp}</p>
+          <p>Post ID: ${actualPostId} <button class="copy-btn" data-post-id="${actualPostId}">Copy</button></p>
+          <button class="report-btn" id="reportPost-${actualPostId}">Report Post</button>
+          ${(isOwner || isAdmin) ? `<button class="delete-btn" id="deletePost-${actualPostId}">Delete Post</button>` : ""}
+          ${reportStatus.isOwner && reportStatus.reportCount === 1 ? `
+            <div class="report-warning" id="warning-${actualPostId}">
+              This post has 1 report. One more will hide it from others—check it in the summary above!
+            </div>` : ""}
+          ${reportStatus.isOwner && reportStatus.reportCount >= 2 ? `
+            <div class="report-warning" id="warning-${actualPostId}">
+              This post has ${reportStatus.reportCount} reports and is hidden from others. Appeal in the summary above!
+            </div>` : ""}
+          ${isAdmin && reportStatus.reportCount > 0 ? `
+            <div class="admin-report-controls" id="admin-controls-${actualPostId}">
+              This post received ${reportStatus.reportCount} report${reportStatus.reportCount > 1 ? 's' : ''}.
+              <button class="remove-post-btn" data-post-id="${actualPostId}">Remove Post</button>
+              <button class="clear-reports-btn" data-post-id="${actualPostId}">Clear Reports</button>
+            </div>` : ""}
+          <div class="comments-section">
+            <a href="#" class="comment-count" id="toggleComments-${actualPostId}">${commentCount} comments</a>
+            <div class="comments-thread" id="comments-${actualPostId}" style="display: none;"></div>
+            <form id="commentForm-${actualPostId}" class="comment-form">
+              <textarea placeholder="Add a comment..." required></textarea>
+              <button type="submit">Comment</button>
+            </form>
+          </div>
         </div>
-        <p>By: <span class="username" data-uid="${post.userId || 'unknown'}">${userData.name || "Unknown"} (${userData.username || "unknown"})</span></p>
-        <p>Location: ${post.location?.name || "N/A"}</p>
-        <p>Category: ${post.category || "N/A"}</p>
-        <p>Looking For: ${post.lookingFor || "N/A"} | Offering: ${post.offering || "N/A"}</p>
-        <p>Posted: ${timestamp}</p>
-        <p>Post ID: ${actualPostId} <button class="copy-btn" data-post-id="${actualPostId}">Copy</button></p>
-        <button class="report-btn" id="reportPost-${actualPostId}">Report Post</button>
-        ${(isOwner || isAdmin) ? `<button class="delete-btn" id="deletePost-${actualPostId}">Delete Post</button>` : ""}
-        ${reportStatus.isOwner && reportStatus.reportCount === 1 ? `
-          <div class="report-warning" id="warning-${actualPostId}">
-            This post has 1 report. One more will hide it from others—check it in the summary above!
-          </div>` : ""}
-        ${reportStatus.isOwner && reportStatus.reportCount >= 2 ? `
-          <div class="report-warning" id="warning-${actualPostId}">
-            This post has ${reportStatus.reportCount} reports and is hidden from others. Appeal in the summary above!
-          </div>` : ""}
-        ${isAdmin && reportStatus.reportCount > 0 ? `
-          <div class="admin-report-controls" id="admin-controls-${actualPostId}">
-            This post received ${reportStatus.reportCount} report${reportStatus.reportCount > 1 ? 's' : ''}.
-            <button class="remove-post-btn" data-post-id="${actualPostId}">Remove Post</button>
-            <button class="clear-reports-btn" data-post-id="${actualPostId}">Clear Reports</button>
-          </div>` : ""}
-        <div class="comments-section">
-          <a href="#" class="comment-count" id="toggleComments-${actualPostId}">${commentCount} comments</a>
-          <div class="comments-thread" id="comments-${actualPostId}" style="display: none;"></div>
-          <form id="commentForm-${actualPostId}" class="comment-form">
-            <textarea placeholder="Add a comment..." required></textarea>
-            <button type="submit">Comment</button>
-          </form>
-        </div>
-      </div>
-    `;
+      `;
 
-    // Event Listeners
-    const postDiv = postsDiv.querySelector(`#post-${actualPostId}`);
-    
-    // Username click
-    postDiv.querySelector(`.username[data-uid="${post.userId || 'unknown'}"]`).addEventListener("click", () => viewProfile(post.userId || "unknown"));
+      const postDiv = postsDiv.querySelector(`#post-${actualPostId}`);
+      postDiv.querySelector(`.username[data-uid="${post.userId || 'unknown'}"]`).addEventListener("click", () => viewProfile(post.userId || "unknown"));
+      postDiv.querySelector(`.copy-btn[data-post-id="${actualPostId}"]`).addEventListener("click", (e) => {
+        e.stopPropagation();
+        copyPostId(actualPostId);
+      });
+      postDiv.querySelector(`#reportPost-${actualPostId}`).addEventListener("click", () => reportPost(actualPostId));
+      const deleteBtn = postDiv.querySelector(`#deletePost-${actualPostId}`);
+      if (deleteBtn) deleteBtn.addEventListener("click", () => deletePost(actualPostId));
+      if (isAdmin) {
+        postDiv.querySelector(`.remove-post-btn[data-post-id="${actualPostId}"]`)?.addEventListener("click", () => deletePost(actualPostId));
+        postDiv.querySelector(`.clear-reports-btn[data-post-id="${actualPostId}"]`)?.addEventListener("click", () => clearReports(actualPostId));
+      }
+      postDiv.querySelector(`#toggleComments-${actualPostId}`).addEventListener("click", (e) => {
+        e.preventDefault();
+        toggleComments(actualPostId);
+      });
+      postDiv.querySelector(`#commentForm-${actualPostId}`).addEventListener("submit", (e) => {
+        e.preventDefault();
+        addComment(actualPostId, post.userId);
+      });
+      if (photoCount > 1) setupSearchCarousel(actualPostId);
 
-    // Copy button
-    postDiv.querySelector(`.copy-btn[data-post-id="${actualPostId}"]`).addEventListener("click", (e) => {
-      e.stopPropagation();
-      copyPostId(actualPostId);
-    });
-
-    // Report button
-    postDiv.querySelector(`#reportPost-${actualPostId}`).addEventListener("click", () => reportPost(actualPostId));
-
-    // Delete button (if present)
-    const deleteBtn = postDiv.querySelector(`#deletePost-${actualPostId}`);
-    if (deleteBtn) {
-      deleteBtn.addEventListener("click", () => deletePost(actualPostId));
+    } catch (error) {
+      console.error("Search error:", error);
+      postsDiv.innerHTML = "<p>Something went wrong, try again!</p>";
     }
-
-    // Admin controls (if present)
-    if (isAdmin) {
-      postDiv.querySelector(`.remove-post-btn[data-post-id="${actualPostId}"]`)?.addEventListener("click", () => deletePost(actualPostId));
-      postDiv.querySelector(`.clear-reports-btn[data-post-id="${actualPostId}"]`)?.addEventListener("click", () => clearReports(actualPostId));
-    }
-
-    // Comments toggle
-    postDiv.querySelector(`#toggleComments-${actualPostId}`).addEventListener("click", (e) => {
-      e.preventDefault();
-      toggleComments(actualPostId);
-    });
-
-    // Comment form submission
-    postDiv.querySelector(`#commentForm-${actualPostId}`).addEventListener("submit", (e) => {
-      e.preventDefault();
-      addComment(actualPostId, post.userId);
-    });
-
-    // Carousel setup
-    if (photoCount > 1) {
-      setupSearchCarousel(actualPostId);
-    }
-
-  } catch (error) {
-    console.error("Search error:", error);
-    postsDiv.innerHTML = "<p>Something went wrong, try again!</p>";
   }
-}
 
 // Define the scroll handler globally so we can remove it later
 const scrollHandler = debounce(async () => {
-  if (isLoading || loadedPostIds.size >= totalPosts) return;
+    if (isLoading || loadedPostIds.size >= totalPosts || isSearching) return;
 
-  const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-  if (scrollTop + clientHeight >= scrollHeight - 50) { // 50px buffer
-    isLoading = true;
-    await loadPosts(communityId);
-    isLoading = false;
-  }
-}, 500);
+    const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
+    if (scrollTop + clientHeight >= scrollHeight - 50) {
+      isLoading = true;
+      await loadPosts(communityId);
+      isLoading = false;
+    }
+  }, 500);
+
+  window.addEventListener("scroll", scrollHandler);
 
 // Keep this helper as is—it’s solid for the carousel
 function setupSearchCarousel(postId) {

@@ -1256,3 +1256,32 @@ background: #ffff0080;
 padding: 10px;
 border-radius: 8px;
 }
+
+.admin-report-summary details {
+margin: 10px 0;
+}
+
+.admin-report-summary summary {
+cursor: pointer;
+font-weight: bold;
+padding: 5px;
+display: flex;
+align-items: center;
+}
+
+.admin-report-summary summary::before {
+content: "▶ "; /* Small arrow when closed */
+display: inline-block;
+transition: transform 0.2s;
+}
+
+.admin-report-summary details[open] summary::before {
+transform: rotate(90deg); /* Rotates arrow when open */
+}
+
+.report-content {
+padding: 10px;
+border: 1px solid #ddd;
+border-top: none;
+background: #f9f9f9;
+}
