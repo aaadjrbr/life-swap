@@ -91,6 +91,7 @@
         <input type="text" id="postSearch" placeholder="Search by Post ID...">
       </div>
       <div id="postList"></div>
+      <div id="sentinel" style="height: 1px;"></div>
       <div class="pagination" id="postPagination"></div>
     </div>
 
@@ -189,6 +190,7 @@
     let carouselPostIds = []; // Store post IDs for navigation
     let carouselIndex = 0; // Current start index
     const postsPerCarousel = window.innerWidth < 768 ? 2 : 4; // 2 on mobile, 4 on desktop
+    let isLoading = false;
 
     document.addEventListener("DOMContentLoaded", () => {
   onAuthStateChanged(auth, async (user) => {
@@ -531,7 +533,7 @@ async function reportPost(postId) {
   const existingReportSnapshot = await getDocs(existingReportQ);
 
   if (!existingReportSnapshot.empty) {
-    alert("You’ve already reported this post, bro!");
+    alert("You’ve already reported this post!");
     return;
   }
 
@@ -548,7 +550,7 @@ async function reportPost(postId) {
 }
 
 async function clearReports(postId) {
-  if (confirm("Clear all reports for this post, bro? It’ll be visible again.")) {
+  if (confirm("Clear all reports for this post? It’ll be visible again.")) {
     const reportsRef = collection(db, "communities", communityId, "postReports");
     const q = query(reportsRef, where("postId", "==", postId));
     const snapshot = await getDocs(q);
@@ -735,7 +737,7 @@ async function createPost() {
   const offering = document.getElementById("offering").value;
 
   if (!title || !description || !location || !lat || !lon || !lookingFor || !offering) {
-    alert("Fill out all fields, pick categories, and select a location, bro!");
+    alert("Fill out all fields, pick categories, and select a location!");
     return;
   }
 
@@ -1131,13 +1133,40 @@ async function loadCarouselPosts(communityId) {
   // Buttons are always enabled if there’s more than one "page" of posts
   prevBtn.disabled = totalCarouselPosts <= postsPerCarousel;
   nextBtn.disabled = totalCarouselPosts <= postsPerCarousel;
-  console.log("Button states - Prev:", prevBtn.disabled, "Next:", nextBtn.disabled);
+  //console.log("Button states - Prev:", prevBtn.disabled, "Next:", nextBtn.disabled);
 }
 
 function slideCarousel(direction) {
   carouselIndex += direction; // Move by 1 "page" (4 or 2 posts)
   loadCarouselPosts(communityId);
 }
+
+//Helper for scrolldown
+const sentinel = document.getElementById("sentinel");
+const observer = new IntersectionObserver((entries) => {
+  if (entries[0].isIntersecting && !isLoading && loadedPostIds.size < totalPosts) {
+    isLoading = true;
+    loadPosts(communityId).then(() => {
+      isLoading = false;
+    });
+  }
+}, { threshold: 1.0 });
+
+observer.observe(sentinel);
+
+let lastY = 0;
+window.addEventListener("touchmove", debounce(() => {
+  const currentY = window.scrollY;
+  if (currentY > lastY && currentY + window.innerHeight >= document.body.scrollHeight - 50) {
+    if (!isLoading && loadedPostIds.size < totalPosts) {
+      isLoading = true;
+      loadPosts(communityId).then(() => {
+        isLoading = false;
+      });
+    }
+  }
+  lastY = currentY;
+}, 200));
 
 // Updated globals (around line 320-ish)
 let lastPostDoc = null; // Tracks the last loaded post for pagination
@@ -1276,8 +1305,9 @@ async function renderPosts(snapshot, postsDiv) {
     postDiv.innerHTML = `
       <div class="post-header">
         <img src="${userData?.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
-        <h3>${post.title || 'Untitled'} - <span class="username" data-uid="${post.userId}">${userData?.name || 'Unknown'} (${userData?.username || 'unknown'})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
+        <h3><span class="username" data-uid="${post.userId}">${userData?.name || 'Unknown'} (${userData?.username || 'unknown'})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
       </div>
+      <h3>${post.title || 'Untitled'}</h3>
       <p>${post.description || ''}</p>
       <div class="photo-carousel" id="carousel-${postId}-community" data-photos='${JSON.stringify(photoUrls)}'>
         ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${postId}-community"><</button>` : ''}
@@ -1346,7 +1376,6 @@ async function renderPosts(snapshot, postsDiv) {
 // Infinite scroll listener
 function setupInfiniteScroll() {
   const postsDiv = document.getElementById("postList");
-  let isLoading = false;
 
   window.addEventListener("scroll", debounce(async () => {
     if (isLoading || loadedPostIds.size >= totalPosts) return;
@@ -1383,8 +1412,9 @@ async function loadYourPosts(userId) {
     postDiv.innerHTML = `
       <div class="post-header">
         <img src="${userData.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
-        <h3>${post.title} - <span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
+        <h3><span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
       </div>
+      <h3>${post.title}</h3>
       <p>${post.description}</p>
       <div class="photo-carousel" id="carousel-${doc.id}-your" data-photos='${JSON.stringify(photoUrls)}'>
         ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${doc.id}-your"><</button>` : ''}

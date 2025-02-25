@@ -4,6 +4,7 @@ body {
   margin: 0;
   padding: 0;
   background: #f4f4f4;
+  overflow-y: auto;
 }
 
 .community-page {
@@ -1152,6 +1153,8 @@ margin-right: 5px;
 #postList {
   padding-bottom: 60px; /* Space for button */
   position: relative; /* For button positioning */
+  height: auto;
+  overflow-y: auto;
 }
 
 #postList .loading {
