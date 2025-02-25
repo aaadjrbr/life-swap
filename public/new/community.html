@@ -28,6 +28,26 @@
           <input type="file" id="postPhotos" multiple accept="image/*">
           <input type="text" id="postLocation" placeholder="Location" required>
           <div id="postLocationSuggestions" class="suggestions"></div>
+          <div class="community-checkbox-container">
+            <label>Post to Communities:</label>
+            <div id="communityCheckboxes" class="community-checkboxes">
+              <!-- Checkboxes populated dynamically -->
+            </div>
+          </div>
+          <label for="lookingFor">What are you looking for?</label>
+          <select id="lookingFor" required>
+            <option value="">Select an option</option>
+            <option value="Time">Time</option>
+            <option value="Skill">Skill</option>
+            <option value="Item">Item</option>
+          </select>
+          <label for="offering">What are you offering?</label>
+          <select id="offering" required>
+            <option value="">Select an option</option>
+            <option value="Time">Time</option>
+            <option value="Skill">Skill</option>
+            <option value="Item">Item</option>
+          </select>
           <button type="button" id="createPostBtn">Create Post</button>
         </form>
       </div>
@@ -42,13 +62,28 @@
     <!-- Community Posts -->
     <div id="posts">
       <h3>Community Posts</h3>
+      <div class="post-filter-bar">
+        <label for="lookingForFilter">Looking For:</label>
+        <select id="lookingForFilter">
+          <option value="">All</option>
+          <option value="Time">Time</option>
+          <option value="Skill">Skill</option>
+          <option value="Item">Item</option>
+        </select>
+        <label for="offeringFilter">Offering:</label>
+        <select id="offeringFilter">
+          <option value="">All</option>
+          <option value="Time">Time</option>
+          <option value="Skill">Skill</option>
+          <option value="Item">Item</option>
+        </select>
+      </div>
       <div class="search-bar">
         <input type="text" id="postSearch" placeholder="Search by Post ID...">
       </div>
       <div id="postList"></div>
       <div class="pagination" id="postPagination"></div>
     </div>
-  </div>
 
   <!-- View Profile Modal -->
   <div id="viewProfileModal" class="modal hidden">
@@ -230,6 +265,15 @@
         // Then update dynamic UI
         await updateProfileRequestsUI(user.uid);
 
+        const postIdSearch = document.getElementById("postSearch");
+        if (postIdSearch) postIdSearch.addEventListener("input", debounce((e) => loadPosts(communityId, currentPage), 300));
+
+        const lookingForFilter = document.getElementById("lookingForFilter");
+        if (lookingForFilter) lookingForFilter.addEventListener("change", () => loadPosts(communityId, currentPage));
+
+        const offeringFilter = document.getElementById("offeringFilter");
+        if (offeringFilter) offeringFilter.addEventListener("change", () => loadPosts(communityId, currentPage));
+
         const copyCommunityIdBtn = document.getElementById("copyCommunityIdBtn");
         if (copyCommunityIdBtn) copyCommunityIdBtn.addEventListener("click", copyCommunityId);
 
@@ -279,9 +323,11 @@
         if (postSearch) postSearch.addEventListener("input", (e) => searchPosts(e.target.value));
 
         setupLocationAutocomplete();
+        setupCommunitySelection();
         loadYourPosts(user.uid);
         loadPosts(communityId, 1);
         updateNotificationBadge(user.uid);
+        await loadAdminReportSummary();
       } else {
         alert("Community not found!");
         window.location.href = "/index.html";
@@ -446,6 +492,61 @@ async function fetchUserData(uid) {
   return cachedData;
 }
 
+// Add these helper functions right after your existing functions like `fetchUserData` or `createPost`
+async function getPostReportStatus(postId) {
+  const reportsRef = collection(db, "communities", communityId, "postReports");
+  const q = query(reportsRef, where("postId", "==", postId));
+  const snapshot = await getDocs(q);
+  const reportCount = snapshot.size;
+  const commData = await getCommData();
+  const user = auth.currentUser;
+  const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
+  const postRef = doc(db, "communities", communityId, "posts", postId);
+  const postDoc = await getDoc(postRef);
+  const postData = postDoc.data();
+  const isOwner = postData.userId === user.uid;
+
+  return {
+    reportCount,
+    isHidden: reportCount >= 2 && !isAdmin && !isOwner,
+    isAdmin,
+    isOwner
+  };
+}
+
+async function reportPost(postId) {
+  const user = auth.currentUser;
+  const reportsRef = collection(db, "communities", communityId, "postReports");
+  const existingReportQ = query(reportsRef, where("postId", "==", postId), where("reporterId", "==", user.uid));
+  const existingReportSnapshot = await getDocs(existingReportQ);
+
+  if (!existingReportSnapshot.empty) {
+    alert("You’ve already reported this post, bro!");
+    return;
+  }
+
+  await addDoc(reportsRef, {
+    postId,
+    reporterId: user.uid,
+    communityId,
+    timestamp: new Date()
+  });
+
+  alert("Post reported!");
+  loadPosts(communityId, currentPage);
+}
+
+async function clearReports(postId) {
+  if (confirm("Clear all reports for this post, bro? It’ll be visible again.")) {
+    const reportsRef = collection(db, "communities", communityId, "postReports");
+    const q = query(reportsRef, where("postId", "==", postId));
+    const snapshot = await getDocs(q);
+    const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+    await Promise.all(deletePromises);
+    loadPosts(communityId, currentPage);
+  }
+}
+
     async function compressImage(file) {
       return new Promise((resolve) => {
         const img = new Image();
@@ -544,7 +645,72 @@ async function fetchUserData(uid) {
   }, 300);
 }
 
-    async function createPost() {
+async function loadAdminReportSummary() {
+  const commData = await getCommData();
+  const user = auth.currentUser;
+  const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
+
+  if (!isAdmin) return; // Only for admins
+
+  const summaryDiv = document.createElement("div");
+  summaryDiv.id = "admin-report-summary";
+  summaryDiv.className = "admin-report-summary";
+  document.querySelector(".community-page").insertBefore(summaryDiv, document.querySelector(".top-bar").nextSibling);
+
+  const reportsRef = collection(db, "communities", communityId, "postReports");
+  const q = query(reportsRef);
+  const snapshot = await getDocs(q);
+
+  if (snapshot.empty) {
+    summaryDiv.innerHTML = "<p>No reported posts in this community.</p>";
+    return;
+  }
+
+  // Group reports by postId
+  const reportCounts = {};
+  snapshot.forEach(doc => {
+    const postId = doc.data().postId;
+    reportCounts[postId] = (reportCounts[postId] || 0) + 1;
+  });
+
+  summaryDiv.innerHTML = "<h3>Reported Posts</h3>";
+  for (const [postId, count] of Object.entries(reportCounts)) {
+    const postRef = doc(db, "communities", communityId, "posts", postId);
+    const postDoc = await getDoc(postRef);
+    const postData = postDoc.exists() ? postDoc.data() : null;
+    const title = postData ? postData.title : "Deleted Post";
+
+    summaryDiv.innerHTML += `
+      <div class="report-item">
+        <span>Post "${title}" (ID: ${postId}) - ${count} report${count > 1 ? 's' : ''}</span>
+        <button class="view-post-btn" data-post-id="${postId}">View Post</button>
+        <button class="remove-post-btn" data-post-id="${postId}">Remove Post</button>
+        <button class="clear-reports-btn" data-post-id="${postId}">Clear Reports</button>
+      </div>
+    `;
+  }
+
+  // Add event listeners
+  summaryDiv.querySelectorAll(".view-post-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const postId = btn.dataset.postId;
+      loadPosts(communityId, currentPage).then(() => {
+        const postEl = document.getElementById(`post-${postId}`);
+        if (postEl) postEl.scrollIntoView({ behavior: "smooth" });
+      });
+    });
+  });
+
+  summaryDiv.querySelectorAll(".remove-post-btn").forEach(btn => {
+    btn.addEventListener("click", () => deletePost(btn.dataset.postId));
+  });
+
+  summaryDiv.querySelectorAll(".clear-reports-btn").forEach(btn => {
+    btn.addEventListener("click", () => clearReports(btn.dataset.postId));
+  });
+}
+
+async function createPost() {
   const user = auth.currentUser;
   const title = document.getElementById("postTitle").value.trim();
   const description = document.getElementById("postDescription").value.trim();
@@ -552,14 +718,50 @@ async function fetchUserData(uid) {
   const location = document.getElementById("postLocation").value.trim();
   const lat = document.getElementById("postLocation").dataset.lat;
   const lon = document.getElementById("postLocation").dataset.lon;
+  const communityCheckboxes = document.querySelectorAll("#communityCheckboxes input[name='communities']:checked");
+  const lookingFor = document.getElementById("lookingFor").value;
+  const offering = document.getElementById("offering").value;
 
-  if (!title || !description || !location || !lat || !lon) {
-    alert("Fill out all fields and select a location from the suggestions, bro!");
+  if (!title || !description || !location || !lat || !lon || !lookingFor || !offering) {
+    alert("Fill out all fields, pick categories, and select a location, bro!");
+    return;
+  }
+
+  if (communityCheckboxes.length === 0) {
+    alert("Pick at least one community to post!");
+    return;
+  }
+
+  let selectedCommunities = Array.from(communityCheckboxes).map(cb => cb.value);
+
+  // If "all" is checked (and only "all"), post to all communities
+  if (selectedCommunities.length === 1 && selectedCommunities[0] === "all") {
+    const userRef = doc(db, "users", user.uid);
+    const userDoc = await getDoc(userRef);
+    selectedCommunities = userDoc.data().communityIds || [];
+    // Filter out banned communities
+    const validCommunities = [];
+    for (const commId of selectedCommunities) {
+      const commRef = doc(db, "communities", commId);
+      const commDoc = await getDoc(commRef);
+      const commData = commDoc.data();
+      if (commData.members.includes(user.uid) && !(commData.bannedUsers || []).includes(user.uid)) {
+        validCommunities.push(commId);
+      }
+    }
+    selectedCommunities = validCommunities;
+  } else {
+    // Use the checked communities, swapping "current" for communityId
+    selectedCommunities = selectedCommunities.map(comm => comm === "current" ? communityId : comm);
+  }
+
+  if (selectedCommunities.length === 0) {
+    alert("No valid communities selected!");
     return;
   }
 
   const photoUrls = [];
-  for (let i = 0; i < Math.min(photos.length, 5); i++) {
+  for (let i = 0; i < Math.min(photos.length, 5); i++) { // Fixed "phones" to "photos"
     const compressedBlob = await compressImage(photos[i]);
     const photoRef = ref(storage, `posts/${communityId}/${user.uid}/${Date.now()}_${i}`);
     await uploadBytes(photoRef, compressedBlob);
@@ -567,19 +769,92 @@ async function fetchUserData(uid) {
     photoUrls.push(url);
   }
 
-  const postDoc = await addDoc(collection(db, "communities", communityId, "posts"), {
+  const postData = {
     title,
     description,
     photoUrls,
     location: { latitude: parseFloat(lat), longitude: parseFloat(lon), name: location },
     userId: user.uid,
-    createdAt: new Date()
-  });
+    createdAt: new Date(),
+    lookingFor,
+    offering
+  };
 
-  alert("Post created!");
+  const postPromises = selectedCommunities.map(commId =>
+    addDoc(collection(db, "communities", commId, "posts"), postData)
+  );
+  await Promise.all(postPromises);
+
+  alert(`Post created in ${selectedCommunities.length} community${selectedCommunities.length > 1 ? 'ies' : ''}!`);
   document.getElementById("newPostForm").reset();
   loadYourPosts(user.uid);
   loadPosts(communityId, currentPage);
+}
+
+async function setupCommunitySelection() {
+  const user = auth.currentUser;
+  const userRef = doc(db, "users", user.uid);
+  const userDoc = await getDoc(userRef);
+  const communityIds = userDoc.data().communityIds || [];
+  
+  const container = document.getElementById("communityCheckboxes");
+  if (!container) {
+    console.error("communityCheckboxes div not found in DOM yet!");
+    return;
+  }
+
+  container.innerHTML = "";
+
+  const commRef = doc(db, "communities", communityId);
+  const commDoc = await getDoc(commRef);
+  const currentCommName = commDoc.data().name;
+  container.innerHTML += `
+    <label for="comm-current">
+      <input type="checkbox" id="comm-current" name="communities" value="current" checked> Current (${currentCommName})
+    </label>
+  `;
+
+  container.innerHTML += `
+    <label for="comm-all">
+      <input type="checkbox" id="comm-all" name="communities" value="all"> All Communities
+    </label>
+  `;
+
+  const communityPromises = communityIds
+    .filter(id => id !== communityId)
+    .map(id => getDoc(doc(db, "communities", id)));
+  const communityDocs = await Promise.all(communityPromises);
+  
+  communityDocs.forEach((doc, index) => {
+    if (doc.exists()) {
+      const commData = doc.data();
+      if (commData.members.includes(user.uid) && !(commData.bannedUsers || []).includes(user.uid)) {
+        const checkbox = document.createElement("label");
+        checkbox.setAttribute("for", `comm-${index}`);
+        checkbox.innerHTML = `
+          <input type="checkbox" id="comm-${index}" name="communities" value="${doc.id}"> ${commData.name}
+        `;
+        container.appendChild(checkbox);
+      }
+    }
+  });
+
+  const allCheckbox = container.querySelector('input[value="all"]');
+  allCheckbox.addEventListener("change", (e) => {
+    const otherCheckboxes = container.querySelectorAll('input[name="communities"]:not([value="all"])');
+    if (e.target.checked) {
+      otherCheckboxes.forEach(cb => cb.checked = false);
+    }
+  });
+
+  const otherCheckboxes = container.querySelectorAll('input[name="communities"]:not([value="all"])');
+  otherCheckboxes.forEach(cb => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) {
+        allCheckbox.checked = false;
+      }
+    });
+  });
 }
 
     async function deletePost(postId) {
@@ -730,70 +1005,110 @@ function setupCommunityCarousel(postId) {
 async function loadPosts(communityId, page) {
   const postsDiv = document.getElementById("postList");
   const paginationDiv = document.getElementById("postPagination");
-  const searchTerm = document.getElementById("postSearch").value.trim();
+  const idSearchEl = document.getElementById("postSearch");
+  const lookingForFilterEl = document.getElementById("lookingForFilter");
+  const offeringFilterEl = document.getElementById("offeringFilter");
+
+  const idSearchTerm = idSearchEl?.value.trim() || "";
+  const lookingForFilter = lookingForFilterEl?.value || "";
+  const offeringFilter = offeringFilterEl?.value || "";
 
   let q;
-  if (searchTerm) {
-    q = query(collection(db, "communities", communityId, "posts"), where("__name__", "==", searchTerm));
+  if (idSearchTerm) {
+    q = query(collection(db, "communities", communityId, "posts"), where("__name__", "==", idSearchTerm));
   } else {
-    q = query(collection(db, "communities", communityId, "posts"), orderBy("createdAt", "desc"), limit(postsPerPage));
-    if (page > 1) {
-      const prevQ = query(collection(db, "communities", communityId, "posts"), orderBy("createdAt", "desc"), limit((page - 1) * postsPerPage));
-      const prevSnapshot = await getDocs(prevQ);
-      lastPostDoc = prevSnapshot.docs[prevSnapshot.docs.length - 1];
-      q = query(collection(db, "communities", communityId, "posts"), orderBy("createdAt", "desc"), limit(postsPerPage), startAfter(lastPostDoc));
+    q = query(
+      collection(db, "communities", communityId, "posts"),
+      ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
+      ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
+      orderBy("createdAt", "desc"),
+      limit(postsPerPage)
+    );
+    if (page > 1 && lastPostDoc) {
+      q = query(
+        collection(db, "communities", communityId, "posts"),
+        ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
+        ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
+        orderBy("createdAt", "desc"),
+        startAfter(lastPostDoc),
+        limit(postsPerPage)
+      );
     }
   }
 
   const snapshot = await getDocs(q);
-  if (!searchTerm) {
+  postsDiv.innerHTML = "";
+
+  if (!idSearchTerm) {
     lastPostDoc = snapshot.docs[snapshot.docs.length - 1];
-    const totalQ = query(collection(db, "communities", communityId, "posts"));
+    const totalQ = query(
+      collection(db, "communities", communityId, "posts"),
+      ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
+      ...(offeringFilter ? [where("offering", "==", offeringFilter)] : [])
+    );
     const totalSnapshot = await getDocs(totalQ);
     totalPosts = totalSnapshot.size;
   }
 
-  postsDiv.innerHTML = "";
   const commData = await getCommData();
-  const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
+  const isAdmin = commData?.admins?.includes(auth.currentUser.uid) || commData?.creatorId === auth.currentUser.uid;
 
-  for (const doc of snapshot.docs) {
-    const post = doc.data();
-    //console.log(`Loading post ${doc.id}:`, post);
+  const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  if (posts.length === 0) {
+    postsDiv.innerHTML = "<p>No posts match your search or filters.</p>";
+    paginationDiv.innerHTML = "";
+    return;
+  }
+
+  for (const post of posts) {
     const userData = await fetchUserData(post.userId);
-    const isPostAdmin = commData.admins?.includes(post.userId) || commData.creatorId === post.userId;
-    const commentsQ = query(collection(db, "communities", communityId, "posts", doc.id, "comments"), orderBy("createdAt", "desc"));
+    const isPostAdmin = commData?.admins?.includes(post.userId) || commData?.creatorId === post.userId;
+    const commentsQ = query(collection(db, "communities", communityId, "posts", post.id, "comments"), orderBy("createdAt", "desc"));
     const commentsSnapshot = await getDocs(commentsQ);
     const commentCount = commentsSnapshot.size;
-    const timestamp = new Date(post.createdAt.toDate()).toLocaleString();
+    const timestamp = post.createdAt ? new Date(post.createdAt.toDate()).toLocaleString() : "N/A";
     const photoUrls = post.photoUrls || [];
     const photoCount = photoUrls.length;
+    const reportStatus = await getPostReportStatus(post.id);
 
-    // Create post element
+    if (reportStatus?.isHidden) continue;
+
     const postDiv = document.createElement("div");
     postDiv.className = "post";
-    postDiv.id = `post-${doc.id}`;
+    postDiv.id = `post-${post.id}`;
     postDiv.innerHTML = `
       <div class="post-header">
-        <img src="${userData.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
-        <h3>${post.title} - <span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
+        <img src="${userData?.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
+        <h3>${post.title || 'Untitled'} - <span class="username" data-uid="${post.userId}">${userData?.name || 'Unknown'} (${userData?.username || 'unknown'})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
       </div>
-      <p>${post.description}</p>
-      <div class="photo-carousel" id="carousel-${doc.id}-community" data-photos='${JSON.stringify(photoUrls)}'>
-        ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${doc.id}-community"><</button>` : ''}
+      <p>${post.description || ''}</p>
+      <div class="photo-carousel" id="carousel-${post.id}-community" data-photos='${JSON.stringify(photoUrls)}'>
+        ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${post.id}-community"><</button>` : ''}
         <img src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image" data-index="0">
-        ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${doc.id}-community">></button>` : ''}
+        ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${post.id}-community">></button>` : ''}
       </div>
-      <p>Location: ${post.location.name}</p>
+      <p>Location: ${post.location?.name || 'N/A'}</p>
+      <p>Looking For: ${post.lookingFor || 'N/A'} | Offering: ${post.offering || 'N/A'}</p>
       <p class="timestamp">${timestamp}</p>
-      <p class="post-id">Post ID: ${doc.id} <button class="copy-btn" data-post-id="${doc.id}">Copy</button></p>
-      ${post.userId === auth.currentUser.uid || isAdmin ? `<button class="delete-btn" id="deletePost-${doc.id}">Delete Post</button>` : ""}
+      <p class="post-id">Post ID: ${post.id} <button class="copy-btn" data-post-id="${post.id}">Copy</button></p>
+      <button class="report-btn" id="reportPost-${post.id}">Report Post</button>
+      ${post.userId === auth.currentUser.uid || isAdmin ? `<button class="delete-btn" id="deletePost-${post.id}">Delete Post</button>` : ""}
+      ${reportStatus?.isOwner && reportStatus.reportCount === 1 ? `
+        <div class="report-warning" id="warning-${post.id}">
+          You received 1 report for this post, review it.. 1 more report and your post will be hidden until admins check it.
+        </div>` : ""}
+      ${isAdmin && reportStatus?.reportCount > 0 ? `
+        <div class="admin-report-controls" id="admin-controls-${post.id}">
+          This post received ${reportStatus.reportCount} report${reportStatus.reportCount > 1 ? 's' : ''}.
+          <button class="remove-post-btn" data-post-id="${post.id}">Remove Post</button>
+          <button class="clear-reports-btn" data-post-id="${post.id}">Clear Reports</button>
+        </div>` : ""}
       <div class="comments-section">
-        <a href="#" class="comment-count" id="toggleComments-${doc.id}">${commentCount} comments</a>
-        <div class="comments-thread" id="comments-${doc.id}" style="display: none;"></div>
-        <form id="commentForm-${doc.id}" class="comment-form">
+        <a href="#" class="comment-count" id="toggleComments-${post.id}">${commentCount} comments</a>
+        <div class="comments-thread" id="comments-${post.id}" style="display: none;"></div>
+        <form id="commentForm-${post.id}" class="comment-form">
           <textarea placeholder="Add a comment..." required></textarea>
-          <div id="tagSuggestions-${doc.id}" class="suggestions hidden"></div>
+          <div id="tagSuggestions-${post.id}" class="suggestions hidden"></div>
           <button type="submit">Comment</button>
         </form>
       </div>
@@ -801,55 +1116,44 @@ async function loadPosts(communityId, page) {
 
     postsDiv.appendChild(postDiv);
 
-    // Add event listeners to this post’s elements
+    // Event listeners unchanged (username clicks, comments, etc.)
     const usernameEl = postDiv.querySelector(`.username[data-uid="${post.userId}"]`);
-    usernameEl.addEventListener("click", () => {
-      //console.log(`Username clicked for post ${doc.id}, uid: ${post.userId}`);
-      viewProfile(post.userId);
-    });
-
-    const toggleCommentsEl = postDiv.querySelector(`#toggleComments-${doc.id}`);
-    toggleCommentsEl.addEventListener("click", (e) => {
+    if (usernameEl) usernameEl.addEventListener("click", () => viewProfile(post.userId));
+    const toggleCommentsEl = postDiv.querySelector(`#toggleComments-${post.id}`);
+    if (toggleCommentsEl) toggleCommentsEl.addEventListener("click", (e) => {
       e.preventDefault();
-      //console.log(`Toggle comments clicked for post ${doc.id}`);
-      toggleComments(doc.id);
+      toggleComments(post.id);
     });
-
-    const commentForm = postDiv.querySelector(`#commentForm-${doc.id}`);
-    commentForm.addEventListener("submit", (e) => {
+    const commentForm = postDiv.querySelector(`#commentForm-${post.id}`);
+    if (commentForm) commentForm.addEventListener("submit", (e) => {
       e.preventDefault();
-      //console.log(`Comment form submitted for post ${doc.id}`);
-      addComment(doc.id, post.userId);
+      addComment(post.id, post.userId);
     });
-
-    const deleteBtn = postDiv.querySelector(`#deletePost-${doc.id}`);
-    if (deleteBtn) {
-      deleteBtn.addEventListener("click", () => {
-        //console.log(`Delete button clicked for post ${doc.id}`);
-        deletePost(doc.id);
-      });
-    }
-
-    const copyBtn = postDiv.querySelector(`.copy-btn[data-post-id="${doc.id}"]`);
-    copyBtn.addEventListener("click", (e) => {
+    const deleteBtn = postDiv.querySelector(`#deletePost-${post.id}`);
+    if (deleteBtn) deleteBtn.addEventListener("click", () => deletePost(post.id));
+    const reportBtn = postDiv.querySelector(`#reportPost-${post.id}`);
+    if (reportBtn) reportBtn.addEventListener("click", () => reportPost(post.id));
+    const copyBtn = postDiv.querySelector(`.copy-btn[data-post-id="${post.id}"]`);
+    if (copyBtn) copyBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      //console.log(`Copy button clicked for post ${doc.id}`);
-      copyPostId(doc.id);
+      copyPostId(post.id);
     });
-
-    const textarea = postDiv.querySelector(`#commentForm-${doc.id} textarea`);
-    if (textarea._debouncedInput) textarea.removeEventListener("input", textarea._debouncedInput);
-    textarea._debouncedInput = debounce((e) => showTagSuggestions(e.target, doc.id), 500);
-    textarea.addEventListener("input", textarea._debouncedInput);
-
-    if (photoCount > 1) {
-      setupCommunityCarousel(doc.id);
+    if (isAdmin) {
+      const removePostBtn = postDiv.querySelector(`.remove-post-btn[data-post-id="${post.id}"]`);
+      if (removePostBtn) removePostBtn.addEventListener("click", () => deletePost(post.id));
+      const clearReportsBtn = postDiv.querySelector(`.clear-reports-btn[data-post-id="${post.id}"]`);
+      if (clearReportsBtn) clearReportsBtn.addEventListener("click", () => clearReports(post.id));
     }
-
-    //console.log(`Event listeners added for post ${doc.id}`);
+    const textarea = postDiv.querySelector(`#commentForm-${post.id} textarea`);
+    if (textarea) {
+      if (textarea._debouncedInput) textarea.removeEventListener("input", textarea._debouncedInput);
+      textarea._debouncedInput = debounce((e) => showTagSuggestions(e.target, post.id), 500);
+      textarea.addEventListener("input", textarea._debouncedInput);
+    }
+    if (photoCount > 1) setupCommunityCarousel(post.id);
   }
 
-  if (!searchTerm) {
+  if (!idSearchTerm) {
     const totalPages = Math.ceil(totalPosts / postsPerPage);
     paginationDiv.innerHTML = "";
     for (let i = 1; i <= totalPages && i <= 5; i++) {
@@ -875,12 +1179,12 @@ async function loadYourPosts(userId) {
 
   for (const doc of snapshot.docs) {
     const post = doc.data();
-    //console.log(`Loading your post ${doc.id}:`, post);
     const userData = await fetchUserData(post.userId);
     const isAdmin = commData.admins?.includes(post.userId) || commData.creatorId === post.userId;
     const timestamp = new Date(post.createdAt.toDate()).toLocaleString();
     const photoUrls = post.photoUrls || [];
     const photoCount = photoUrls.length;
+    const reportStatus = await getPostReportStatus(doc.id); // Get report info
 
     // Create post element
     const postDiv = document.createElement("div");
@@ -901,21 +1205,27 @@ async function loadYourPosts(userId) {
       <p class="timestamp">${timestamp}</p>
       <p class="post-id">Post ID: ${doc.id} <button class="copy-btn" data-post-id="${doc.id}">Copy</button></p>
       ${post.userId === auth.currentUser.uid || commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid ? `<button class="delete-btn" id="deletePost-${doc.id}">Delete Post</button>` : ""}
+      ${reportStatus.isOwner && reportStatus.reportCount === 1 ? `
+        <div class="report-warning" id="warning-${doc.id}">
+          You received 1 report for this post, review it.. 1 more report and your post will be hidden from other users until admins check it.
+        </div>` : ""}
+      ${reportStatus.isOwner && reportStatus.reportCount >= 2 ? `
+        <div class="report-warning" id="warning-${doc.id}">
+          This post has ${reportStatus.reportCount} reports and is hidden from other users until admins review it.
+        </div>` : ""}
     `;
 
     yourPostsList.appendChild(postDiv);
 
-    // Add event listeners to this post’s elements
+    // Add event listeners
     const usernameEl = postDiv.querySelector(`.username[data-uid="${post.userId}"]`);
     usernameEl.addEventListener("click", () => {
-      //console.log(`Username clicked for your post ${doc.id}, uid: ${post.userId}`);
       viewProfile(post.userId);
     });
 
     const deleteBtn = postDiv.querySelector(`#deletePost-${doc.id}`);
     if (deleteBtn) {
       deleteBtn.addEventListener("click", () => {
-        //console.log(`Delete button clicked for your post ${doc.id}`);
         deletePost(doc.id);
       });
     }
@@ -923,15 +1233,12 @@ async function loadYourPosts(userId) {
     const copyBtn = postDiv.querySelector(`.copy-btn[data-post-id="${doc.id}"]`);
     copyBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      //console.log(`Copy button clicked for your post ${doc.id}`);
       copyPostId(doc.id);
     });
 
     if (photoCount > 1) {
       setupYourPostsCarousel(doc.id);
     }
-
-    //console.log(`Event listeners added for your post ${doc.id}`);
   }
 }
 

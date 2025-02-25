@@ -896,3 +896,179 @@ background-color: #ccc; /* Or whatever fits your vibe */
   font-size: 0.8em;
   color: #666;
 }
+
+.report-btn {
+  background-color: #ff4444;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  cursor: pointer;
+  margin-right: 10px;
+}
+
+.report-btn:hover {
+  background-color: #cc0000;
+}
+
+.report-warning {
+  background-color: #fff3cd;
+  color: #856404;
+  padding: 10px;
+  margin: 10px 0;
+  border: 1px solid #ffeeba;
+  border-radius: 4px;
+}
+
+.admin-report-controls {
+  background-color: #f8d7da;
+  color: #721c24;
+  padding: 10px;
+  margin: 10px 0;
+  border: 1px solid #f5c6cb;
+  border-radius: 4px;
+}
+
+.remove-post-btn, .clear-reports-btn {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  cursor: pointer;
+  margin-left: 10px;
+}
+
+.remove-post-btn:hover, .clear-reports-btn:hover {
+  background-color: #c82333;
+}
+
+.admin-report-summary {
+  background-color: #f8d7da;
+  padding: 15px;
+  margin: 10px 0;
+  border: 1px solid #f5c6cb;
+  border-radius: 4px;
+}
+
+.admin-report-summary h3 {
+  margin-top: 0;
+}
+
+.report-item {
+  margin: 5px 0;
+}
+
+.report-item span {
+  margin-right: 10px;
+}
+
+.view-post-btn {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  cursor: pointer;
+  margin-right: 5px;
+}
+
+.view-post-btn:hover {
+  background-color: #0056b3;
+}
+
+.remove-post-btn, .clear-reports-btn {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  cursor: pointer;
+  margin-right: 5px;
+}
+
+.remove-post-btn:hover, .clear-reports-btn:hover {
+  background-color: #c82333;
+}
+
+/* Add to community.css */
+.community-checkbox-container {
+align-items: center;
+gap: 10px;
+margin: 10px 0;
+}
+
+.community-checkbox-container label {
+font-weight: bold;
+white-space: nowrap;
+}
+
+.community-checkboxes {
+margin: 0; /* Remove top/bottom margin since container handles it */
+padding: 10px;
+background-color: #f8f9fa;
+border: 1px solid #ddd;
+border-radius: 4px;
+display: flex;
+flex-wrap: wrap;
+gap: 15px;
+align-items: center;
+max-height: 150px;
+overflow-y: auto;
+}
+
+.community-checkboxes label {
+display: flex;
+align-items: center;
+margin: 0;
+}
+
+.community-checkboxes input[type="checkbox"] {
+margin-right: 5px;
+}
+
+.post-filter-bar {
+  margin-bottom: 15px;
+  padding: 10px;
+  background-color: #f8f9fa;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.post-filter-bar input[type="text"] {
+  flex: 1;
+  min-width: 200px;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.post-filter-bar label {
+  margin-right: 5px;
+  align-self: center;
+}
+
+.post-filter-bar select {
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  min-width: 120px;
+}
+
+.search-bar {
+  margin-bottom: 15px;
+}
+
+.search-bar input[type="text"] {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+#newPostForm select {
+  width: 100%;
+  padding: 8px;
+  margin: 5px 0 10px 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
