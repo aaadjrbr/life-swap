@@ -15,7 +15,7 @@
         <h2 id="communityName"></h2>
         <p id="communityMeta">Created: <span id="createdAt"></span> by <span id="creatorName"></span></p>
       </div>
-      <button id="viewCommunitiesBtn">View Communities</button>
+      <button id="viewCommunitiesBtn">Your Communities</button>
       <button id="viewNotificationsBtn">Notifications <span id="notificationCount" class="notification-badge">0</span></button>
     </div>
     <p>Share with friends!</p>
@@ -136,6 +136,7 @@
       <div class="search-bar">
         <input type="text" id="postSearch" placeholder="Search by Post ID...">
       </div>
+      <div id="search-scrolldown"></div>
       <button id="refreshPostsBtn">Refresh Posts</button>
       <div id="postList"></div>
       <div id="caughtUpMessage" class="caught-up" style="display: none;">You are all caught up!</div>
@@ -184,6 +185,15 @@
       <button id="closeProfileViewRequestsBtn">Close</button>
     </div>
   </div>
+
+  <!-- Saved Posts Modal -->
+<div id="viewSavedPostsModal" class="modal hidden">
+  <div class="modal-content">
+    <h2>Saved Posts</h2>
+    <div id="savedPostsList" class="user-list"></div>
+    <button id="closeSavedPostsBtn">Close</button>
+  </div>
+</div>
 
   <!-- View Communities Modal -->
 <div id="viewCommunitiesModal" class="modal hidden">
@@ -251,7 +261,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-    import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc, limitToLast, startAfter, endBefore, orderBy, enableIndexedDbPersistence, runTransaction, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc, limitToLast, startAfter, endBefore, orderBy, enableIndexedDbPersistence, runTransaction, writeBatch, deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
     const firebaseConfig = {
@@ -412,6 +422,7 @@ enableIndexedDbPersistence(db)
           ${commData.members.includes(user.uid) && commData.creatorId !== user.uid ? `<button class="leave-btn" id="leaveCommunityBtn">Leave Community</button>` : ""}
           <button id="viewProfileViewRequestsBtn">See Profile View Requests ${profileViewRequestCount > 0 ? `<span class="request-badge">${profileViewRequestCount}</span>` : ''}</button>
           ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="editNameBtn">Edit Name (Community)</button>` : ""}
+          <button id="viewSavedPostsBtn">View Saved Posts</button> <!-- New Button -->
         `;
 
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -440,6 +451,7 @@ enableIndexedDbPersistence(db)
         const refreshPostsBtn = document.getElementById("refreshPostsBtn");
         const editNameBtn = document.getElementById("editNameBtn");
         const viewCommunitiesBtn = document.getElementById("viewCommunitiesBtn");
+        const viewSavedPostsBtn = document.getElementById("viewSavedPostsBtn");
 
         if (postIdSearch) {
           postIdSearch.addEventListener("input", debounce((e) => {
@@ -486,6 +498,7 @@ enableIndexedDbPersistence(db)
         if (refreshPostsBtn) refreshPostsBtn.addEventListener("click", () => loadPosts(communityId, true));
         if (editNameBtn) editNameBtn.addEventListener("click", () => editCommunityName(communityId));
         if (viewCommunitiesBtn) viewCommunitiesBtn.addEventListener("click", () => viewCommunities(user.uid));
+        if (viewSavedPostsBtn) viewSavedPostsBtn.addEventListener("click", () => viewSavedPosts(user.uid));
 
         setupLocationAutocomplete();
         setupCommunitySelection();
@@ -1991,50 +2004,53 @@ async function renderPosts(snapshot, postsDiv) {
     postDiv.className = "post";
     postDiv.id = `post-${postId}`;
     postDiv.innerHTML = `
-      <div class="post-header">
-        <img src="${userData.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
-        <h3><span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
-      </div>
-      <h3>${post.title || 'Untitled'}</h3>
-      <p>${post.description || ''}</p>
-      <div class="photo-carousel" id="carousel-${postId}-community" data-photos='${JSON.stringify(photoUrls)}'>
-        ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${postId}-community"><</button>` : ''}
-        <img src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image" data-index="0">
-        ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${postId}-community">></button>` : ''}
-      </div>
-      <p>Location: ${post.location?.name || 'N/A'}</p>
-      <p>Category: ${post.category || 'N/A'}</p>
-      <p>Looking For: ${post.lookingFor || 'N/A'} | Offering: ${post.offering || 'N/A'}</p>
-      <p class="timestamp">${timestamp}</p>
-      <p class="post-id">Post ID: ${postId} <button class="copy-btn" data-post-id="${postId}">Copy</button></p>
-      <button class="report-btn" id="reportPost-${postId}">Report Post</button>
-      ${post.userId === auth.currentUser.uid || isAdmin ? `<button class="delete-btn" id="deletePost-${postId}">Delete Post</button>` : ""}
-      ${reportStatus?.isOwner && reportStatus.reportCount === 1 ? `
-        <div class="report-warning" id="warning-${postId}">
-          This post has 1 report. One more hides it—check summary!
-        </div>` : ""}
-      ${reportStatus?.isOwner && reportStatus.reportCount >= 2 ? `
-        <div class="report-warning" id="warning-${postId}">
-          This post has ${reportStatus.reportCount} reports and is hidden. Appeal above!
-        </div>` : ""}
-      ${isAdmin && reportStatus?.reportCount > 0 ? `
-        <div class="admin-report-controls" id="admin-controls-${postId}">
-          This post has ${reportStatus.reportCount} report${reportStatus.reportCount > 1 ? 's' : ''}.
-          <button class="remove-post-btn" data-post-id="${postId}">Remove Post</button>
-          <button class="clear-reports-btn" data-post-id="${postId}">Clear Reports</button>
-        </div>` : ""}
-      <div class="comments-section">
-        <a href="#" class="comment-count" id="toggleComments-${postId}">${commentCount} comments</a>
-        <div class="comments-thread" id="comments-${postId}" style="display: none;"></div>
-        <form id="commentForm-${postId}" class="comment-form">
-          <textarea placeholder="Add a comment..." required></textarea>
-          <div id="tagSuggestions-${postId}" class="suggestions hidden"></div>
-          <button type="submit">Comment</button>
-        </form>
-      </div>
-    `;
+  <div class="post-header">
+    <img src="${userData.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
+    <h3><span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
+  </div>
+  <h3>${post.title || 'Untitled'}</h3>
+  <p>${post.description || ''}</p>
+  <div class="photo-carousel" id="carousel-${postId}-community" data-photos='${JSON.stringify(photoUrls)}'>
+    ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${postId}-community"><</button>` : ''}
+    <img src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image" data-index="0">
+    ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${postId}-community">></button>` : ''}
+  </div>
+  <p>Location: ${post.location?.name || 'N/A'}</p>
+  <p>Category: ${post.category || 'N/A'}</p>
+  <p>Looking For: ${post.lookingFor || 'N/A'} | Offering: ${post.offering || 'N/A'}</p>
+  <p class="timestamp">${timestamp}</p>
+  <p class="post-id">Post ID: ${postId} <button class="copy-btn" data-post-id="${postId}">Copy</button></p>
+  <button class="save-post-btn" id="savePost-${postId}">Save Post</button> <!-- New Button -->
+  <button class="report-btn" id="reportPost-${postId}">Report Post</button>
+  ${post.userId === auth.currentUser.uid || isAdmin ? `<button class="delete-btn" id="deletePost-${postId}">Delete Post</button>` : ""}
+  ${reportStatus?.isOwner && reportStatus.reportCount === 1 ? `
+    <div class="report-warning" id="warning-${postId}">
+      This post has 1 report. One more hides it—check summary!
+    </div>` : ""}
+  ${reportStatus?.isOwner && reportStatus.reportCount >= 2 ? `
+    <div class="report-warning" id="warning-${postId}">
+      This post has ${reportStatus.reportCount} reports and is hidden. Appeal above!
+    </div>` : ""}
+  ${isAdmin && reportStatus?.reportCount > 0 ? `
+    <div class="admin-report-controls" id="admin-controls-${postId}">
+      This post has ${reportStatus.reportCount} report${reportStatus.reportCount > 1 ? 's' : ''}.
+      <button class="remove-post-btn" data-post-id="${postId}">Remove Post</button>
+      <button class="clear-reports-btn" data-post-id="${postId}">Clear Reports</button>
+    </div>` : ""}
+  <div class="comments-section">
+    <a href="#" class="comment-count" id="toggleComments-${postId}">${commentCount} comments</a>
+    <div class="comments-thread" id="comments-${postId}" style="display: none;"></div>
+    <form id="commentForm-${postId}" class="comment-form">
+      <textarea placeholder="Add a comment..." required></textarea>
+      <div id="tagSuggestions-${postId}" class="suggestions hidden"></div>
+      <button type="submit">Comment</button>
+    </form>
+  </div>
+`;
 
     postsDiv.appendChild(postDiv);
+
+    postDiv.querySelector(`#savePost-${postId}`).addEventListener("click", () => savePost(postId));
 
     postDiv.querySelector(`.username[data-uid="${post.userId}"]`)?.addEventListener("click", () => viewProfile(post.userId));
     postDiv.querySelector(`#toggleComments-${postId}`)?.addEventListener("click", (e) => {
@@ -2249,6 +2265,103 @@ async function loadYourPosts(userId) {
   }
 
   await fetchYourPosts();
+}
+
+async function savePost(postId) {
+  const user = auth.currentUser;
+  const userRef = doc(db, "users", user.uid);
+  const userDoc = await getDoc(userRef);
+  const userData = userDoc.data();
+  const savedPosts = userData.savedPosts || [];
+
+  if (savedPosts.includes(postId)) {
+    alert("This post is already saved!");
+    return;
+  }
+
+  savedPosts.push(postId);
+  await updateDoc(userRef, { savedPosts });
+  alert("Post saved! Check your saved posts in the menu.");
+}
+
+async function viewSavedPosts(userId) {
+  const modal = document.getElementById("viewSavedPostsModal");
+  const savedPostsList = document.getElementById("savedPostsList");
+  const closeBtn = document.getElementById("closeSavedPostsBtn");
+
+  savedPostsList.innerHTML = '<div class="loading">Loading...</div>';
+  modal.style.display = "flex";
+  modal.classList.remove("hidden");
+
+  const userRef = doc(db, "users", userId);
+  const userDoc = await getDoc(userRef);
+  const savedPosts = userDoc.data().savedPosts || [];
+
+  if (savedPosts.length === 0) {
+    savedPostsList.innerHTML = "<p>No saved posts yet!</p>";
+  } else {
+    savedPostsList.innerHTML = "";
+    const validPosts = [];
+    
+    // Check which posts still exist
+    const postPromises = savedPosts.map(id => getDoc(doc(db, "communities", communityId, "posts", id)));
+    const postDocs = await Promise.all(postPromises);
+
+    postDocs.forEach((doc, index) => {
+      if (doc.exists()) {
+        validPosts.push(savedPosts[index]);
+        const postDiv = document.createElement("div");
+        postDiv.className = "saved-post-item";
+        postDiv.innerHTML = `
+          <span>Post ID: ${savedPosts[index]}</span><br>
+          <div class="save-btns">
+          <button class="copy-btn" data-post-id="${savedPosts[index]}">Copy ID</button>
+          <button class="search-btn" data-post-id="${savedPosts[index]}">Search</button>
+          </div><br>
+          <button class="remove-saved-btn" data-post-id="${savedPosts[index]}">Remove</button>
+        `;
+        savedPostsList.appendChild(postDiv);
+      }
+    });
+
+    // Update user’s savedPosts if some were deleted
+    if (validPosts.length < savedPosts.length) {
+      await updateDoc(userRef, { savedPosts: validPosts });
+    }
+
+    if (validPosts.length === 0) {
+      savedPostsList.innerHTML = "<p>No saved posts available (they might have been deleted).</p>";
+    }
+
+    // Add event listeners
+    savedPostsList.querySelectorAll(".copy-btn").forEach(btn => {
+      btn.addEventListener("click", () => copyPostId(btn.dataset.postId));
+    });
+    savedPostsList.querySelectorAll(".search-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const postId = btn.dataset.postId;
+        document.getElementById("postSearch").value = postId;
+        await searchPostsById(postId); // Wait for search to complete
+        closeModal("viewSavedPostsModal");
+        const scrollTarget = document.getElementById("search-scrolldown");
+        if (scrollTarget) {
+          scrollTarget.scrollIntoView({ behavior: "smooth" }); // Smooth scroll to the target
+        } else {
+          console.warn("Element with id='search-scrolldown' not found!");
+        }
+      });
+    });
+    savedPostsList.querySelectorAll(".remove-saved-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const postId = btn.dataset.postId;
+        const updatedSavedPosts = validPosts.filter(id => id !== postId);
+        await updateDoc(userRef, { savedPosts: updatedSavedPosts });
+        viewSavedPosts(userId); // Refresh the modal
+      });
+    });
+  }
+
+  closeBtn.onclick = () => closeModal("viewSavedPostsModal");
 }
 
 //There is a deployed Cloud Function for keeping postCount live "onPostChange"
@@ -3346,21 +3459,52 @@ async function revokeProfileAccessFromModal(requestId, userId) {
   }
 }
 
-    async function unbanUser(communityId, uid) {
-      const commRef = doc(db, "communities", communityId);
-      const commDoc = await getDoc(commRef);
-      const bannedUsers = commDoc.data().bannedUsers || [];
-      if (bannedUsers.includes(uid)) {
-        const updatedBanned = bannedUsers.filter(b => b !== uid);
-        const members = commDoc.data().members.concat(uid);
-        await updateDoc(commRef, { bannedUsers: updatedBanned, members });
-        alert("User unbanned!");
-        closeModal("viewBannedModal");
-        viewBannedUsers(communityId);
-      } else {
-        alert("User not banned!");
-      }
+async function unbanUser(communityId, uid) {
+  const commRef = doc(db, "communities", communityId);
+
+  // Use a transaction to ensure atomicity and get fresh data
+  await runTransaction(db, async (transaction) => {
+    const commDoc = await transaction.get(commRef);
+    if (!commDoc.exists()) {
+      throw new Error("Community not found!");
     }
+
+    const commData = commDoc.data();
+    const bannedUsers = commData.bannedUsers || [];
+
+    // Check if user is actually banned
+    if (!bannedUsers.includes(uid)) {
+      alert("User not banned!");
+      return;
+    }
+
+    // Update arrays: remove from banned, add to members
+    const updatedBannedUsers = bannedUsers.filter(b => b !== uid);
+    const updatedMembers = commData.members.includes(uid) 
+      ? commData.members 
+      : commData.members.concat(uid);
+
+    // Prepare the update object
+    const updateData = {
+      bannedUsers: updatedBannedUsers,
+      members: updatedMembers
+    };
+
+    // If user is no longer in bannedUsers, remove their ban reason
+    if (!updatedBannedUsers.includes(uid)) {
+      // Use deleteField() to remove the banReasons entry for this UID
+      updateData[`banReasons.${uid}`] = deleteField();
+    }
+
+    // Commit the update in one shot
+    transaction.update(commRef, updateData);
+  });
+
+  // UI updates after successful transaction
+  alert("User unbanned!");
+  closeModal("viewBannedModal");
+  viewBannedUsers(communityId);
+}
 
     let currentMembers = [];
 

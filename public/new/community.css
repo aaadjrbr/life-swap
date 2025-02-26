@@ -1386,3 +1386,25 @@ margin: 10px 0;
 margin: 10px 0;
 font-weight: bold;
 }
+
+.saved-post-item {
+align-items: center;
+padding: 8px;
+border-bottom: 1px solid #ddd;
+background: #48bc69b0;
+border-radius: 8px;
+}
+
+.saved-post-item span {
+flex-grow: 1;
+}
+
+.save-btns {
+display: flex;
+justify-content: center;
+}
+
+.saved-post-item button {
+padding: 5px 10px;
+cursor: pointer;
+}
