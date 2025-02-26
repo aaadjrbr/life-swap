@@ -362,8 +362,22 @@ details > div {
   border: 1px solid #ddd;
   padding: 10px;
   margin: 10px 0;
+  min-height: 200px;
   border-radius: 4px;
   background: white;
+}
+
+.post-placeholder {
+  min-height: 200px;
+  background: #f0f0f0;
+}
+
+img.lazy {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+img.lazy[src] {
+  opacity: 1;
 }
 
 .post-header {
