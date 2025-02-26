@@ -77,7 +77,7 @@ function createCustomHeader() {
         header.style.color = config.textColor;
         header.style.padding = "15px";
         header.style.textAlign = "center";
-        header.style.fontSize = "16px";
+        header.style.fontSize = "17px";
         header.style.lineHeight = "1.5";
         if (config.isBold) header.style.fontWeight = "bold";
         if (config.isItalic) header.style.fontStyle = "italic";
@@ -155,19 +155,57 @@ function addAdminCustomizationUI(header, communityId) {
             `;
             header.appendChild(form);
 
+            // Live preview setup
+            const fontSelect = document.getElementById("header-font");
             const bgColorInput = document.getElementById("header-bgcolor");
             const textColorInput = document.getElementById("header-textcolor");
+            const boldCheckbox = document.getElementById("header-bold");
+            const italicCheckbox = document.getElementById("header-italic");
             const bgPreview = document.getElementById("bg-preview");
             const textPreview = document.getElementById("text-preview");
 
+            // Initial preview states
             bgPreview.style.backgroundColor = bgColorInput.value;
             textPreview.style.backgroundColor = textColorInput.value;
 
-            bgColorInput.oninput = () => bgPreview.style.backgroundColor = bgColorInput.value;
-            textColorInput.oninput = () => textPreview.style.backgroundColor = textColorInput.value;
+            // Live updates for font
+            fontSelect.onchange = () => {
+                header.style.fontFamily = fontSelect.value;
+            };
 
+            // Live updates for colors
+            bgColorInput.oninput = () => {
+                bgPreview.style.backgroundColor = bgColorInput.value;
+                header.style.backgroundColor = bgColorInput.value;
+            };
+            textColorInput.oninput = () => {
+                textPreview.style.backgroundColor = textColorInput.value;
+                header.style.color = textColorInput.value;
+            };
+
+            // Live updates for bold and italic
+            boldCheckbox.onchange = () => {
+                header.style.fontWeight = boldCheckbox.checked ? "bold" : "normal";
+            };
+            italicCheckbox.onchange = () => {
+                header.style.fontStyle = italicCheckbox.checked ? "italic" : "normal";
+            };
+
+            // Save and cancel handlers
             document.getElementById("save-header").onclick = () => saveHeaderConfig(header, communityId);
-            document.getElementById("cancel-header").onclick = () => form.remove();
+            document.getElementById("cancel-header").onclick = () => {
+                // Reset to original styles on cancel (optional)
+                fetchCustomSettings(communityId).then(config => {
+                    if (config) {
+                        header.style.fontFamily = config.font;
+                        header.style.backgroundColor = config.bgColor;
+                        header.style.color = config.textColor;
+                        header.style.fontWeight = config.isBold ? "bold" : "normal";
+                        header.style.fontStyle = config.isItalic ? "italic" : "normal";
+                    }
+                });
+                form.remove();
+            };
         };
     });
 }

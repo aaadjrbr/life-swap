@@ -11,11 +11,16 @@
   <div class="community-page">
     <div class="top-bar">
       <a href="./start.html" class="button-link">Go back</a>
-      <h2 id="communityName"></h2>
+      <div class="community-info">
+        <h2 id="communityName"></h2>
+        <p id="communityMeta">Created: <span id="createdAt"></span> by <span id="creatorName"></span></p>
+      </div>
+      <button id="viewCommunitiesBtn">View Communities</button>
       <button id="viewNotificationsBtn">Notifications <span id="notificationCount" class="notification-badge">0</span></button>
     </div>
+    <p>Share with friends!</p>
     <p id="communityId"></p>
-    <button class="copy-btn" id="copyCommunityIdBtn">Copy ID</button>
+    <button class="copy-btn" id="copyCommunityIdBtn">Copy Community ID</button>
     <p>Total Users: <span id="totalUsers">0</span> | Banned Users: <span id="bannedUsers">0</span> | <span id="profileRequestsBtn"></span></p>
     <div id="communityActions"></div>
 
@@ -79,6 +84,7 @@
 
     <!-- Community Posts Carousel -->
 <div id="postsCarousel" class="posts-carousel">
+  <h3>Quick View (Posts)</h3>
   <button class="carousel-arrow prev" id="carouselPrevBtn">&lt;</button>
   <div class="carousel-track" id="carouselTrack">
     <!-- Posts populated dynamically -->
@@ -176,6 +182,15 @@
     </div>
   </div>
 
+  <!-- View Communities Modal -->
+<div id="viewCommunitiesModal" class="modal hidden">
+  <div class="modal-content">
+    <h2>Your Communities</h2>
+    <div id="communitiesList" class="user-list"></div>
+    <button id="closeCommunitiesBtn">Close</button>
+  </div>
+</div>
+
 <!-- Notifications Modal -->
 <div id="notificationsModal" class="modal hidden">
   <div class="modal-content">
@@ -256,60 +271,60 @@
         const isBanned = (commData.bannedUsers || []).includes(user.uid);
 
         if (isBanned) {
-  // Fetch community data and ban reason
-  const commRef = doc(db, "communities", communityId);
-  const commDoc = await getDoc(commRef);
-  const commData = commDoc.data();
-  let adminEmail = "No admin email available";
-  let banReason = commData.banReasons?.[user.uid] || "No reason provided";
+          // Fetch community data and ban reason
+          const commRef = doc(db, "communities", communityId);
+          const commDoc = await getDoc(commRef);
+          const commData = commDoc.data();
+          let adminEmail = "No admin email available";
+          let banReason = commData.banReasons?.[user.uid] || "No reason provided";
 
-  // Try creator first
-  if (commData.creatorId) {
-    const creatorDoc = await getDoc(doc(db, "users", commData.creatorId));
-    if (creatorDoc.exists() && creatorDoc.data().email) {
-      adminEmail = creatorDoc.data().email;
-    }
-  }
+          // Try creator first
+          if (commData.creatorId) {
+            const creatorDoc = await getDoc(doc(db, "users", commData.creatorId));
+            if (creatorDoc.exists() && creatorDoc.data().email) {
+              adminEmail = creatorDoc.data().email;
+            }
+          }
 
-  // If no creator email, try admins
-  if (adminEmail === "No admin email available" && commData.admins?.length > 0) {
-    const adminDoc = await getDoc(doc(db, "users", commData.admins[0]));
-    if (adminDoc.exists() && adminDoc.data().email) {
-      adminEmail = adminDoc.data().email;
-    }
-  }
+          // If no creator email, try admins
+          if (adminEmail === "No admin email available" && commData.admins?.length > 0) {
+            const adminDoc = await getDoc(doc(db, "users", commData.admins[0]));
+            if (adminDoc.exists() && adminDoc.data().email) {
+              adminEmail = adminDoc.data().email;
+            }
+          }
 
-  document.querySelector(".community-page").innerHTML = `
-    <div class="ban-message">
-      <h2>You are banned from this community!</h2>
-      <p><strong>Reason:</strong> ${banReason}</p>
-      <p>Think this is a mistake? Send an appeal below or contact an admin at: ${adminEmail}</p>
-      <form id="banAppealForm" class="ban-appeal-form">
-        <textarea placeholder="Explain why this ban might be an error..." required></textarea>
-        <button type="submit">Send Appeal</button>
-      </form>
-      <p><a href="./start.html">Go back</a></p>
-    </div>
-  `;
-  const appealForm = document.getElementById("banAppealForm");
-  appealForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const text = appealForm.querySelector("textarea").value.trim();
-    if (text) {
-      await addDoc(collection(db, "banAppeals"), {
-        userId: user.uid,
-        communityId: communityId,
-        message: text,
-        timestamp: new Date()
-      });
-      alert("Appeal sent!");
-      appealForm.querySelector("textarea").disabled = true;
-      appealForm.querySelector("button").disabled = true;
-      appealForm.querySelector("button").textContent = "Appeal Sent";
-    }
-  });
-  return;
-} else if (!isMember) {
+          document.querySelector(".community-page").innerHTML = `
+            <div class="ban-message">
+              <h2>You are banned from this community!</h2>
+              <p><strong>Reason:</strong> ${banReason}</p>
+              <p>Think this is a mistake? Send an appeal below or contact an admin at: ${adminEmail}</p>
+              <form id="banAppealForm" class="ban-appeal-form">
+                <textarea placeholder="Explain why this ban might be an error..." required></textarea>
+                <button type="submit">Send Appeal</button>
+              </form>
+              <p><a href="./start.html">Go back</a></p>
+            </div>
+          `;
+          const appealForm = document.getElementById("banAppealForm");
+          appealForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const text = appealForm.querySelector("textarea").value.trim();
+            if (text) {
+              await addDoc(collection(db, "banAppeals"), {
+                userId: user.uid,
+                communityId: communityId,
+                message: text,
+                timestamp: new Date()
+              });
+              alert("Appeal sent!");
+              appealForm.querySelector("textarea").disabled = true;
+              appealForm.querySelector("button").disabled = true;
+              appealForm.querySelector("button").textContent = "Appeal Sent";
+            }
+          });
+          return;
+        } else if (!isMember) {
           document.querySelector(".community-page").innerHTML = `
             <div class="not-member-message">
               <h2>You aren't a member of this community.</h2>
@@ -319,7 +334,14 @@
           return;
         }
 
+        // Set community name, creation date, and creator name
         document.getElementById("communityName").textContent = commData.name;
+        const createdAt = commData.createdAt ? new Date(commData.createdAt.toDate()).toLocaleString() : "N/A";
+        document.getElementById("createdAt").textContent = createdAt;
+        const creatorData = await fetchUserData(commData.creatorId);
+        document.getElementById("creatorName").textContent = creatorData.name || "Unknown";
+        document.getElementById("creatorName").addEventListener("click", () => viewProfile(commData.creatorId));
+
         document.getElementById("communityId").textContent = `ID: ${communityId}`;
         document.getElementById("totalUsers").textContent = commData.members.length;
         document.getElementById("bannedUsers").textContent = (commData.bannedUsers || []).length;
@@ -334,6 +356,7 @@
           ${commData.creatorId === user.uid ? `<button class="delete-btn" id="deleteCommunityBtn">Delete Community</button>` : ""}
           ${commData.members.includes(user.uid) && commData.creatorId !== user.uid ? `<button class="leave-btn" id="leaveCommunityBtn">Leave Community</button>` : ""}
           <button id="viewProfileViewRequestsBtn">See Profile View Requests ${profileViewRequestCount > 0 ? `<span class="request-badge">${profileViewRequestCount}</span>` : ''}</button>
+          ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="editNameBtn">Edit Name (Community)</button>` : ""}
         `;
 
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -360,6 +383,8 @@
         const closeNotificationsBtn = document.getElementById("closeNotificationsBtn");
         const clearNotificationsBtn = document.getElementById("clearNotificationsBtn");
         const refreshPostsBtn = document.getElementById("refreshPostsBtn");
+        const editNameBtn = document.getElementById("editNameBtn");
+        const viewCommunitiesBtn = document.getElementById("viewCommunitiesBtn");
 
         if (postIdSearch) {
           postIdSearch.addEventListener("input", debounce((e) => {
@@ -404,6 +429,8 @@
         if (closeNotificationsBtn) closeNotificationsBtn.addEventListener("click", () => closeModal("notificationsModal"));
         if (clearNotificationsBtn) clearNotificationsBtn.addEventListener("click", clearNotifications);
         if (refreshPostsBtn) refreshPostsBtn.addEventListener("click", () => loadPosts(communityId, true));
+        if (editNameBtn) editNameBtn.addEventListener("click", () => editCommunityName(communityId));
+        if (viewCommunitiesBtn) viewCommunitiesBtn.addEventListener("click", () => viewCommunities(user.uid));
 
         setupLocationAutocomplete();
         setupCommunitySelection();
@@ -829,6 +856,56 @@ async function clearReports(postId) {
       suggestionsDiv.classList.add("hidden");
     }
   }, 300);
+}
+
+async function editCommunityName(communityId) {
+  const commRef = doc(db, "communities", communityId);
+  const commDoc = await getDoc(commRef);
+  const commData = commDoc.data();
+  const currentName = commData.name;
+
+  // Create a simple form in the DOM
+  const form = document.createElement("div");
+  form.id = "edit-name-form";
+  form.style.position = "fixed";
+  form.style.top = "50%";
+  form.style.left = "50%";
+  form.style.transform = "translate(-50%, -50%)";
+  form.style.background = "#fff";
+  form.style.padding = "20px";
+  form.style.border = "1px solid #ccc";
+  form.style.boxShadow = "0 0 10px rgba(0,0,0,0.2)";
+  form.style.zIndex = "1000";
+  form.innerHTML = `
+    <h3>Edit Community Name</h3>
+    <input type="text" id="newCommunityName" value="${currentName}" style="width: 100%; margin-bottom: 10px;">
+    <button id="saveNameBtn">Save</button>
+    <button id="cancelNameBtn">Cancel</button>
+  `;
+  document.body.appendChild(form);
+
+  // Event listeners
+  document.getElementById("saveNameBtn").addEventListener("click", async () => {
+    const newName = document.getElementById("newCommunityName").value.trim();
+    if (!newName) {
+      alert("Name can’t be empty!");
+      return;
+    }
+    if (newName === currentName) {
+      alert("That’s already the name!");
+      document.body.removeChild(form);
+      return;
+    }
+
+    await updateDoc(commRef, { name: newName });
+    document.getElementById("communityName").textContent = newName;
+    document.body.removeChild(form);
+    alert("Community name updated!");
+  });
+
+  document.getElementById("cancelNameBtn").addEventListener("click", () => {
+    document.body.removeChild(form);
+  });
 }
 
 async function loadAdminReportSummary() {
@@ -2047,63 +2124,108 @@ async function processMentions(text) {
   return processedText;
 }
 
-    async function toggleComments(postId) {
-      const commentsDiv = document.getElementById(`comments-${postId}`);
-      const toggleLink = document.getElementById(`toggleComments-${postId}`);
-      const commData = await getCommData();
-      const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
+async function toggleComments(postId) {
+  const commentsDiv = document.getElementById(`comments-${postId}`);
+  const toggleLink = document.getElementById(`toggleComments-${postId}`);
+  const commData = await getCommData();
+  const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
 
-      if (commentsDiv.style.display === "none") {
-        commentsDiv.style.display = "block";
-        toggleLink.textContent = "Hide comments";
-        commentsDiv.innerHTML = '<div class="loading">Loading...</div>';
-        const q = query(collection(db, "communities", communityId, "posts", postId, "comments"), orderBy("createdAt", "desc"), limit(itemsPerPage));
-        const snapshot = await getDocs(q);
-        commentsDiv.innerHTML = "";
-        let lastCommentDoc = snapshot.docs[snapshot.docs.length - 1];
-        const totalCommentsCount = await totalComments(postId);
+  // If commentsDiv hasn’t been loaded yet (first toggle), fetch initial batch
+  if (!commentsDiv.dataset.loaded) {
+    commentsDiv.style.display = "block";
+    toggleLink.textContent = "Hide comments";
+    commentsDiv.innerHTML = '<div class="loading">Loading...</div>';
 
-        for (const doc of snapshot.docs) {
-          await renderComment(doc, commentsDiv, postId, isAdmin);
-        }
+    const q = query(
+      collection(db, "communities", communityId, "posts", postId, "comments"),
+      orderBy("createdAt", "desc"),
+      limit(itemsPerPage)
+    );
+    const snapshot = await getDocs(q);
+    commentsDiv.innerHTML = ""; // Clear loading
 
-        if (totalCommentsCount > itemsPerPage) {
-          const seeMoreBtn = document.createElement("button");
-          seeMoreBtn.textContent = "See more comments";
-          seeMoreBtn.className = "see-more-btn";
-          seeMoreBtn.addEventListener("click", () => loadMoreComments(postId, lastCommentDoc));
-          commentsDiv.appendChild(seeMoreBtn);
-        }
-      } else {
-        commentsDiv.style.display = "none";
-        toggleLink.textContent = `${await totalComments(postId)} comments`;
-      }
+    let lastCommentDoc = snapshot.docs[snapshot.docs.length - 1];
+    const totalCommentsCount = await totalComments(postId);
+
+    for (const doc of snapshot.docs) {
+      await renderComment(doc, commentsDiv, postId, isAdmin);
     }
 
-    async function loadMoreComments(postId, lastDoc) {
-      const commentsDiv = document.getElementById(`comments-${postId}`);
-      const commData = await getCommData();
-      const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
-      const seeMoreBtn = commentsDiv.querySelector(".see-more-btn");
-      if (seeMoreBtn) seeMoreBtn.textContent = "Loading...";
-      const q = query(collection(db, "communities", communityId, "posts", postId, "comments"), orderBy("createdAt", "desc"), startAfter(lastDoc), limit(itemsPerPage));
-      const snapshot = await getDocs(q);
-      if (seeMoreBtn) seeMoreBtn.remove();
-
-      for (const doc of snapshot.docs) {
-        await renderComment(doc, commentsDiv, postId, isAdmin);
-      }
-
-      lastDoc = snapshot.docs[snapshot.docs.length - 1];
-      const totalCommentsCount = await totalComments(postId);
-      if (commentsDiv.children.length < totalCommentsCount) {
-        const newSeeMoreBtn = document.createElement("button");
-        newSeeMoreBtn.textContent = "See more comments";
-        newSeeMoreBtn.className = "see-more-btn";
-        newSeeMoreBtn.addEventListener("click", () => loadMoreComments(postId, lastDoc));
-        commentsDiv.appendChild(newSeeMoreBtn);
-      }
+    // Add "See more" button if there’s more to load
+    if (commentsDiv.children.length < totalCommentsCount) {
+      const seeMoreBtn = document.createElement("button");
+      seeMoreBtn.textContent = "See more comments";
+      seeMoreBtn.className = "see-more-btn";
+      seeMoreBtn.dataset.postId = postId; // Store postId for later
+      seeMoreBtn.dataset.lastDocId = lastCommentDoc ? lastCommentDoc.id : ""; // Store last doc ID
+      seeMoreBtn.addEventListener("click", loadMoreComments);
+      commentsDiv.appendChild(seeMoreBtn);
     }
+
+    // Mark as loaded and store total count
+    commentsDiv.dataset.loaded = "true";
+    commentsDiv.dataset.totalComments = totalCommentsCount;
+    toggleLink.textContent = `${totalCommentsCount} comments`;
+  } 
+  // Toggle visibility if already loaded
+  else if (commentsDiv.style.display === "none") {
+    commentsDiv.style.display = "block";
+    toggleLink.textContent = "Hide comments";
+  } else {
+    commentsDiv.style.display = "none";
+    toggleLink.textContent = `${commentsDiv.dataset.totalComments || await totalComments(postId)} comments`;
+  }
+}
+
+async function loadMoreComments(event) {
+  const seeMoreBtn = event.target;
+  const postId = seeMoreBtn.dataset.postId;
+  const lastDocId = seeMoreBtn.dataset.lastDocId;
+  const commentsDiv = document.getElementById(`comments-${postId}`);
+  const commData = await getCommData();
+  const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
+
+  seeMoreBtn.textContent = "Loading...";
+  seeMoreBtn.disabled = true;
+
+  // Fetch the last doc we loaded
+  let lastDoc = null;
+  if (lastDocId) {
+    lastDoc = await getDoc(doc(db, "communities", communityId, "posts", postId, "comments", lastDocId));
+  }
+
+  const q = query(
+    collection(db, "communities", communityId, "posts", postId, "comments"),
+    orderBy("createdAt", "desc"),
+    startAfter(lastDoc),
+    limit(itemsPerPage)
+  );
+  const snapshot = await getDocs(q);
+
+  // Remove the old button
+  seeMoreBtn.remove();
+
+  // Append new comments
+  for (const doc of snapshot.docs) {
+    await renderComment(doc, commentsDiv, postId, isAdmin);
+  }
+
+  // Update last doc and check if more remain
+  const lastCommentDoc = snapshot.docs[snapshot.docs.length - 1];
+  const totalCommentsCount = parseInt(commentsDiv.dataset.totalComments, 10);
+  if (commentsDiv.children.length < totalCommentsCount) {
+    const newSeeMoreBtn = document.createElement("button");
+    newSeeMoreBtn.textContent = "See more comments";
+    newSeeMoreBtn.className = "see-more-btn";
+    newSeeMoreBtn.dataset.postId = postId;
+    newSeeMoreBtn.dataset.lastDocId = lastCommentDoc ? lastCommentDoc.id : "";
+    newSeeMoreBtn.addEventListener("click", loadMoreComments);
+    commentsDiv.appendChild(newSeeMoreBtn);
+  }
+
+  // Update toggle link count (just in case)
+  document.getElementById(`toggleComments-${postId}`).textContent = `${totalCommentsCount} comments`;
+}
 
     async function renderComment(doc, commentsDiv, postId, isAdmin) {
   const comment = doc.data();
@@ -2184,63 +2306,112 @@ async function processMentions(text) {
   }
 }
 
-    async function toggleRepliesFn(postId, commentId) {
-      const repliesDiv = document.getElementById(`replies-${commentId}`);
-      const toggleLink = document.getElementById(`toggleReplies-${commentId}`);
-      const commData = await getCommData();
-      const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
+async function toggleRepliesFn(postId, commentId) {
+  const repliesDiv = document.getElementById(`replies-${commentId}`);
+  const toggleLink = document.getElementById(`toggleReplies-${commentId}`);
+  const commData = await getCommData();
+  const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
 
-      if (repliesDiv.style.display === "none") {
-        repliesDiv.style.display = "block";
-        toggleLink.textContent = "Hide replies";
-        repliesDiv.innerHTML = '<div class="loading">Loading...</div>';
-        const q = query(collection(db, "communities", communityId, "posts", postId, "comments", commentId, "replies"), orderBy("createdAt", "desc"), limit(itemsPerPage));
-        const snapshot = await getDocs(q);
-        repliesDiv.innerHTML = "";
-        let lastReplyDoc = snapshot.docs[snapshot.docs.length - 1];
-        const totalRepliesCount = await totalReplies(postId, commentId);
+  // If repliesDiv hasn’t been loaded yet (first toggle), fetch initial batch
+  if (!repliesDiv.dataset.loaded) {
+    repliesDiv.style.display = "block";
+    toggleLink.textContent = "Hide replies";
+    repliesDiv.innerHTML = '<div class="loading">Loading...</div>';
 
-        for (const doc of snapshot.docs) {
-          await renderReply(doc, repliesDiv, postId, commentId, isAdmin);
-        }
+    const q = query(
+      collection(db, "communities", communityId, "posts", postId, "comments", commentId, "replies"),
+      orderBy("createdAt", "desc"),
+      limit(itemsPerPage)
+    );
+    const snapshot = await getDocs(q);
+    repliesDiv.innerHTML = ""; // Clear loading
 
-        if (totalRepliesCount > itemsPerPage) {
-          const seeMoreBtn = document.createElement("button");
-          seeMoreBtn.textContent = "See more replies";
-          seeMoreBtn.className = "see-more-btn";
-          seeMoreBtn.addEventListener("click", () => loadMoreReplies(postId, commentId, lastReplyDoc));
-          repliesDiv.appendChild(seeMoreBtn);
-        }
-      } else {
-        repliesDiv.style.display = "none";
-        toggleLink.textContent = `View ${await totalReplies(postId, commentId)} replies`;
-      }
+    let lastReplyDoc = snapshot.docs[snapshot.docs.length - 1];
+    const totalRepliesCount = await totalReplies(postId, commentId);
+
+    for (const doc of snapshot.docs) {
+      await renderReply(doc, repliesDiv, postId, commentId, isAdmin);
     }
 
-    async function loadMoreReplies(postId, commentId, lastDoc) {
-      const repliesDiv = document.getElementById(`replies-${commentId}`);
-      const commData = await getCommData();
-      const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
-      const seeMoreBtn = repliesDiv.querySelector(".see-more-btn");
-      if (seeMoreBtn) seeMoreBtn.textContent = "Loading...";
-      const q = query(collection(db, "communities", communityId, "posts", postId, "comments", commentId, "replies"), orderBy("createdAt", "desc"), startAfter(lastDoc), limit(itemsPerPage));
-      const snapshot = await getDocs(q);
-      if (seeMoreBtn) seeMoreBtn.remove();
-
-      for (const doc of snapshot.docs) {
-        await renderReply(doc, repliesDiv, postId, commentId, isAdmin);
-      }
-
-      lastDoc = snapshot.docs[snapshot.docs.length - 1];
-      const totalRepliesCount = await totalReplies(postId, commentId);
-      if (repliesDiv.children.length < totalRepliesCount) {
-        const newSeeMoreBtn = document.createElement("button");
-        newSeeMoreBtn.textContent = "See more replies";
-        newSeeMoreBtn.className = "see-more-btn";
-        newSeeMoreBtn.addEventListener("click", () => loadMoreReplies(postId, commentId, lastDoc));
-        repliesDiv.appendChild(newSeeMoreBtn);
-      }
+    // Add "See more" button if there’s more to load
+    if (repliesDiv.children.length < totalRepliesCount) {
+      const seeMoreBtn = document.createElement("button");
+      seeMoreBtn.textContent = "See more replies";
+      seeMoreBtn.className = "see-more-btn";
+      seeMoreBtn.dataset.postId = postId;
+      seeMoreBtn.dataset.commentId = commentId; // Store commentId for replies
+      seeMoreBtn.dataset.lastDocId = lastReplyDoc ? lastReplyDoc.id : ""; // Store last doc ID
+      seeMoreBtn.addEventListener("click", loadMoreReplies);
+      repliesDiv.appendChild(seeMoreBtn);
     }
+
+    // Mark as loaded and store total count
+    repliesDiv.dataset.loaded = "true";
+    repliesDiv.dataset.totalReplies = totalRepliesCount;
+    toggleLink.textContent = `View ${totalRepliesCount} replies`;
+  } 
+  // Toggle visibility if already loaded
+  else if (repliesDiv.style.display === "none") {
+    repliesDiv.style.display = "block";
+    toggleLink.textContent = "Hide replies";
+  } else {
+    repliesDiv.style.display = "none";
+    toggleLink.textContent = `View ${repliesDiv.dataset.totalReplies || await totalReplies(postId, commentId)} replies`;
+  }
+}
+
+async function loadMoreReplies(event) {
+  const seeMoreBtn = event.target;
+  const postId = seeMoreBtn.dataset.postId;
+  const commentId = seeMoreBtn.dataset.commentId;
+  const lastDocId = seeMoreBtn.dataset.lastDocId;
+  const repliesDiv = document.getElementById(`replies-${commentId}`);
+  const commData = await getCommData();
+  const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
+
+  seeMoreBtn.textContent = "Loading...";
+  seeMoreBtn.disabled = true;
+
+  // Fetch the last doc we loaded
+  let lastDoc = null;
+  if (lastDocId) {
+    lastDoc = await getDoc(doc(db, "communities", communityId, "posts", postId, "comments", commentId, "replies", lastDocId));
+  }
+
+  const q = query(
+    collection(db, "communities", communityId, "posts", postId, "comments", commentId, "replies"),
+    orderBy("createdAt", "desc"),
+    startAfter(lastDoc),
+    limit(itemsPerPage)
+  );
+  const snapshot = await getDocs(q);
+
+  // Remove the old button
+  seeMoreBtn.remove();
+
+  // Append new replies
+  for (const doc of snapshot.docs) {
+    await renderReply(doc, repliesDiv, postId, commentId, isAdmin);
+  }
+
+  // Update last doc and check if more remain
+  const lastReplyDoc = snapshot.docs[snapshot.docs.length - 1];
+  const totalRepliesCount = parseInt(repliesDiv.dataset.totalReplies, 10);
+  if (repliesDiv.children.length < totalRepliesCount) {
+    const newSeeMoreBtn = document.createElement("button");
+    newSeeMoreBtn.textContent = "See more replies";
+    newSeeMoreBtn.className = "see-more-btn";
+    newSeeMoreBtn.dataset.postId = postId;
+    newSeeMoreBtn.dataset.commentId = commentId;
+    newSeeMoreBtn.dataset.lastDocId = lastReplyDoc ? lastReplyDoc.id : "";
+    newSeeMoreBtn.addEventListener("click", loadMoreReplies);
+    repliesDiv.appendChild(newSeeMoreBtn);
+  }
+
+  // Update toggle link count (just in case)
+  const toggleLink = document.getElementById(`toggleReplies-${commentId}`);
+  if (toggleLink) toggleLink.textContent = `View ${totalRepliesCount} replies`;
+}
 
     async function renderReply(doc, repliesDiv, postId, commentId, isAdmin) {
   const reply = doc.data();
@@ -2328,16 +2499,92 @@ async function processMentions(text) {
   const text = document.getElementById(`commentForm-${postId}`).querySelector("textarea").value.trim();
   if (!text) return;
 
+  const commentsDiv = document.getElementById(`comments-${postId}`);
+  const toggleLink = document.getElementById(`toggleComments-${postId}`);
+  const commData = await getCommData();
+  const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
+
+  // Add to Firebase
   const commentDoc = await addDoc(collection(db, "communities", communityId, "posts", postId, "comments"), {
     text,
     userId: user.uid,
     createdAt: new Date()
   });
 
-  if (user.uid !== postOwnerId) {
-    const commenterData = await fetchCurrentUserData(); // Only current user
-    console.log(`Commenter data for notification:`, commenterData);
+  // Instant UI update
+  const userData = await fetchCurrentUserData();
+  const isCommentAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
+  const commentText = await processMentions(text);
+  const timestamp = new Date().toLocaleString();
+  const newCommentDiv = document.createElement("div");
+  newCommentDiv.className = "comment-bubble";
+  newCommentDiv.innerHTML = `
+    <div class="comment-content">
+      <img src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" class="profile-photo" alt="Profile">
+      <div class="comment-text">
+        <span class="username" data-uid="${user.uid}">${userData.name}</span> ${isCommentAdmin ? '<span class="admin-tag">Admin</span>' : ''}
+        <p>${commentText}</p>
+        <span class="timestamp">${timestamp}</span>
+        <div class="comment-actions">
+          <button class="reply-btn" id="replyBtn-${commentDoc.id}">Reply</button>
+          ${isAdmin || user.uid === user.uid ? `<button class="delete-comment-btn" id="deleteComment-${commentDoc.id}">Delete</button>` : ""}
+        </div>
+      </div>
+    </div>
+    <div class="replies-thread" id="replies-${commentDoc.id}" style="display: none;"></div>
+    <form id="replyForm-${commentDoc.id}" class="reply-form hidden">
+      <div class="replying-to">Replying to ${userData.name}'s comment <button type="button" class="cancel-reply">Cancel</button></div>
+      <textarea placeholder="Your reply..." required></textarea>
+      <div id="tagSuggestions-${commentDoc.id}-${commentDoc.id}" class="suggestions hidden"></div>
+      <button type="submit">Reply</button>
+    </form>
+  `;
 
+  // If comments are visible, prepend the new comment
+  if (commentsDiv.style.display !== "none") {
+    commentsDiv.insertBefore(newCommentDiv, commentsDiv.firstChild);
+  } else {
+    commentsDiv.style.display = "block";
+    commentsDiv.innerHTML = "";
+    commentsDiv.appendChild(newCommentDiv);
+    toggleLink.textContent = "Hide comments";
+  }
+
+  // Add event listeners
+  newCommentDiv.querySelectorAll(".username").forEach(el => {
+    el.addEventListener("click", () => viewProfile(user.uid));
+  });
+  newCommentDiv.querySelectorAll(".mention").forEach(el => {
+    const uid = el.dataset.uid;
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      viewProfile(uid);
+    });
+  });
+  const replyBtn = newCommentDiv.querySelector(`#replyBtn-${commentDoc.id}`);
+  replyBtn.addEventListener("click", () => {
+    const replyForm = newCommentDiv.querySelector(`#replyForm-${commentDoc.id}`);
+    replyForm.classList.toggle("hidden");
+    if (!replyForm.classList.contains("hidden")) replyForm.querySelector("textarea").focus();
+  });
+  newCommentDiv.querySelector(`#replyForm-${commentDoc.id}`).addEventListener("submit", (e) => {
+    e.preventDefault();
+    addReply(postId, commentDoc.id, user.uid);
+  });
+  newCommentDiv.querySelector(".cancel-reply").addEventListener("click", () => {
+    newCommentDiv.querySelector(`#replyForm-${commentDoc.id}`).classList.add("hidden");
+  });
+  const deleteBtn = newCommentDiv.querySelector(`#deleteComment-${commentDoc.id}`);
+  if (deleteBtn) deleteBtn.addEventListener("click", () => deleteComment(postId, commentDoc.id));
+
+  // Update comment count
+  const commentCount = (await totalComments(postId));
+  commentsDiv.dataset.totalComments = commentCount; // Update the stored count
+  toggleLink.textContent = `${commentCount} comments`;
+
+  // Send notification if not the post owner
+  if (user.uid !== postOwnerId) {
+    const commenterData = await fetchCurrentUserData();
     await addDoc(collection(db, "notifications"), {
       userId: postOwnerId,
       type: "comment",
@@ -2352,7 +2599,6 @@ async function processMentions(text) {
   }
 
   document.getElementById(`commentForm-${postId}`).reset();
-  toggleComments(postId);
 }
 
 async function addReply(postId, commentId, commentOwnerId) {
@@ -2360,16 +2606,67 @@ async function addReply(postId, commentId, commentOwnerId) {
   const text = document.getElementById(`replyForm-${commentId}`).querySelector("textarea").value.trim();
   if (!text) return;
 
+  const repliesDiv = document.getElementById(`replies-${commentId}`);
+  const toggleLink = document.getElementById(`toggleReplies-${commentId}`);
+  const commData = await getCommData();
+  const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
+
+  // Add to Firebase
   const replyDoc = await addDoc(collection(db, "communities", communityId, "posts", postId, "comments", commentId, "replies"), {
     text,
     userId: user.uid,
     createdAt: new Date()
   });
 
-  if (user.uid !== commentOwnerId) {
-    const replierData = await fetchCurrentUserData(); // Only current user
-    console.log(`Replier data for notification:`, replierData);
+  // Instant UI update
+  const userData = await fetchCurrentUserData();
+  const isReplyAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
+  const replyText = await processMentions(text);
+  const timestamp = new Date().toLocaleString();
+  const newReplyDiv = document.createElement("div");
+  newReplyDiv.className = "reply-bubble";
+  newReplyDiv.innerHTML = `
+    <img src="${userData.profilePhoto || 'https://via.placeholder.com/25'}" class="profile-photo" alt="Profile">
+    <div class="reply-text">
+      <span class="username" data-uid="${user.uid}">${userData.name}</span> ${isReplyAdmin ? '<span class="admin-tag">Admin</span>' : ''}
+      <p>${replyText}</p>
+      <span class="timestamp">${timestamp}</span>
+      ${isAdmin || user.uid === user.uid ? `<button class="delete-reply-btn" id="deleteReply-${replyDoc.id}">Delete</button>` : ""}
+    </div>
+  `;
 
+  // If replies are visible, prepend the new reply
+  if (repliesDiv.style.display !== "none") {
+    repliesDiv.insertBefore(newReplyDiv, repliesDiv.firstChild);
+  } else {
+    repliesDiv.style.display = "block";
+    repliesDiv.innerHTML = "";
+    repliesDiv.appendChild(newReplyDiv);
+    toggleLink.textContent = "Hide replies";
+  }
+
+  // Add event listeners
+  newReplyDiv.querySelectorAll(".username").forEach(el => {
+    el.addEventListener("click", () => viewProfile(user.uid));
+  });
+  newReplyDiv.querySelectorAll(".mention").forEach(el => {
+    const uid = el.dataset.uid;
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      viewProfile(uid);
+    });
+  });
+  const deleteBtn = newReplyDiv.querySelector(`#deleteReply-${replyDoc.id}`);
+  if (deleteBtn) deleteBtn.addEventListener("click", () => deleteReply(postId, commentId, replyDoc.id));
+
+  // Update reply count
+  const replyCount = await totalReplies(postId, commentId);
+  repliesDiv.dataset.totalReplies = replyCount; // Update the stored count
+  if (toggleLink) toggleLink.textContent = `View ${replyCount} replies`;
+
+  // Send notification if not the comment owner
+  if (user.uid !== commentOwnerId) {
+    const replierData = await fetchCurrentUserData();
     await addDoc(collection(db, "notifications"), {
       userId: commentOwnerId,
       type: "reply",
@@ -2386,7 +2683,6 @@ async function addReply(postId, commentId, commentOwnerId) {
 
   document.getElementById(`replyForm-${commentId}`).reset();
   document.getElementById(`replyForm-${commentId}`).classList.add("hidden");
-  toggleRepliesFn(postId, commentId);
 }
 
     async function viewProfile(uid) {
@@ -2921,6 +3217,52 @@ async function searchBanned(bannedUsers, searchTerm) {
     bannedList.querySelector(`#${itemId} .username`).addEventListener("click", () => viewProfile(user.uid));
     document.getElementById(`unban-${user.uid}`).addEventListener("click", () => unbanUser(communityId, user.uid));
   });
+}
+
+async function viewCommunities(userId) {
+  const modal = document.getElementById("viewCommunitiesModal");
+  const communitiesList = document.getElementById("communitiesList");
+  const closeBtn = document.getElementById("closeCommunitiesBtn");
+
+  communitiesList.innerHTML = '<div class="loading">Loading...</div>';
+  modal.style.display = "flex";
+  modal.classList.remove("hidden");
+
+  const userRef = doc(db, "users", userId);
+  const userDoc = await getDoc(userRef);
+  const communityIds = userDoc.data().communityIds || [];
+
+  if (communityIds.length === 0) {
+    communitiesList.innerHTML = "<p>You’re not in any communities yet!</p>";
+  } else {
+    communitiesList.innerHTML = "";
+    const commPromises = communityIds.map(id => getDoc(doc(db, "communities", id)));
+    const commDocs = await Promise.all(commPromises);
+
+    commDocs.forEach(doc => {
+      if (doc.exists()) {
+        const commData = doc.data();
+        const isBanned = (commData.bannedUsers || []).includes(userId);
+        if (!isBanned) { // Only show if not banned
+          const commDiv = document.createElement("div");
+          commDiv.className = "community-item";
+          commDiv.innerHTML = `
+            <a href="./community.html?id=${doc.id}">${commData.name || "Unnamed"}</a>
+          `;
+          communitiesList.appendChild(commDiv);
+        }
+      }
+    });
+
+    if (!communitiesList.children.length) {
+      communitiesList.innerHTML = "<p>No active communities found.</p>";
+    }
+  }
+
+  closeBtn.onclick = () => {
+    modal.style.display = "none";
+    modal.classList.add("hidden");
+  };
 }
 
     async function updateNotificationBadge(userId) {

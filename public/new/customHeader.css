@@ -11,6 +11,9 @@
     width: 100%;
     overflow: hidden;
     max-height: 100px; /* Default capped height */
+    margin-top: 25px;
+    word-break: break-word;
+    text-shadow: 1px 1px 1px #000000c2 !important;
     transition: max-height 0.3s ease; /* Smooth transition */
 }
 
@@ -96,7 +99,7 @@ textarea#header-message {
 #header-edit-form label {
     display: block;
     margin-bottom: 10px;
-    font-size: 1em;
+    font-size: 1.1em;
 }
 
 #header-edit-form textarea,

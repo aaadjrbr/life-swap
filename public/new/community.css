@@ -13,6 +13,57 @@ body {
   margin: 0 auto;
 }
 
+.community-info {
+  text-align: center;
+}
+
+.community-item {
+  padding: 10px;
+  border-bottom: 1px solid #eee;
+}
+
+.community-item a {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.community-item a:hover {
+  text-decoration: underline;
+}
+
+#communityMeta {
+  font-size: 14px;
+  color: #666;
+  margin-top: 5px;
+}
+
+#creatorName {
+  cursor: pointer;
+  color: #007bff;
+}
+
+#creatorName:hover {
+  text-decoration: underline;
+}
+
+#edit-name-form {
+  font-family: Arial, sans-serif;
+}
+
+#edit-name-form h3 {
+  margin-top: 0;
+}
+
+#edit-name-form button {
+  margin-right: 10px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+#edit-name-form button:hover {
+  background-color: #ddd;
+}
+
 /* Top Bar */
 .top-bar {
   display: flex;
@@ -993,38 +1044,39 @@ background-color: #ccc; /* Or whatever fits your vibe */
 
 /* Add to community.css */
 .community-checkbox-container {
-align-items: center;
-gap: 10px;
-margin: 10px 0;
+margin: 10px 0; /* Keeps vertical spacing */
 }
 
 .community-checkbox-container label {
-font-weight: bold;
-white-space: nowrap;
+font-weight: bold; /* Keep the bold label if it’s the "Post to Communities:" text */
 }
 
 .community-checkboxes {
-margin: 0; /* Remove top/bottom margin since container handles it */
+margin-top: 8px; /* Container handles top/bottom margin */
 padding: 10px;
 background-color: #f8f9fa;
 border: 1px solid #ddd;
 border-radius: 4px;
 display: flex;
-flex-wrap: wrap;
-gap: 15px;
-align-items: center;
+flex-direction: column; /* Stack items vertically like a list */
+gap: 10px; /* Tighten gap for a list feel—15px was too spread out */
+align-items: flex-start; /* Everything aligns left */
 max-height: 150px;
-overflow-y: auto;
+overflow-y: auto; /* Still scrolls if it overflows */
+max-width: 300px; /* Optional: keeps it from stretching too wide */
 }
 
 .community-checkboxes label {
 display: flex;
-align-items: center;
+align-items: center; /* Checkbox and text align vertically */
 margin: 0;
+width: 100%; /* Ensures labels take full width for consistent wrapping */
+overflow-wrap: break-word; /* Breaks long names at spaces */
 }
 
 .community-checkboxes input[type="checkbox"] {
-margin-right: 5px;
+width: auto;
+margin-right: 10px; /* More space between checkbox and text—5px was too cramped */
 }
 
 .post-filter-bar {
