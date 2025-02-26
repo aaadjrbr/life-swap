@@ -216,7 +216,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-    import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc, limitToLast, startAfter, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc, limitToLast, startAfter, orderBy, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
     const firebaseConfig = {
@@ -233,6 +233,22 @@
     const db = getFirestore(app);
     const auth = getAuth(app);
     const storage = getStorage(app);
+
+// Enable offline persistence
+enableIndexedDbPersistence(db)
+  .then(() => {
+    console.log("Offline persistence enabled successfully!");
+  })
+  .catch((err) => {
+    if (err.code === "failed-precondition") {
+      console.warn("Persistence failed: Multiple tabs open. Only one tab can enable persistence.");
+    } else if (err.code === "unimplemented") {
+      console.warn("Persistence not available: Browser doesn’t support it.");
+    } else {
+      console.error("Persistence error:", err);
+    }
+  });
+
     let communityId;
     let userDataCache = {};
     let currentPage = 1;
@@ -246,10 +262,13 @@
     let isLoading = false;
     let lastPostDoc = null;
     let totalPosts = 0;
-    const postsPerLoad = 3; // 10 posts per scroll
+    const postsPerLoad = 10; // 10 posts per scroll
     let loadedPostIds = new Set();
     let initialPostsLoaded = false;
     let isSearching = false; // Flag to track if we're in search mode
+    let postCache = new Map(); // Add this near your other globals (e.g., after userDataCache)
+    const POSTS_PER_LOAD = 20; // Bigger batch size
+    let isFetching = false; 
 
     document.addEventListener("DOMContentLoaded", () => {
   onAuthStateChanged(auth, async (user) => {
@@ -561,60 +580,46 @@ async function updateProfileRequestsUI(userId) {
   return cachedData;
 }
 
-async function fetchUserData(uid) {
-  if (!uid || typeof uid !== "string") {
-    console.warn(`Invalid UID: ${uid}, returning fallback data`);
-    return { 
-      name: "Unknown", 
-      username: "unknown", 
-      profilePhoto: null, 
-      email: null, 
-      city: null, 
-      phone: null, 
-      uid: uid || "unknown" 
-    };
+async function fetchUserData(uids) {
+  if (!uids) return { name: "Unknown", username: "unknown", profilePhoto: "https://via.placeholder.com/40", uid: "unknown" };
+  const uidArray = Array.isArray(uids) ? uids : [uids];
+  
+  // Check cache first, only fetch what’s missing
+  const uncachedUids = uidArray.filter(uid => !userDataCache[uid] || userDataCache[uid].name === "Unknown");
+  if (uncachedUids.length > 0) {
+    const batches = [];
+    for (let i = 0; i < uncachedUids.length; i += 10) {
+      batches.push(uncachedUids.slice(i, i + 10)); // Batch in groups of 10 (Firestore "in" limit)
+    }
+    
+    for (const batch of batches) {
+      const q = query(collection(db, "users"), where("__name__", "in", batch));
+      const snapshot = await getDocs(q);
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        userDataCache[doc.id] = {
+          name: data.name || "Unknown",
+          username: data.username || "unknown",
+          profilePhoto: data.profilePhoto || "https://via.placeholder.com/40",
+          email: data.email || null,
+          city: data.city || null,
+          phone: data.phone || null,
+          uid: doc.id
+        };
+        userDataCache[`username:${data.username}`] = userDataCache[doc.id];
+      });
+      
+      // Fallback for any UIDs not found in this batch
+      batch.forEach(uid => {
+        if (!userDataCache[uid]) {
+          userDataCache[uid] = { name: "Unknown", username: "unknown", profilePhoto: "https://via.placeholder.com/40", uid };
+        }
+      });
+    }
   }
-
-  if (userDataCache[uid]) {
-    //console.log(`Cache hit for uid ${uid}:`, userDataCache[uid]);
-    return userDataCache[uid];
-  }
-
-  const userRef = doc(db, "users", uid);
-  const userDoc = await getDoc(userRef);
-
-  if (!userDoc.exists()) {
-    console.log(`No user doc found for uid ${uid}`);
-    const fallbackData = { 
-      name: "Unknown", 
-      username: "unknown", 
-      profilePhoto: null, 
-      email: null, 
-      city: null, 
-      phone: null, 
-      uid 
-    };
-    userDataCache[uid] = fallbackData;
-    return fallbackData;
-  }
-
-  const userData = userDoc.data();
-  //console.log(`Fetched user data for uid ${uid}:`, userData);
-
-  const cachedData = {
-    name: userData.name || "Unknown",
-    username: userData.username || "unknown",
-    profilePhoto: userData.profilePhoto || null,
-    email: userData.email || null,
-    city: userData.city || null,
-    phone: userData.phone || null,
-    uid
-  };
-
-  userDataCache[uid] = cachedData;
-  // Also cache by username for @mention lookups
-  userDataCache[`username:${cachedData.username}`] = cachedData;
-  return cachedData;
+  
+  // Return from cache
+  return uidArray.length === 1 ? userDataCache[uidArray[0]] : uidArray.map(uid => userDataCache[uid]);
 }
 
 // Add these helper functions right after your existing functions like `fetchUserData` or `createPost`
@@ -663,6 +668,7 @@ async function reportPost(postId) {
   });
 
   alert("Post reported!");
+  refreshReportSummary(); // Add this
 
   // Update UI without refreshing
   const postDiv = document.getElementById(`post-${postId}`);
@@ -908,12 +914,13 @@ async function editCommunityName(communityId) {
   });
 }
 
+let reportSummaryCache = null;
+
 async function loadAdminReportSummary() {
   const commData = await getCommData();
   const user = auth.currentUser;
   const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
 
-  // Get or create the summary container
   let summaryDiv = document.getElementById("admin-report-summary");
   if (!summaryDiv) {
     summaryDiv = document.createElement("div");
@@ -922,17 +929,22 @@ async function loadAdminReportSummary() {
     document.querySelector(".community-page").insertBefore(summaryDiv, document.querySelector(".top-bar").nextSibling);
   }
 
-  // Initial loading state
-  summaryDiv.innerHTML = '<div class="loading">Loading...</div>';
+  // Use cache if available
+  if (reportSummaryCache) {
+    summaryDiv.innerHTML = reportSummaryCache.html;
+    attachSummaryListeners(summaryDiv, isAdmin);
+    console.log("Loaded report summary from cache!");
+    return;
+  }
 
-  // Fetch report and appeal counts
+  summaryDiv.innerHTML = '<div class="loading">Loading...</div>';
   const reportsRef = collection(db, "communities", communityId, "postReports");
   const reportsQ = query(reportsRef);
   const reportsSnapshot = await getDocs(reportsQ);
   const reportCount = Object.keys(reportsSnapshot.docs.reduce((acc, doc) => {
     acc[doc.data().postId] = true;
     return acc;
-  }, {})).length; // Unique reported posts
+  }, {})).length;
 
   let appealCount = 0;
   if (isAdmin) {
@@ -949,33 +961,34 @@ async function loadAdminReportSummary() {
       const reportSnapshot = await getDocs(reportQ);
       if (!reportSnapshot.empty) reportedPosts.push(postId);
     }
-    appealCount = reportedPosts.length; // Number of user's reported posts
+    appealCount = reportedPosts.length;
   }
 
-  // Set up the toggler with counts in the summary
-  const totalNotifications = reportCount + (isAdmin ? appealCount : 0); // Appeals only for admins
+  const totalNotifications = reportCount + (isAdmin ? appealCount : 0);
   summaryDiv.innerHTML = `
     <details>
-      <summary>
-        ${totalNotifications > 0 ? `(${totalNotifications}) ` : ''}See Reports
-      </summary>
+      <summary>${totalNotifications > 0 ? `(${totalNotifications}) ` : ''}See Reports</summary>
       <div id="report-content" class="report-content"></div>
     </details>
   `;
+  reportSummaryCache = { html: summaryDiv.innerHTML };
+  attachSummaryListeners(summaryDiv, isAdmin);
+}
 
+function attachSummaryListeners(summaryDiv, isAdmin) {
   const details = summaryDiv.querySelector("details");
-  const contentDiv = summaryDiv.querySelector("#report-content");
-
-  // Load detailed content only when toggled open
   details.addEventListener("toggle", async () => {
+    const contentDiv = summaryDiv.querySelector("#report-content");
     if (details.open) {
       contentDiv.innerHTML = '<div class="loading">Loading...</div>';
-      details.querySelector("summary").textContent = `${totalNotifications > 0 ? `(${totalNotifications}) ` : ''}Hide Reports`;
+      details.querySelector("summary").textContent = `${reportSummaryCache.html.match(/\(\d+\)/) || ''}Hide Reports`;
 
       if (isAdmin) {
-        // Admin view: Show reported posts and appeals
+        const reportsRef = collection(db, "communities", communityId, "postReports");
+        const reportsQ = query(reportsRef);
+        const reportsSnapshot = await getDocs(reportsQ);
         if (reportsSnapshot.empty) {
-          contentDiv.innerHTML = "<p>No reported posts in this community.</p>";
+          contentDiv.innerHTML = "<p>No reported posts!</p>";
         } else {
           const reportCounts = {};
           reportsSnapshot.forEach(doc => {
@@ -1003,7 +1016,7 @@ async function loadAdminReportSummary() {
           const appealsQ = query(collection(db, "banAppeals"), where("communityId", "==", communityId));
           const appealsSnapshot = await getDocs(appealsQ);
           if (!appealsSnapshot.empty) {
-            contentDiv.innerHTML += "<h3>User Appeals for Reported Posts</h3>";
+            contentDiv.innerHTML += "<h3>User Appeals</h3>";
             for (const doc of appealsSnapshot.docs) {
               const appeal = doc.data();
               const userData = await fetchUserData(appeal.userId);
@@ -1012,16 +1025,15 @@ async function loadAdminReportSummary() {
                 <div class="appeal-item" data-appeal-id="${doc.id}">
                   <p><strong>${userData.name || "Unknown"}:</strong> "${appeal.message}" (Post ID: ${postId})</p>
                   <span>${new Date(appeal.timestamp.toDate()).toLocaleString()}</span>
-                  <button class="delete-appeal-btn" data-appeal-id="${doc.id}">Delete Appeal</button>
+                  <button class="delete-appeal-btn" data-appeal-id="${doc.id}">Delete</button>
                 </div>
               `;
             }
           } else {
-            contentDiv.innerHTML += "<h3>User Appeals for Reported Posts</h3><p>No appeals yet.</p>";
+            contentDiv.innerHTML += "<h3>User Appeals</h3><p>No appeals yet, bro.</p>";
           }
         }
       } else {
-        // Regular user view: Show their own reported posts with appeal option
         const userPostsQ = query(collection(db, "communities", communityId, "posts"), where("userId", "==", user.uid));
         const userPostsSnapshot = await getDocs(userPostsQ);
         const reportedPosts = [];
@@ -1036,7 +1048,7 @@ async function loadAdminReportSummary() {
         }
 
         if (reportedPosts.length === 0) {
-          contentDiv.innerHTML = "<p>No reports on your posts.</p>";
+          contentDiv.innerHTML = "<p>No reports on your posts!</p>";
         } else {
           contentDiv.innerHTML = "<h3>Your Reported Posts</h3>";
           for (const post of reportedPosts) {
@@ -1047,14 +1059,14 @@ async function loadAdminReportSummary() {
             contentDiv.innerHTML += `
               <div class="report-item" data-post-id="${post.postId}">
                 <p>Post "${post.title}" (ID: ${post.postId}) has ${post.count} report${post.count > 1 ? 's' : ''}</p>
-                ${post.count >= 2 ? '<p style="color: red;">This post is hidden from others!</p>' : ''}
+                ${post.count >= 2 ? '<p style="color: red;">Hidden from others!</p>' : ''}
                 <div class="appeal-container" data-post-id="${post.postId}">
                   ${!hasAppeal ? `
                     <form class="appeal-form" data-post-id="${post.postId}">
-                      <textarea placeholder="Appeal to admins (e.g., 'This post isn’t breaking rules because...')" required></textarea>
+                      <textarea placeholder="Appeal to admins (e.g., 'Not breaking rules because...')" required></textarea>
                       <button type="submit">Send Appeal</button>
                     </form>
-                  ` : '<p>Appeal sent, awaiting admin review.</p>'}
+                  ` : '<p>Appeal sent, waiting on admins.</p>'}
                 </div>
               </div>
             `;
@@ -1062,7 +1074,6 @@ async function loadAdminReportSummary() {
         }
       }
 
-      // Add event listeners after content is loaded
       if (isAdmin) {
         contentDiv.querySelectorAll(".remove-post-btn").forEach(btn => {
           btn.addEventListener("click", () => deletePost(btn.dataset.postId));
@@ -1072,12 +1083,12 @@ async function loadAdminReportSummary() {
         });
         contentDiv.querySelectorAll(".delete-appeal-btn").forEach(btn => {
           btn.addEventListener("click", async () => {
-            if (confirm("Delete this appeal?")) {
+            if (confirm("Delete this appeal, bro?")) {
               const appealId = btn.dataset.appealId;
               await deleteDoc(doc(db, "banAppeals", appealId));
               const appealItem = btn.closest(".appeal-item");
               if (appealItem) appealItem.remove();
-              debouncedLoadAdminReportSummary(); // Refresh summary
+              refreshReportSummary();
             }
           });
         });
@@ -1095,20 +1106,25 @@ async function loadAdminReportSummary() {
                 message,
                 timestamp: new Date()
               });
-              alert("Appeal sent to admins!");
+              alert("Appeal sent!");
               const appealContainer = form.closest(".appeal-container");
-              appealContainer.innerHTML = '<p>Appeal sent, awaiting admin review.</p>';
-              debouncedLoadAdminReportSummary(); // Refresh summary
+              appealContainer.innerHTML = '<p>Appeal sent, waiting on admins.</p>';
+              refreshReportSummary();
             }
           });
         });
       }
     } else {
-      // When closed, reset to just the count
-      details.querySelector("summary").textContent = `${totalNotifications > 0 ? `(${totalNotifications}) ` : ''}See Reports`;
-      contentDiv.innerHTML = ""; // Clear content when closed to save resources
+      details.querySelector("summary").textContent = `${reportSummaryCache.html.match(/\(\d+\)/) || ''}See Reports`;
+      contentDiv.innerHTML = "";
     }
   });
+}
+
+// Refresh cache when data changes
+function refreshReportSummary() {
+  reportSummaryCache = null;
+  loadAdminReportSummary();
 }
 
 // Keep the debounced version
@@ -1262,50 +1278,52 @@ async function setupCommunitySelection() {
   });
 }
 
-    async function deletePost(postId) {
-      const user = auth.currentUser;
-      const commData = await getCommData();
-      const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
-      const postRef = doc(db, "communities", communityId, "posts", postId);
-      const postDoc = await getDoc(postRef);
-      const postData = postDoc.data();
+async function deletePost(postId) {
+  const user = auth.currentUser;
+  const commData = await getCommData();
+  const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
+  const postRef = doc(db, "communities", communityId, "posts", postId);
+  const postDoc = await getDoc(postRef);
+  const postData = postDoc.data();
 
-      if (!isAdmin && postData.userId !== user.uid) {
-        alert("You can’t delete this post!");
-        return;
+  if (!isAdmin && postData.userId !== user.uid) {
+    alert("You can’t delete this post!");
+    return;
+  }
+
+  if (confirm("Are you sure you want to delete this post? This will also delete all comments, replies, and photos.")) {
+    const loadingDiv = document.createElement("div");
+    loadingDiv.className = "loading-overlay";
+    loadingDiv.innerHTML = "Deleting...";
+    document.body.appendChild(loadingDiv);
+
+    const commentsQ = query(collection(db, "communities", communityId, "posts", postId, "comments"));
+    const commentsSnapshot = await getDocs(commentsQ);
+    for (const commentDoc of commentsSnapshot.docs) {
+      const repliesQ = query(collection(db, "communities", communityId, "posts", postId, "comments", commentDoc.id, "replies"));
+      const repliesSnapshot = await getDocs(repliesQ);
+      for (const replyDoc of repliesSnapshot.docs) {
+        await deleteDoc(doc(db, "communities", communityId, "posts", postId, "comments", commentDoc.id, "replies", replyDoc.id));
       }
-
-      if (confirm("Are you sure you want to delete this post? This will also delete all comments, replies, and photos.")) {
-        const loadingDiv = document.createElement("div");
-        loadingDiv.className = "loading-overlay";
-        loadingDiv.innerHTML = "Deleting...";
-        document.body.appendChild(loadingDiv);
-
-        const commentsQ = query(collection(db, "communities", communityId, "posts", postId, "comments"));
-        const commentsSnapshot = await getDocs(commentsQ);
-        for (const commentDoc of commentsSnapshot.docs) {
-          const repliesQ = query(collection(db, "communities", communityId, "posts", postId, "comments", commentDoc.id, "replies"));
-          const repliesSnapshot = await getDocs(repliesQ);
-          for (const replyDoc of repliesSnapshot.docs) {
-            await deleteDoc(doc(db, "communities", communityId, "posts", postId, "comments", commentDoc.id, "replies", replyDoc.id));
-          }
-          await deleteDoc(doc(db, "communities", communityId, "posts", postId, "comments", commentDoc.id));
-        }
-
-        for (const url of postData.photoUrls) {
-          const photoRef = ref(storage, url);
-          await deleteObject(photoRef).catch(err => console.error("Failed to delete photo:", err));
-        }
-
-        await deleteDoc(postRef);
-
-        document.body.removeChild(loadingDiv);
-        loadYourPosts(user.uid);
-        loadPosts(communityId, currentPage);
-        carouselIndex = 0;
-        loadCarouselPosts(communityId);
-      }
+      await deleteDoc(doc(db, "communities", communityId, "posts", postId, "comments", commentDoc.id));
     }
+
+    for (const url of postData.photoUrls) {
+      const photoRef = ref(storage, url);
+      await deleteObject(photoRef).catch(err => console.error("Failed to delete photo:", err));
+    }
+
+    await deleteDoc(postRef);
+    postCache.delete(postId); // Clear from cache
+    loadedPostIds.delete(postId);
+
+    document.body.removeChild(loadingDiv);
+    loadYourPosts(user.uid);
+    loadPosts(communityId, true); // Reset to refresh
+    carouselIndex = 0;
+    loadCarouselPosts(communityId);
+  }
+}
 
     function setupYourPostsCarousel(postId) {
   const carousel = document.getElementById(`carousel-${postId}-your`);
@@ -1420,8 +1438,8 @@ async function loadCarouselPosts(communityId) {
   const nextBtn = document.getElementById("carouselNextBtn");
   const lookingForFilter = document.getElementById("lookingForFilter")?.value || "";
   const offeringFilter = document.getElementById("offeringFilter")?.value || "";
+  const postsPerPage = window.innerWidth < 768 ? 2 : 4; // 2 mobile, 4 desktop
 
-  console.log("Loading carousel posts for community:", communityId);
   track.innerHTML = '<div class="loading">Loading...</div>';
 
   // Get total post count (only once or when filters change)
@@ -1435,70 +1453,34 @@ async function loadCarouselPosts(communityId) {
     totalCarouselPosts = totalSnapshot.size;
   }
 
-  // Calculate max index (last "page" of posts)
-  const maxIndex = Math.ceil(totalCarouselPosts / postsPerCarousel) - 1;
+  // Calculate max index
+  const maxIndex = Math.ceil(totalCarouselPosts / postsPerPage) - 1;
 
   // Handle looping
-  if (carouselIndex < 0) {
-    carouselIndex = maxIndex; // Loop to end
-    lastCarouselDoc = null; // Reset to fetch from the end
-  } else if (carouselIndex > maxIndex) {
-    carouselIndex = 0; // Loop to start
-    lastCarouselDoc = null; // Reset to fetch from beginning
-  }
+  if (carouselIndex < 0) carouselIndex = maxIndex;
+  else if (carouselIndex > maxIndex) carouselIndex = 0;
 
-  // Base query with filters and order
   let q = query(
     collection(db, "communities", communityId, "posts"),
     ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
     ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
     orderBy("createdAt", "desc"),
-    limit(postsPerCarousel) // Fetch 4 (or 2) at a time
+    limit(postsPerPage)
   );
-
-  // Adjust query for pagination
-  if (carouselIndex > 0 && lastCarouselDoc) {
-    q = query(
-      collection(db, "communities", communityId, "posts"),
-      ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
-      ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
-      orderBy("createdAt", "desc"),
-      startAfter(lastCarouselDoc),
-      limit(postsPerCarousel)
-    );
-  } else if (carouselIndex === maxIndex && totalCarouselPosts > 0) {
-    // Fetch the last batch when looping to the end
-    q = query(
-      collection(db, "communities", communityId, "posts"),
-      ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
-      ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
-      orderBy("createdAt", "desc"),
-      limitToLast(postsPerCarousel)
-    );
-  }
+  if (carouselIndex > 0 && lastCarouselDoc) q = query(q, startAfter(lastCarouselDoc));
 
   const snapshot = await getDocs(q);
   const posts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-  // Update pagination trackers
   if (snapshot.docs.length > 0) {
     lastCarouselDoc = snapshot.docs[snapshot.docs.length - 1];
     firstCarouselDoc = snapshot.docs[0];
   } else if (carouselIndex > 0 && snapshot.empty) {
-    // If we overshot (no posts), loop back to start
     carouselIndex = 0;
-    lastCarouselDoc = null;
-    return loadCarouselPosts(communityId); // Recurse to start
+    return loadCarouselPosts(communityId); // Loop back
   }
 
-  if (posts.length === 0) {
-    track.innerHTML = '<p class="no-posts">No posts in this community</p>';
-    prevBtn.disabled = totalCarouselPosts <= postsPerCarousel;
-    nextBtn.disabled = totalCarouselPosts <= postsPerCarousel;
-    return;
-  }
-
-  track.innerHTML = "";
+  track.innerHTML = posts.length === 0 ? '<p class="no-posts">No posts here, bro!</p>' : "";
   for (const post of posts) {
     const userData = await fetchUserData(post.userId);
     const postDiv = document.createElement("div");
@@ -1511,7 +1493,6 @@ async function loadCarouselPosts(communityId) {
       <button class="copy-btn" data-post-id="${post.id}">Copy Post ID</button>
     `;
     track.appendChild(postDiv);
-
     postDiv.querySelector(".username").addEventListener("click", () => viewProfile(post.userId));
     postDiv.querySelector(".copy-btn").addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1519,14 +1500,12 @@ async function loadCarouselPosts(communityId) {
     });
   }
 
-  // Buttons are always enabled if there’s more than one "page" of posts
-  prevBtn.disabled = totalCarouselPosts <= postsPerCarousel;
-  nextBtn.disabled = totalCarouselPosts <= postsPerCarousel;
-  //console.log("Button states - Prev:", prevBtn.disabled, "Next:", nextBtn.disabled);
+  prevBtn.disabled = totalCarouselPosts <= postsPerPage || carouselIndex === 0;
+  nextBtn.disabled = totalCarouselPosts <= postsPerPage || carouselIndex === maxIndex;
 }
 
 function slideCarousel(direction) {
-  carouselIndex += direction; // Move by 1 "page" (4 or 2 posts)
+  carouselIndex += direction;
   loadCarouselPosts(communityId);
 }
 
@@ -1559,90 +1538,52 @@ window.addEventListener("touchmove", debounce(() => {
 }, 200));
 
 async function loadPosts(communityId, reset = false) {
-    const postsDiv = document.getElementById("postList");
-    const caughtUpDiv = document.getElementById("caughtUpMessage");
-    const idSearchEl = document.getElementById("postSearch");
-    const categoryFilterEl = document.getElementById("categoryFilter");
-    const lookingForFilterEl = document.getElementById("lookingForFilter");
-    const offeringFilterEl = document.getElementById("offeringFilter");
+  if (isFetching || isSearching) return;
+  isFetching = true;
 
-    const idSearchTerm = idSearchEl?.value.trim() || "";
-    const categoryFilter = categoryFilterEl?.value || "";
-    const lookingForFilter = lookingForFilterEl?.value || "";
-    const offeringFilter = offeringFilterEl?.value || "";
+  const postsDiv = document.getElementById("postList");
+  const caughtUpDiv = document.getElementById("caughtUpMessage");
+  const categoryFilter = document.getElementById("categoryFilter")?.value || "";
+  const lookingForFilter = document.getElementById("lookingForFilter")?.value || "";
+  const offeringFilter = document.getElementById("offeringFilter")?.value || "";
 
-    // If we're searching by ID, don’t load posts via scrolldown
-    if (idSearchTerm || isSearching) return;
+  if (reset) {
+    postsDiv.innerHTML = "";
+    caughtUpDiv.style.display = "none";
+    loadedPostIds.clear();
+    lastPostDoc = null;
+    postCache.clear();
+  }
 
-    if (reset) {
-      postsDiv.innerHTML = "";
-      caughtUpDiv.style.display = "none";
-      loadedPostIds.clear();
-      lastPostDoc = null;
-      initialPostsLoaded = false;
-    } else {
-      document.getElementById("hidePostsBtn")?.remove();
-      caughtUpDiv.style.display = "none";
-    }
+  let q = query(
+    collection(db, "communities", communityId, "posts"),
+    ...(categoryFilter ? [where("category", "==", categoryFilter)] : []),
+    ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
+    ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
+    orderBy("createdAt", "desc"),
+    limit(POSTS_PER_LOAD)
+  );
+  if (lastPostDoc && !reset) q = query(q, startAfter(lastPostDoc));
 
-    if (totalPosts === 0 || reset || categoryFilter || lookingForFilter || offeringFilter) {
-      const totalQ = query(
-        collection(db, "communities", communityId, "posts"),
-        ...(categoryFilter ? [where("category", "==", categoryFilter)] : []),
-        ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
-        ...(offeringFilter ? [where("offering", "==", offeringFilter)] : [])
-      );
-      const totalSnapshot = await getDocs(totalQ);
-      totalPosts = totalSnapshot.size;
-    }
-
-    let q = query(
-      collection(db, "communities", communityId, "posts"),
-      ...(categoryFilter ? [where("category", "==", categoryFilter)] : []),
-      ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
-      ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
-      orderBy("createdAt", "desc"),
-      limit(postsPerLoad)
-    );
-
-    if (lastPostDoc && !reset) {
-      q = query(
-        collection(db, "communities", communityId, "posts"),
-        ...(categoryFilter ? [where("category", "==", categoryFilter)] : []),
-        ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
-        ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
-        orderBy("createdAt", "desc"),
-        startAfter(lastPostDoc),
-        limit(postsPerLoad)
-      );
-    }
-
-    let loadingDiv;
-    if (loadedPostIds.size > 0 && !reset) {
-      loadingDiv = document.createElement("div");
-      loadingDiv.className = "loading";
-      loadingDiv.textContent = "Loading...";
-      postsDiv.appendChild(loadingDiv);
-    }
-
+  try {
     const snapshot = await getDocs(q);
     if (snapshot.empty && !initialPostsLoaded) {
-      postsDiv.innerHTML = "<p>No posts match your filters.</p>";
+      postsDiv.innerHTML = "<p>No posts match your filters!</p>";
       caughtUpDiv.style.display = "none";
+      isFetching = false;
       return;
     }
 
-    if (loadingDiv) postsDiv.removeChild(loadingDiv);
-
     lastPostDoc = snapshot.docs[snapshot.docs.length - 1];
+    totalPosts = totalPosts || (await getDocs(query(collection(db, "communities", communityId, "posts")))).size;
     initialPostsLoaded = true;
 
-    const postsArray = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }));
-    postsArray.sort(() => Math.random() - 0.5);
+    const newPosts = snapshot.docs.filter(doc => !loadedPostIds.has(doc.id));
+    newPosts.forEach(doc => postCache.set(doc.id, { id: doc.id, data: doc.data() }));
 
-    await renderPosts({ docs: postsArray }, postsDiv);
+    await renderPosts({ docs: newPosts }, postsDiv);
 
-    if (loadedPostIds.size > postsPerLoad) {
+    if (loadedPostIds.size > POSTS_PER_LOAD) {
       const hideBtn = document.createElement("button");
       hideBtn.id = "hidePostsBtn";
       hideBtn.textContent = "See less";
@@ -1654,29 +1595,31 @@ async function loadPosts(communityId, reset = false) {
       postsDiv.appendChild(hideBtn);
     }
 
-    if (loadedPostIds.size >= totalPosts && totalPosts > 0) {
-      caughtUpDiv.style.display = "block";
-    } else {
-      caughtUpDiv.style.display = "none";
-    }
+    caughtUpDiv.style.display = loadedPostIds.size >= totalPosts ? "block" : "none";
+  } catch (error) {
+    console.error("Failed to load posts:", error);
+    postsDiv.innerHTML += "<p>Oops, something broke! Refresh, bro.</p>";
+  } finally {
+    isFetching = false;
   }
+}
 
 // Helper to render posts (extracted for reuse)
 async function renderPosts(snapshot, postsDiv) {
   const commData = await getCommData();
   const isAdmin = commData?.admins?.includes(auth.currentUser.uid) || commData?.creatorId === auth.currentUser.uid;
+  
+  // Batch fetch all user data at once
+  const uids = [...new Set(snapshot.docs.map(doc => doc.data().userId).filter(Boolean))];
+  await fetchUserData(uids);
 
-  if (snapshot.empty) {
-    postsDiv.innerHTML = "<p>No post found with that ID.</p>";
-    return;
-  }
   for (const doc of snapshot.docs) {
     const postId = doc.id;
     if (loadedPostIds.has(postId)) continue;
     loadedPostIds.add(postId);
 
-    const post = doc.data;
-    const userData = await fetchUserData(post.userId);
+    const post = postCache.get(postId).data;
+    const userData = userDataCache[post.userId];
     const isPostAdmin = commData?.admins?.includes(post.userId) || commData?.creatorId === post.userId;
     const commentsQ = query(collection(db, "communities", communityId, "posts", postId, "comments"), orderBy("createdAt", "desc"));
     const commentsSnapshot = await getDocs(commentsQ);
@@ -1696,8 +1639,8 @@ async function renderPosts(snapshot, postsDiv) {
     postDiv.id = `post-${postId}`;
     postDiv.innerHTML = `
       <div class="post-header">
-        <img src="${userData?.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
-        <h3><span class="username" data-uid="${post.userId}">${userData?.name || 'Unknown'} (${userData?.username || 'unknown'})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
+        <img src="${userData.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
+        <h3><span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
       </div>
       <h3>${post.title || 'Untitled'}</h3>
       <p>${post.description || ''}</p>
@@ -1713,17 +1656,17 @@ async function renderPosts(snapshot, postsDiv) {
       <p class="post-id">Post ID: ${postId} <button class="copy-btn" data-post-id="${postId}">Copy</button></p>
       <button class="report-btn" id="reportPost-${postId}">Report Post</button>
       ${post.userId === auth.currentUser.uid || isAdmin ? `<button class="delete-btn" id="deletePost-${postId}">Delete Post</button>` : ""}
-${reportStatus?.isOwner && reportStatus.reportCount === 1 ? `
-  <div class="report-warning" id="warning-${postId}">
-    This post has 1 report. One more will hide it from others—check it in the summary above!
-  </div>` : ""}
-${reportStatus?.isOwner && reportStatus.reportCount >= 2 ? `
-  <div class="report-warning" id="warning-${postId}">
-    This post has ${reportStatus.reportCount} reports and is hidden from others. Appeal in the summary above!
-  </div>` : ""}
+      ${reportStatus?.isOwner && reportStatus.reportCount === 1 ? `
+        <div class="report-warning" id="warning-${postId}">
+          This post has 1 report. One more hides it—check summary!
+        </div>` : ""}
+      ${reportStatus?.isOwner && reportStatus.reportCount >= 2 ? `
+        <div class="report-warning" id="warning-${postId}">
+          This post has ${reportStatus.reportCount} reports and is hidden. Appeal above!
+        </div>` : ""}
       ${isAdmin && reportStatus?.reportCount > 0 ? `
         <div class="admin-report-controls" id="admin-controls-${postId}">
-          This post received ${reportStatus.reportCount} report${reportStatus.reportCount > 1 ? 's' : ''}.
+          This post has ${reportStatus.reportCount} report${reportStatus.reportCount > 1 ? 's' : ''}.
           <button class="remove-post-btn" data-post-id="${postId}">Remove Post</button>
           <button class="clear-reports-btn" data-post-id="${postId}">Clear Reports</button>
         </div>` : ""}
@@ -1771,95 +1714,184 @@ ${reportStatus?.isOwner && reportStatus.reportCount >= 2 ? `
 
 // Infinite scroll listener
 function setupInfiniteScroll() {
-  const postsDiv = document.getElementById("postList");
+  const observer = new IntersectionObserver(async (entries) => {
+    if (entries[0].isIntersecting && loadedPostIds.size < totalPosts && !isSearching) {
+      await loadPosts(communityId);
+    }
+  }, { threshold: 1.0 });
+  observer.observe(document.getElementById("sentinel"));
 
   window.addEventListener("scroll", debounce(async () => {
-    if (isLoading || loadedPostIds.size >= totalPosts) return;
-
     const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-    if (scrollTop + clientHeight >= scrollHeight - 50) { // 50px buffer
-      isLoading = true;
-      await loadPosts(communityId);
-      isLoading = false;
+    const scrollPercent = (scrollTop + clientHeight) / scrollHeight;
+    if (scrollPercent > 0.7 && !isFetching && loadedPostIds.size < totalPosts && !isSearching) {
+      await loadPosts(communityId); // Pre-fetch at 70%
     }
-  }, 500)); // Increased from 200ms to 500ms
+  }, 400));
 }
 
 async function loadYourPosts(userId) {
   const yourPostsList = document.getElementById("yourPostsList");
-  const q = query(collection(db, "communities", communityId, "posts"), where("userId", "==", userId), orderBy("createdAt", "desc"), limit(10));
-  const snapshot = await getDocs(q);
-  yourPostsList.innerHTML = snapshot.empty ? "<p>No posts yet.</p>" : "";
-  const commData = await getCommData();
+  yourPostsList.innerHTML = ""; // Clear initially
+  let lastYourPostDoc = null;
+  let firstYourPostDoc = null; // Track the first doc for reset
+  let shownPostIds = new Set(); // Track displayed post IDs
 
-  for (const doc of snapshot.docs) {
-    const post = doc.data();
-    if (!post.userId) {
-      console.error(`Post ${postId} has no userId! Post data:`, post);
-      postsDiv.innerHTML += `<div class="post-error">Error: Post ${postId} is missing user data.</div>`;
-      continue;
+  async function fetchYourPosts(reset = false) {
+    //console.log("Fetching your posts, reset:", reset, "shownPostIds:", shownPostIds.size);
+    const commData = await getCommData();
+    const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
+    await fetchUserData(userId); // Cache current user's data
+
+    // Save scroll position
+    const scrollTop = window.scrollY || document.documentElement.scrollTop;
+
+    let q = query(
+      collection(db, "communities", communityId, "posts"),
+      where("userId", "==", userId),
+      orderBy("createdAt", "desc"),
+      limit(2) // 2 posts per fetch
+    );
+    if (lastYourPostDoc && !reset) q = query(q, startAfter(lastYourPostDoc));
+    else if (reset) firstYourPostDoc = null; // Reset to start
+
+    const snapshot = await getDocs(q);
+    if (snapshot.empty && shownPostIds.size === 0) {
+      yourPostsList.innerHTML = "<p>No posts yet, bro!</p>";
+      await updateButtons(); // Now async
+      window.scrollTo(0, scrollTop);
+      return;
     }
-    const userData = await fetchUserData(post.userId);
-    const isAdmin = commData.admins?.includes(post.userId) || commData.creatorId === post.userId;
-    const timestamp = new Date(post.createdAt.toDate()).toLocaleString();
-    const photoUrls = post.photoUrls || [];
-    const photoCount = photoUrls.length;
-    const reportStatus = await getPostReportStatus(doc.id);
 
-    const postDiv = document.createElement("div");
-    postDiv.className = "post";
-    postDiv.id = `post-${doc.id}`;
-    postDiv.innerHTML = `
-      <div class="post-header">
-        <img src="${userData.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
-        <h3><span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
-      </div>
-      <h3>${post.title}</h3>
-      <p>${post.description}</p>
-      <div class="photo-carousel" id="carousel-${doc.id}-your" data-photos='${JSON.stringify(photoUrls)}'>
-        ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${doc.id}-your"><</button>` : ''}
-        <img src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image" data-index="0">
-        ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${doc.id}-your">></button>` : ''}
-      </div>
-      <p>Location: ${post.location.name}</p>
-      <p>Category: ${post.category || 'N/A'} | Looking For: ${post.lookingFor || 'N/A'} | Offering: ${post.offering || 'N/A'}</p>
-      <p class="timestamp">${timestamp}</p>
-      <p class="post-id">Post ID: ${doc.id} <button class="copy-btn" data-post-id="${doc.id}">Copy</button></p>
-      ${post.userId === auth.currentUser.uid || commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid ? `<button class="delete-btn" id="deletePost-${doc.id}">Delete Post</button>` : ""}
-${reportStatus.isOwner && reportStatus.reportCount === 1 ? `
-  <div class="report-warning" id="warning-${doc.id}">
-    This post has 1 report. One more will hide it from others—check it in the summary above!
-  </div>` : ""}
-${reportStatus.isOwner && reportStatus.reportCount >= 2 ? `
-  <div class="report-warning" id="warning-${doc.id}">
-    This post has ${reportStatus.reportCount} reports and is hidden from others. Appeal in the summary above!
-  </div>` : ""}
-    `;
+    if (!firstYourPostDoc) firstYourPostDoc = snapshot.docs[0]; // Set first doc on initial load
+    lastYourPostDoc = snapshot.docs[snapshot.docs.length - 1];
 
-    yourPostsList.appendChild(postDiv);
+    // If reset, clear and show only first 2
+    if (reset) {
+      yourPostsList.innerHTML = "";
+      shownPostIds.clear();
+      console.log("Resetting to first 2 posts!");
+    }
 
-    const usernameEl = postDiv.querySelector(`.username[data-uid="${post.userId}"]`);
-    usernameEl.addEventListener("click", () => {
-      viewProfile(post.userId);
-    });
+    for (const doc of snapshot.docs) {
+      if (shownPostIds.has(doc.id)) continue; // Skip duplicates
+      shownPostIds.add(doc.id);
 
-    const deleteBtn = postDiv.querySelector(`#deletePost-${doc.id}`);
-    if (deleteBtn) {
-      deleteBtn.addEventListener("click", () => {
-        deletePost(doc.id);
+      const post = doc.data();
+      if (!post.userId) {
+        console.error(`Post ${doc.id} has no userId! Post data:`, post);
+        yourPostsList.innerHTML += `<div class="post-error">Error: Post ${doc.id} is missing user data.</div>`;
+        continue;
+      }
+      const userData = userDataCache[post.userId];
+      const isPostAdmin = commData.admins?.includes(post.userId) || commData.creatorId === post.userId;
+      const timestamp = new Date(post.createdAt.toDate()).toLocaleString();
+      const photoUrls = post.photoUrls || [];
+      const photoCount = photoUrls.length;
+      const reportStatus = await getPostReportStatus(doc.id);
+
+      const postDiv = document.createElement("div");
+      postDiv.className = "post";
+      postDiv.id = `post-${doc.id}`;
+      postDiv.innerHTML = `
+        <div class="post-header">
+          <img src="${userData.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
+          <h3><span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
+        </div>
+        <h3>${post.title}</h3>
+        <p>${post.description}</p>
+        <div class="photo-carousel" id="carousel-${doc.id}-your" data-photos='${JSON.stringify(photoUrls)}'>
+          ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${doc.id}-your"><</button>` : ''}
+          <img src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image" data-index="0">
+          ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${doc.id}-your">></button>` : ''}
+        </div>
+        <p>Location: ${post.location.name}</p>
+        <p>Category: ${post.category || 'N/A'} | Looking For: ${post.lookingFor || 'N/A'} | Offering: ${post.offering || 'N/A'}</p>
+        <p class="timestamp">${timestamp}</p>
+        <p class="post-id">Post ID: ${doc.id} <button class="copy-btn" data-post-id="${doc.id}">Copy</button></p>
+        ${post.userId === auth.currentUser.uid || isAdmin ? `<button class="delete-btn" id="deletePost-${doc.id}">Delete Post</button>` : ""}
+        ${reportStatus.isOwner && reportStatus.reportCount === 1 ? `
+          <div class="report-warning" id="warning-${doc.id}">
+            This post has 1 report. One more hides it—check summary!
+          </div>` : ""}
+        ${reportStatus.isOwner && reportStatus.reportCount >= 2 ? `
+          <div class="report-warning" id="warning-${doc.id}">
+            This post has ${reportStatus.reportCount} reports and is hidden. Appeal above!
+          </div>` : ""}
+      `;
+      yourPostsList.appendChild(postDiv);
+
+      postDiv.querySelector(`.username[data-uid="${post.userId}"]`).addEventListener("click", () => viewProfile(post.userId));
+      const deleteBtn = postDiv.querySelector(`#deletePost-${doc.id}`);
+      if (deleteBtn) deleteBtn.addEventListener("click", () => deletePost(doc.id));
+      postDiv.querySelector(`.copy-btn[data-post-id="${doc.id}"]`).addEventListener("click", (e) => {
+        e.stopPropagation();
+        copyPostId(doc.id);
       });
+      if (photoCount > 1) setupYourPostsCarousel(doc.id);
     }
 
-    const copyBtn = postDiv.querySelector(`.copy-btn[data-post-id="${doc.id}"]`);
-    copyBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      copyPostId(doc.id);
-    });
-
-    if (photoCount > 1) {
-      setupYourPostsCarousel(doc.id);
-    }
+    await updateButtons(); // Now async
+    window.scrollTo(0, scrollTop); // Restore scroll position
   }
+
+  async function updateButtons() {
+    // Remove existing buttons
+    const existingMoreBtn = yourPostsList.querySelector("#seeMoreYourPostsBtn");
+    const existingLessBtn = yourPostsList.querySelector("#seeLessYourPostsBtn");
+    if (existingMoreBtn) existingMoreBtn.remove();
+    if (existingLessBtn) existingLessBtn.remove();
+
+    // Create button container
+    const buttonContainer = document.createElement("div");
+    buttonContainer.id = "yourPostsButtons";
+    buttonContainer.style.cssText = "margin-top: 10px; text-align: center; display: block !important; visibility: visible !important;";
+
+    // Create buttons
+    const seeMoreBtn = document.createElement("button");
+    seeMoreBtn.id = "seeMoreYourPostsBtn";
+    seeMoreBtn.textContent = "See More";
+    seeMoreBtn.className = "see-more-btn";
+    seeMoreBtn.style.cssText = "display: block !important; margin: 5px auto; padding: 5px 10px; visibility: visible !important; opacity: 1 !important; position: relative !important;";
+    seeMoreBtn.addEventListener("click", () => fetchYourPosts());
+
+    const seeLessBtn = document.createElement("button");
+    seeLessBtn.id = "seeLessYourPostsBtn";
+    seeLessBtn.textContent = "See Less";
+    seeLessBtn.className = "see-less-btn";
+    seeLessBtn.style.cssText = "display: none !important; margin: 5px auto; padding: 5px 10px; visibility: hidden !important; opacity: 0 !important; position: relative !important;";
+    seeLessBtn.addEventListener("click", () => fetchYourPosts(true));
+
+    // Append to container
+    buttonContainer.appendChild(seeMoreBtn);
+    buttonContainer.appendChild(seeLessBtn);
+    yourPostsList.appendChild(buttonContainer);
+
+    // Get total posts synchronously
+    const totalQ = query(collection(db, "communities", communityId, "posts"), where("userId", "==", userId));
+    const totalSnapshot = await getDocs(totalQ);
+    const totalPosts = totalSnapshot.size;
+    console.log("Total posts:", totalPosts, "Shown posts:", shownPostIds.size);
+
+    // Set button visibility
+    if (shownPostIds.size >= totalPosts) {
+      seeMoreBtn.style.cssText = "display: none !important; margin: 5px auto; padding: 5px 10px; visibility: hidden !important; opacity: 0 !important;";
+      seeLessBtn.style.cssText = "display: block !important; margin: 5px auto; padding: 5px 10px; visibility: visible !important; opacity: 1 !important; position: relative !important;";
+    } else {
+      seeMoreBtn.style.cssText = "display: block !important; margin: 5px auto; padding: 5px 10px; visibility: visible !important; opacity: 1 !important; position: relative !important;";
+      seeLessBtn.style.cssText = shownPostIds.size > 2 
+        ? "display: block !important; margin: 5px auto; padding: 5px 10px; visibility: visible !important; opacity: 1 !important; position: relative !important;" 
+        : "display: none !important; margin: 5px auto; padding: 5px 10px; visibility: hidden !important; opacity: 0 !important;";
+    }
+
+    // Log computed styles
+    //console.log("See More - Display:", window.getComputedStyle(seeMoreBtn).display, "Visibility:", window.getComputedStyle(seeMoreBtn).visibility);
+    //console.log("See Less - Display:", window.getComputedStyle(seeLessBtn).display, "Visibility:", window.getComputedStyle(seeLessBtn).visibility);
+    //console.log("Buttons updated - See More DOM:", !!document.getElementById("seeMoreYourPostsBtn"));
+    //console.log("Buttons updated - See Less DOM:", !!document.getElementById("seeLessYourPostsBtn"));
+  }
+
+  await fetchYourPosts(); // Initial fetch
 }
 
 async function searchPostsById(postId) {
@@ -2130,7 +2162,6 @@ async function toggleComments(postId) {
   const commData = await getCommData();
   const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
 
-  // If commentsDiv hasn’t been loaded yet (first toggle), fetch initial batch
   if (!commentsDiv.dataset.loaded) {
     commentsDiv.style.display = "block";
     toggleLink.textContent = "Hide comments";
@@ -2142,7 +2173,7 @@ async function toggleComments(postId) {
       limit(itemsPerPage)
     );
     const snapshot = await getDocs(q);
-    commentsDiv.innerHTML = ""; // Clear loading
+    commentsDiv.innerHTML = "";
 
     let lastCommentDoc = snapshot.docs[snapshot.docs.length - 1];
     const totalCommentsCount = await totalComments(postId);
@@ -2151,24 +2182,20 @@ async function toggleComments(postId) {
       await renderComment(doc, commentsDiv, postId, isAdmin);
     }
 
-    // Add "See more" button if there’s more to load
     if (commentsDiv.children.length < totalCommentsCount) {
       const seeMoreBtn = document.createElement("button");
       seeMoreBtn.textContent = "See more comments";
       seeMoreBtn.className = "see-more-btn";
-      seeMoreBtn.dataset.postId = postId; // Store postId for later
-      seeMoreBtn.dataset.lastDocId = lastCommentDoc ? lastCommentDoc.id : ""; // Store last doc ID
+      seeMoreBtn.dataset.postId = postId;
+      seeMoreBtn.dataset.lastDocId = lastCommentDoc ? lastCommentDoc.id : "";
       seeMoreBtn.addEventListener("click", loadMoreComments);
       commentsDiv.appendChild(seeMoreBtn);
     }
 
-    // Mark as loaded and store total count
     commentsDiv.dataset.loaded = "true";
     commentsDiv.dataset.totalComments = totalCommentsCount;
     toggleLink.textContent = `${totalCommentsCount} comments`;
-  } 
-  // Toggle visibility if already loaded
-  else if (commentsDiv.style.display === "none") {
+  } else if (commentsDiv.style.display === "none") {
     commentsDiv.style.display = "block";
     toggleLink.textContent = "Hide comments";
   } else {
@@ -2946,7 +2973,7 @@ async function revokeProfileAccessFromModal(requestId, userId) {
       admins,
       [`banReasons.${uid}`]: banReason.trim() // Store reason tied to user ID
     });
-
+    resetCommDataCache(); // Add this
     alert("User banned!");
     closeModal("viewProfileModal");
   } else {
@@ -3265,14 +3292,48 @@ async function viewCommunities(userId) {
   };
 }
 
-    async function updateNotificationBadge(userId) {
-      const q = query(collection(db, "notifications"), where("userId", "==", userId), where("seen", "==", false));
-      const snapshot = await getDocs(q);
-      const unseenCount = snapshot.size;
-      const badge = document.getElementById("notificationCount");
-      badge.textContent = unseenCount;
-      badge.style.display = unseenCount > 0 ? "inline" : "none";
-    }
+async function updateNotificationBadge(userId) {
+  const now = Date.now();
+  let lastCheck = parseInt(sessionStorage.getItem("lastBadgeCheck")) || 0;
+  let cachedCount = parseInt(sessionStorage.getItem("notificationCount")) || 0;
+  const lastTimestamp = sessionStorage.getItem("lastNotifTimestamp") ? new Date(sessionStorage.getItem("lastNotifTimestamp")) : new Date(0);
+
+  // Throttle to 30 seconds
+  if (now - lastCheck < 30000) {
+    const badge = document.getElementById("notificationCount");
+    badge.textContent = cachedCount;
+    badge.style.display = cachedCount > 0 ? "inline" : "none";
+    console.log("Using cached badge count, bro!");
+    return;
+  }
+
+  // Fetch only new notifications since last timestamp
+  const q = query(
+    collection(db, "notifications"),
+    where("userId", "==", userId),
+    where("seen", "==", false),
+    where("timestamp", ">", lastTimestamp),
+    orderBy("timestamp", "asc")
+  );
+  const snapshot = await getDocs(q);
+  
+  // Add new unseen count to cached total
+  const newUnseenCount = snapshot.size;
+  cachedCount += newUnseenCount;
+
+  // Update last timestamp if there are new notifications
+  if (!snapshot.empty) {
+    const latestNotif = snapshot.docs[snapshot.docs.length - 1].data();
+    sessionStorage.setItem("lastNotifTimestamp", latestNotif.timestamp.toDate().toISOString());
+  }
+
+  sessionStorage.setItem("notificationCount", cachedCount);
+  sessionStorage.setItem("lastBadgeCheck", now);
+
+  const badge = document.getElementById("notificationCount");
+  badge.textContent = cachedCount;
+  badge.style.display = cachedCount > 0 ? "inline" : "none";
+}
 
     async function openNotificationsModal(userId) {
   const modal = document.getElementById("notificationsModal");
@@ -3464,11 +3525,24 @@ async function markNotificationSeen(notifId) {
       return snapshot.size;
     }
 
-    async function getCommData() {
-      const commRef = doc(db, "communities", communityId);
-      const commDoc = await getDoc(commRef);
-      return commDoc.data();
-    }
+    let commDataCache = null;
+
+async function getCommData() {
+  if (commDataCache) {
+    console.log("Using cached community data!");
+    return commDataCache;
+  }
+  const commRef = doc(db, "communities", communityId);
+  const commDoc = await getDoc(commRef);
+  commDataCache = commDoc.data();
+  console.log("Fetched fresh community data!");
+  return commDataCache;
+}
+
+// Reset cache when needed (e.g., after updates like banning users)
+function resetCommDataCache() {
+  commDataCache = null;
+}
 
     function debounce(func, wait) {
       let timeout;
