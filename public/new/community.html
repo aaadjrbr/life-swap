@@ -22,6 +22,10 @@
     <p id="communityId"></p>
     <button class="copy-btn" id="copyCommunityIdBtn">Copy Community ID</button>
     <p>Total Users: <span id="totalUsers">0</span> | Banned Users: <span id="bannedUsers">0</span> | <span id="profileRequestsBtn"></span></p>
+    <div id="userSwapInfo" class="user-swap-info">
+      Your user name: <span id="userNameCopy" class="clickable">[Loading...]</span> | Number of Swaps: <span id="swapCount">0</span>
+    </div>
+    <div class="community-page">
     <div id="communityActions"></div>
 
     <!-- New Post Form (Toggle) -->
@@ -190,6 +194,38 @@
   </div>
 </div>
 
+<!-- Delete Post Confirmation Modal -->
+<div id="deletePostModal" class="modal hidden">
+  <div class="modal-content">
+    <h2>Reason for Deleting Post</h2>
+    <button id="swappedBtn">I swapped it</button>
+    <button id="justDeleteBtn">Just delete it</button>
+    <div id="swapDetails" class="hidden">
+      <p>Who did you swap with?</p>
+      <p>Remember: Ask the person you swapped their username</p>
+      <input type="text" id="swapUsername" placeholder="Enter username">
+      <button id="validateSwapBtn">Validate</button>
+      <p id="swapValidationResult" style="color: red;"></p>
+      <p id="swapConfirmed" class="hidden">Swapped with: <span id="swapPartner"></span> <button id="editSwapBtn">Edit</button></p>
+      <button id="proceedSwapBtn" class="hidden">Proceed</button>
+    </div>
+    <div id="swapSuccess" class="hidden">
+      <p id="swapSuccessMessage"></p>
+      <form action="https://www.paypal.com/donate" method="post" target="_blank">
+        <input type="hidden" name="business" value="YOUR_PAYPAL_EMAIL_OR_ID">
+        <input type="hidden" name="currency_code" value="USD">
+        <button type="submit" id="donateBtn">Tip Us via PayPal</button>
+      </form>
+    </div>
+    <button id="closeDeleteModalBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay" class="loading-overlay hidden">
+  <div class="loading-text">Deleting...</div>
+</div>
+
 <!-- Notifications Modal -->
 <div id="notificationsModal" class="modal hidden">
   <div class="modal-content">
@@ -215,7 +251,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-    import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc, limitToLast, startAfter, endBefore, orderBy, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc, limitToLast, startAfter, endBefore, orderBy, enableIndexedDbPersistence, runTransaction, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
     const firebaseConfig = {
@@ -280,6 +316,7 @@ enableIndexedDbPersistence(db)
         window.location.href = "/index.html";
         return;
       }
+      await initializeUserSwapInfo();
 
       const commRef = doc(db, "communities", communityId);
       const commDoc = await getDoc(commRef);
@@ -465,6 +502,91 @@ enableIndexedDbPersistence(db)
     }
   });
 });
+
+async function initializeUserSwapInfo() {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  if (!communityId) {
+    console.error("communityId is undefined, cannot initialize user swap info");
+    return; // Exit early if communityId isn’t set
+  }
+
+  const userRef = doc(db, "users", user.uid);
+  let userDoc = await getDoc(userRef);
+  let userData;
+
+  console.log(`Fetching user data for UID: ${user.uid}`);
+
+  // If user doesn't exist in Firestore, create a new entry
+  if (!userDoc.exists()) {
+    userData = {
+      name: user.displayName || "Unnamed User",
+      username: `user_${user.uid.slice(0, 8)}`, // Simple unique username
+      profilePhoto: user.photoURL || null,
+      email: user.email || null,
+      city: null,
+      phone: null,
+      communityIds: [communityId], // Add current community
+      swaps: 0, // Initialize swaps to 0
+      createdAt: new Date()
+    };
+    console.log("Creating new user with data:", userData);
+    await setDoc(userRef, userData); // Create the user document
+    console.log(`Created new user in DB: ${userData.username}`);
+  } else {
+    userData = userDoc.data();
+    console.log("Existing user data:", userData);
+
+    // Ensure swaps field exists
+    if (typeof userData.swaps === "undefined") {
+      console.log("Swaps field undefined, setting to 0");
+      await updateDoc(userRef, { swaps: 0 });
+      userData.swaps = 0;
+    }
+
+    // Ensure communityIds exists and is an array
+    if (!Array.isArray(userData.communityIds)) {
+      console.log("communityIds is not an array or undefined, initializing as []");
+      userData.communityIds = [];
+      await updateDoc(userRef, { communityIds: userData.communityIds });
+    }
+
+    // Add communityId if not already present
+    if (!userData.communityIds.includes(communityId)) {
+      console.log(`Adding communityId ${communityId} to communityIds`);
+      userData.communityIds.push(communityId);
+      try {
+        console.log("Updating communityIds with:", userData.communityIds);
+        await updateDoc(userRef, { communityIds: userData.communityIds });
+      } catch (error) {
+        console.error("Error updating communityIds:", error);
+        console.log("Current userData state:", userData);
+        throw error;
+      }
+    }
+  }
+
+  // Update the UI
+  const userNameSpan = document.getElementById("userNameCopy");
+  const swapCountSpan = document.getElementById("swapCount");
+
+  if (!userData.username) {
+    console.error("Username is undefined, falling back to UID-based default");
+    userData.username = `user_${user.uid.slice(0, 8)}`;
+    await updateDoc(userRef, { username: userData.username });
+  }
+
+  userNameSpan.textContent = userData.username;
+  swapCountSpan.textContent = userData.swaps;
+
+  // Add click-to-copy functionality
+  userNameSpan.addEventListener("click", () => {
+    navigator.clipboard.writeText(userData.username)
+      .then(() => alert("Username copied to clipboard!"))
+      .catch(err => console.error("Failed to copy username:", err));
+  });
+}
 
 async function updateProfileRequestsUI(userId) {
   const requestsQ = query(collection(db, "profileRequests"), where("targetId", "==", userId), where("status", "==", "pending"));
@@ -1292,39 +1414,196 @@ async function deletePost(postId) {
     return;
   }
 
-  if (confirm("Are you sure you want to delete this post? This will also delete all comments, replies, and photos.")) {
-    const loadingDiv = document.createElement("div");
-    loadingDiv.className = "loading-overlay";
-    loadingDiv.innerHTML = "Deleting...";
-    document.body.appendChild(loadingDiv);
+  const modal = document.getElementById("deletePostModal");
+  const swappedBtn = document.getElementById("swappedBtn");
+  const justDeleteBtn = document.getElementById("justDeleteBtn");
+  const swapDetails = document.getElementById("swapDetails");
+  const swapUsername = document.getElementById("swapUsername");
+  const validateSwapBtn = document.getElementById("validateSwapBtn");
+  const swapValidationResult = document.getElementById("swapValidationResult");
+  const swapConfirmed = document.getElementById("swapConfirmed");
+  const swapPartner = document.getElementById("swapPartner");
+  const editSwapBtn = document.getElementById("editSwapBtn");
+  const proceedSwapBtn = document.getElementById("proceedSwapBtn");
+  const swapSuccess = document.getElementById("swapSuccess");
+  const swapSuccessMessage = document.getElementById("swapSuccessMessage");
+  const closeDeleteModalBtn = document.getElementById("closeDeleteModalBtn");
+  const loadingOverlay = document.getElementById("loadingOverlay");
 
-    const commentsQ = query(collection(db, "communities", communityId, "posts", postId, "comments"));
-    const commentsSnapshot = await getDocs(commentsQ);
-    for (const commentDoc of commentsSnapshot.docs) {
-      const repliesQ = query(collection(db, "communities", communityId, "posts", postId, "comments", commentDoc.id, "replies"));
-      const repliesSnapshot = await getDocs(repliesQ);
-      for (const replyDoc of repliesSnapshot.docs) {
-        await deleteDoc(doc(db, "communities", communityId, "posts", postId, "comments", commentDoc.id, "replies", replyDoc.id));
+  if (!modal || !loadingOverlay || !swappedBtn || !justDeleteBtn || !swapDetails || !swapUsername || 
+      !validateSwapBtn || !swapValidationResult || !swapConfirmed || !swapPartner || 
+      !editSwapBtn || !proceedSwapBtn || !swapSuccess || !swapSuccessMessage || !closeDeleteModalBtn) {
+    console.error("Missing modal or loading elements:", { modal, loadingOverlay, swappedBtn, justDeleteBtn, swapDetails, swapUsername, validateSwapBtn, swapValidationResult, swapConfirmed, swapPartner, editSwapBtn, proceedSwapBtn, swapSuccess, swapSuccessMessage, closeDeleteModalBtn });
+    alert("Error: Modal setup incomplete. Please refresh the page.");
+    return;
+  }
+
+  let swapPartnerUid = null;
+
+  // Show the modal
+  modal.style.display = "flex";
+  modal.classList.remove("hidden");
+  swapDetails.classList.add("hidden");
+  swapSuccess.classList.add("hidden");
+  swapValidationResult.textContent = "";
+  swapConfirmed.classList.add("hidden");
+  proceedSwapBtn.classList.add("hidden");
+
+  // Handle "Just delete it"
+  justDeleteBtn.onclick = async () => {
+    if (confirm("Are you sure you want to delete this post? This will also delete all comments, replies, and photos.")) {
+      loadingOverlay.classList.remove("hidden");
+      try {
+        await deletePostAndCleanup(postId, postData.photoUrls, false, null);
+        closeModal("deletePostModal");
+      } catch (error) {
+        console.error("Deletion failed:", error);
+        alert("Something went wrong. Please try again.");
+      } finally {
+        loadingOverlay.classList.add("hidden");
       }
-      await deleteDoc(doc(db, "communities", communityId, "posts", postId, "comments", commentDoc.id));
+    }
+  };
+
+  // Handle "I swapped it"
+  swappedBtn.onclick = () => {
+    swapDetails.classList.remove("hidden");
+    justDeleteBtn.style.display = "none";
+    swappedBtn.style.display = "none";
+    swapUsername.focus();
+  };
+
+  // Validate username
+  validateSwapBtn.onclick = async () => {
+    const username = swapUsername.value.trim();
+    if (!username) {
+      swapValidationResult.textContent = "Please enter a username.";
+      return;
     }
 
-    for (const url of postData.photoUrls) {
-      const photoRef = ref(storage, url);
-      await deleteObject(photoRef).catch(err => console.error("Failed to delete photo:", err));
+    swapValidationResult.textContent = "Checking...";
+    const userData = await getUserByUsername(username);
+    if (userData) {
+      swapPartnerUid = userData.uid;
+      swapPartner.textContent = username;
+      swapValidationResult.textContent = "";
+      swapConfirmed.classList.remove("hidden");
+      proceedSwapBtn.classList.remove("hidden");
+      swapUsername.disabled = true;
+      validateSwapBtn.disabled = true;
+    } else {
+      swapValidationResult.textContent = "User not found.";
+      swapPartnerUid = null;
+    }
+  };
+
+  // Edit swap partner
+  editSwapBtn.onclick = () => {
+    swapConfirmed.classList.add("hidden");
+    proceedSwapBtn.classList.add("hidden");
+    swapUsername.disabled = false;
+    validateSwapBtn.disabled = false;
+    swapUsername.value = "";
+    swapValidationResult.textContent = "";
+    swapUsername.focus();
+  };
+
+  // Proceed with swap
+  proceedSwapBtn.onclick = async () => {
+    if (!swapPartnerUid) {
+      swapValidationResult.textContent = "No valid user selected.";
+      return;
     }
 
-    await deleteDoc(postRef);
-    postCache.delete(postId); // Clear from cache
-    loadedPostIds.delete(postId);
+    const partnerUsername = swapPartner.textContent;
+    if (confirm(`Are you sure you swapped with ${partnerUsername}?`)) {
+      loadingOverlay.classList.remove("hidden");
+      try {
+        await deletePostAndCleanup(postId, postData.photoUrls, true, swapPartnerUid);
+        swapDetails.classList.add("hidden");
+        swapSuccess.classList.remove("hidden");
+        swapSuccessMessage.textContent = `Thanks! You and ${partnerUsername} swapped this item. Help us continue our service free. Tip us!`;
+        closeDeleteModalBtn.textContent = "Close";
+      } catch (error) {
+        console.error("Swap and deletion failed:", error);
+        alert("Something went wrong during the swap. Please try again.");
+      } finally {
+        loadingOverlay.classList.add("hidden");
+      }
+    }
+  };
 
-    document.body.removeChild(loadingDiv);
-    totalYourPosts = 0;
-    loadYourPosts(user.uid);
-    loadPosts(communityId, true); // Reset to refresh
-    totalCarouselPosts = 0; // Reset count
-    carouselIndex = 0;
-    loadCarouselPosts(communityId);
+  // Close modal
+  closeDeleteModalBtn.onclick = () => closeModal("deletePostModal");
+}
+
+// Helper: Delete post and cleanup efficiently
+async function deletePostAndCleanup(postId, photoUrls, isSwap, swapPartnerUid) {
+  const postRef = doc(db, "communities", communityId, "posts", postId);
+  const commentsCollection = collection(db, "communities", communityId, "posts", postId, "comments");
+
+  // Step 1: Transaction for post deletion and swaps (if applicable)
+  await runTransaction(db, async (transaction) => {
+    if (isSwap && swapPartnerUid) {
+      const userRef = doc(db, "users", auth.currentUser.uid);
+      const partnerRef = doc(db, "users", swapPartnerUid);
+
+      const userDoc = await transaction.get(userRef);
+      const partnerDoc = await transaction.get(partnerRef);
+
+      if (!userDoc.exists() || !partnerDoc.exists()) {
+        throw new Error("User or partner not found.");
+      }
+
+      const userSwaps = (userDoc.data().swaps || 0) + 1;
+      const partnerSwaps = (partnerDoc.data().swaps || 0) + 1;
+
+      transaction.update(userRef, { swaps: userSwaps });
+      transaction.update(partnerRef, { swaps: partnerSwaps });
+    }
+
+    transaction.delete(postRef);
+  });
+
+  // Step 2: Cleanup comments and replies recursively
+  await deleteCollection(commentsCollection);
+
+  // Step 3: Delete photos from Storage
+  const deletePhotoPromises = photoUrls.map(url => {
+    const photoRef = ref(storage, url);
+    return deleteObject(photoRef).catch(err => console.error("Failed to delete photo:", err));
+  });
+  await Promise.all(deletePhotoPromises);
+
+  // Step 4: Refresh UI
+  postCache.delete(postId);
+  loadedPostIds.delete(postId);
+  totalYourPosts = 0;
+  loadYourPosts(auth.currentUser.uid);
+  loadPosts(communityId, true);
+  totalCarouselPosts = 0;
+  carouselIndex = 0;
+  loadCarouselPosts(communityId);
+}
+
+// Helper: Recursively delete a collection and its subcollections
+async function deleteCollection(collectionRef, batchSize = 500) {
+  const q = query(collectionRef, limit(batchSize));
+  const snapshot = await getDocs(q);
+
+  if (snapshot.empty) return;
+
+  const batch = writeBatch(db);
+  for (const doc of snapshot.docs) {
+    const repliesCollection = collection(db, doc.ref.path, "replies");
+    await deleteCollection(repliesCollection, batchSize); // Recursively delete replies
+    batch.delete(doc.ref);
+  }
+  await batch.commit();
+
+  // If there’s more to delete, recurse
+  if (snapshot.size === batchSize) {
+    await deleteCollection(collectionRef, batchSize);
   }
 }
 

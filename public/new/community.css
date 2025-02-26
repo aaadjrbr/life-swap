@@ -357,6 +357,24 @@ details > div {
   padding: 10px;
 }
 
+.user-swap-info {
+  padding: 10px;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid #ddd;
+  text-align: center;
+  font-size: 16px;
+}
+
+.clickable {
+  cursor: pointer;
+  color: #007bff;
+  text-decoration: underline;
+}
+
+.clickable:hover {
+  color: #0056b3;
+}
+
 /* Posts */
 .post {
   border: 1px solid #ddd;
@@ -757,6 +775,14 @@ background-color: #ccc; /* Or whatever fits your vibe */
   justify-content: center;
   align-items: center;
   z-index: 1000;
+}
+
+.loading-text {
+  color: white;
+  font-size: 24px;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 5px;
 }
 
 .mention {
@@ -1350,4 +1376,13 @@ padding: 10px;
 border: 1px solid #ddd;
 border-top: none;
 background: #f9f9f9;
+}
+
+#swapValidationResult {
+margin: 10px 0;
+}
+
+#swapConfirmed {
+margin: 10px 0;
+font-weight: bold;
 }
