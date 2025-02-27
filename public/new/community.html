@@ -17,7 +17,7 @@
         <p id="communityMeta">Created: <span id="createdAt"></span> by <span id="creatorName"></span></p>
       </div>
       <button id="viewCommunitiesBtn">Your Communities</button>
-      <button id="viewNotificationsBtn">Notifications <span id="notificationCount" class="notification-badge">0</span></button>
+      <button id="viewNotificationsBtn">Notifications <span id="notificationCount" class="notification-badge"></span></button>
     </div>
     <p>Share with friends!</p>
     <p id="communityId"></p>
@@ -411,6 +411,16 @@ enableIndexedDbPersistence(db)
           `;
           return;
         }
+
+        // Log visibility changes
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") {
+            console.log("User is back on screen, resuming notification checks.");
+            updateNotificationBadge(auth.currentUser.uid); // Trigger an immediate check when user returns
+          } else {
+            console.log("User is away from screen, stopping notification count updates.");
+          }
+        });
 
         // Set community name, creation date, and creator name
         document.getElementById("communityName").textContent = commData.name;
@@ -2931,15 +2941,13 @@ async function loadMoreComments(event) {
   document.getElementById(`toggleComments-${postId}`).textContent = `${totalCommentsCount} comments`;
 }
 
-    async function renderComment(doc, commentsDiv, postId, isAdmin) {
+async function renderComment(doc, commentsDiv, postId, isAdmin) {
   const comment = doc.data();
   const userData = await fetchUserData(comment.userId);
   const commData = await getCommData();
   const isCommentAdmin = commData.admins?.includes(comment.userId) || commData.creatorId === comment.userId;
 
-  // Process @mentions into clickable links
   const commentText = await processMentions(comment.text);
-
   const timestamp = new Date(comment.createdAt.toDate()).toLocaleString();
   const repliesQ = query(collection(db, "communities", communityId, "posts", postId, "comments", doc.id, "replies"), orderBy("createdAt", "desc"));
   const repliesSnapshot = await getDocs(repliesQ);
@@ -2955,7 +2963,7 @@ async function loadMoreComments(event) {
         <p>${commentText}</p>
         <span class="timestamp">${timestamp}</span>
         <div class="comment-actions">
-          ${replyCount > 0 ? `<a href="#" class="reply-count" id="toggleReplies-${doc.id}">View ${replyCount} replies</a>` : ""}
+          <a href="#" class="reply-count" id="toggleReplies-${doc.id}">View ${replyCount} replies</a>
           <button class="reply-btn" id="replyBtn-${doc.id}">Reply</button>
           ${isAdmin || comment.userId === auth.currentUser.uid ? `<button class="delete-comment-btn" id="deleteComment-${doc.id}">Delete</button>` : ""}
         </div>
@@ -2979,7 +2987,7 @@ async function loadMoreComments(event) {
   commentDiv.querySelectorAll(`.mention`).forEach(el => {
     const uid = el.dataset.uid;
     el.addEventListener("click", (e) => {
-      e.preventDefault(); // Prevent the default <a> behavior
+      e.preventDefault();
       viewProfile(uid);
     });
   });
@@ -2998,7 +3006,7 @@ async function loadMoreComments(event) {
     commentDiv.querySelector(`#replyForm-${doc.id}`).classList.add("hidden");
   });
   const toggleReplies = commentDiv.querySelector(`#toggleReplies-${doc.id}`);
-  if (toggleReplies) {
+  if (toggleReplies) { // This will always be true now
     toggleReplies.addEventListener("click", (e) => {
       e.preventDefault();
       toggleRepliesFn(postId, doc.id);
@@ -3016,7 +3024,6 @@ async function toggleRepliesFn(postId, commentId) {
   const commData = await getCommData();
   const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
 
-  // If repliesDiv hasn’t been loaded yet (first toggle), fetch initial batch
   if (!repliesDiv.dataset.loaded) {
     repliesDiv.style.display = "block";
     toggleLink.textContent = "Hide replies";
@@ -3028,7 +3035,7 @@ async function toggleRepliesFn(postId, commentId) {
       limit(itemsPerPage)
     );
     const snapshot = await getDocs(q);
-    repliesDiv.innerHTML = ""; // Clear loading
+    repliesDiv.innerHTML = "";
 
     let lastReplyDoc = snapshot.docs[snapshot.docs.length - 1];
     const totalRepliesCount = await totalReplies(postId, commentId);
@@ -3037,30 +3044,25 @@ async function toggleRepliesFn(postId, commentId) {
       await renderReply(doc, repliesDiv, postId, commentId, isAdmin);
     }
 
-    // Add "See more" button if there’s more to load
     if (repliesDiv.children.length < totalRepliesCount) {
       const seeMoreBtn = document.createElement("button");
       seeMoreBtn.textContent = "See more replies";
       seeMoreBtn.className = "see-more-btn";
       seeMoreBtn.dataset.postId = postId;
-      seeMoreBtn.dataset.commentId = commentId; // Store commentId for replies
-      seeMoreBtn.dataset.lastDocId = lastReplyDoc ? lastReplyDoc.id : ""; // Store last doc ID
+      seeMoreBtn.dataset.commentId = commentId;
+      seeMoreBtn.dataset.lastDocId = lastReplyDoc ? lastReplyDoc.id : "";
       seeMoreBtn.addEventListener("click", loadMoreReplies);
       repliesDiv.appendChild(seeMoreBtn);
     }
 
-    // Mark as loaded and store total count
     repliesDiv.dataset.loaded = "true";
     repliesDiv.dataset.totalReplies = totalRepliesCount;
-    toggleLink.textContent = `View ${totalRepliesCount} replies`;
-  } 
-  // Toggle visibility if already loaded
-  else if (repliesDiv.style.display === "none") {
+  } else if (repliesDiv.style.display === "none") {
     repliesDiv.style.display = "block";
     toggleLink.textContent = "Hide replies";
   } else {
     repliesDiv.style.display = "none";
-    toggleLink.textContent = `View ${repliesDiv.dataset.totalReplies || await totalReplies(postId, commentId)} replies`;
+    toggleLink.textContent = `View ${repliesDiv.dataset.totalReplies} replies`;
   }
 }
 
@@ -3180,23 +3182,42 @@ async function loadMoreReplies(event) {
     }
 
     async function deleteReply(postId, commentId, replyId) {
-      const user = auth.currentUser;
-      const commData = await getCommData();
-      const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
-      const replyRef = doc(db, "communities", communityId, "posts", postId, "comments", commentId, "replies", replyId);
-      const replyDoc = await getDoc(replyRef);
-      const replyData = replyDoc.data();
+  const user = auth.currentUser;
+  const commData = await getCommData();
+  const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
+  const replyRef = doc(db, "communities", communityId, "posts", postId, "comments", commentId, "replies", replyId);
+  const replyDoc = await getDoc(replyRef);
+  const replyData = replyDoc.data();
 
-      if (!isAdmin && replyData.userId !== user.uid) {
-        alert("You can’t delete this reply!");
-        return;
-      }
+  if (!isAdmin && replyData.userId !== user.uid) {
+    alert("You can’t delete this reply!");
+    return;
+  }
 
-      if (confirm("Are you sure you want to delete this reply?")) {
-        await deleteDoc(replyRef);
-        toggleRepliesFn(postId, commentId);
-      }
-    }
+  if (confirm("Are you sure you want to delete this reply?")) {
+    await deleteDoc(replyRef);
+    console.log(`Deleted reply ${replyId} from comment ${commentId}`);
+
+    // Fake decrement in UI
+    const repliesDiv = document.getElementById(`replies-${commentId}`);
+    const toggleLink = document.getElementById(`toggleReplies-${commentId}`);
+    const oldCount = parseInt(repliesDiv.dataset.totalReplies || "0", 10);
+    const tempCount = Math.max(0, oldCount - 1);
+    repliesDiv.dataset.totalReplies = tempCount;
+    toggleLink.textContent = repliesDiv.style.display === "none" ? `View ${tempCount} replies` : "Hide replies";
+
+    // Sync with server
+    setTimeout(async () => {
+      const realCount = await totalReplies(postId, commentId);
+      repliesDiv.dataset.totalReplies = realCount;
+      toggleLink.textContent = repliesDiv.style.display === "none" ? `View ${realCount} replies` : "Hide replies";
+      console.log(`Synced replyCount after delete: ${realCount}`);
+    }, 1000);
+
+    // Refresh replies UI (optional)
+    toggleRepliesFn(postId, commentId);
+  }
+}
 
     async function addComment(postId, postOwnerId) {
   const user = auth.currentUser;
@@ -3315,12 +3336,13 @@ async function addReply(postId, commentId, commentOwnerId) {
   const commData = await getCommData();
   const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
 
-  // Add to Firebase
+  // Add the reply doc only
   const replyDoc = await addDoc(collection(db, "communities", communityId, "posts", postId, "comments", commentId, "replies"), {
     text,
     userId: user.uid,
     createdAt: new Date()
   });
+  console.log(`Added reply ${replyDoc.id} to comment ${commentId}`);
 
   // Instant UI update
   const userData = await fetchCurrentUserData();
@@ -3339,7 +3361,6 @@ async function addReply(postId, commentId, commentOwnerId) {
     </div>
   `;
 
-  // If replies are visible, prepend the new reply
   if (repliesDiv.style.display !== "none") {
     repliesDiv.insertBefore(newReplyDiv, repliesDiv.firstChild);
   } else {
@@ -3349,7 +3370,7 @@ async function addReply(postId, commentId, commentOwnerId) {
     toggleLink.textContent = "Hide replies";
   }
 
-  // Add event listeners
+  // Event listeners
   newReplyDiv.querySelectorAll(".username").forEach(el => {
     el.addEventListener("click", () => viewProfile(user.uid));
   });
@@ -3363,12 +3384,22 @@ async function addReply(postId, commentId, commentOwnerId) {
   const deleteBtn = newReplyDiv.querySelector(`#deleteReply-${replyDoc.id}`);
   if (deleteBtn) deleteBtn.addEventListener("click", () => deleteReply(postId, commentId, replyDoc.id));
 
-  // Update reply count
-  const replyCount = await totalReplies(postId, commentId);
-  repliesDiv.dataset.totalReplies = replyCount; // Update the stored count
-  if (toggleLink) toggleLink.textContent = `View ${replyCount} replies`;
+  // Fake the count locally, then sync
+  const oldCount = parseInt(repliesDiv.dataset.totalReplies || "0", 10);
+  const tempCount = oldCount + 1;
+  repliesDiv.dataset.totalReplies = tempCount;
+  toggleLink.textContent = repliesDiv.style.display === "none" ? `View ${tempCount} replies` : "Hide replies";
+  console.log(`Faked replyCount to ${tempCount} for UI`);
 
-  // Send notification if not the comment owner
+  // Sync with server after Cloud Function runs
+  setTimeout(async () => {
+    const realCount = await totalReplies(postId, commentId);
+    repliesDiv.dataset.totalReplies = realCount;
+    toggleLink.textContent = repliesDiv.style.display === "none" ? `View ${realCount} replies` : "Hide replies";
+    console.log(`Synced replyCount with server: ${realCount}`);
+  }, 1000); // Wait 1s for Cloud Function to finish
+
+  // Send notification
   if (user.uid !== commentOwnerId) {
     const replierData = await fetchCurrentUserData();
     await addDoc(collection(db, "notifications"), {
@@ -4251,62 +4282,82 @@ async function viewCommunities(userId) {
   };
 }
 
-window.updateNotificationBadge = updateNotificationBadge;
-async function updateNotificationBadge(userId) {
+async function getUnseenNotificationCount(userId, forceRefresh = false) {
   const now = Date.now();
   let lastCheck = parseInt(sessionStorage.getItem("lastBadgeCheck")) || 0;
   let cachedCount = parseInt(sessionStorage.getItem("notificationCount")) || 0;
-  const lastTimestamp = sessionStorage.getItem("lastNotifTimestamp") ? new Date(sessionStorage.getItem("lastNotifTimestamp")) : new Date(0);
+  const lastTimestamp = sessionStorage.getItem("lastNotifTimestamp") 
+    ? new Date(sessionStorage.getItem("lastNotifTimestamp")) 
+    : new Date(0);
 
-  // Throttle to 30 seconds
-  if (now - lastCheck < 30000) {
-    const badge = document.getElementById("notificationCount");
-    badge.textContent = cachedCount;
-    badge.style.display = cachedCount > 0 ? "inline" : "none";
-    console.log("Using cached badge count!");
-    return;
+  // Check if the document is visible (user is on the screen)
+  if (document.visibilityState === "hidden" && !forceRefresh) {
+    console.log("User is away from screen, stopping notification count fetch.");
+    return cachedCount; // Return cached count without fetching
   }
 
-  // Fetch only new notifications since last timestamp
-  const q = query(
-    collection(db, "notifications"),
-    where("userId", "==", userId),
-    where("seen", "==", false),
-    where("timestamp", ">", lastTimestamp),
-    orderBy("timestamp", "asc")
-  );
-  const snapshot = await getDocs(q);
-  
-  // Add new unseen count to cached total
-  const newUnseenCount = snapshot.size;
-  cachedCount += newUnseenCount;
+  if (forceRefresh || now - lastCheck >= 60000) { // 60-second throttle
+    console.log("User is on screen, proceeding with notification count fetch.");
+    const q = query(
+      collection(db, "notifications"),
+      where("userId", "==", userId),
+      where("seen", "==", false),
+      where("timestamp", ">", lastTimestamp),
+      orderBy("timestamp", "desc")
+    );
+    const snapshot = await getDocs(q);
+    const newUnseenCount = snapshot.size;
 
-  // Update last timestamp if there are new notifications
-  if (!snapshot.empty) {
-    const latestNotif = snapshot.docs[snapshot.docs.length - 1].data();
-    sessionStorage.setItem("lastNotifTimestamp", latestNotif.timestamp.toDate().toISOString());
+    cachedCount = forceRefresh ? newUnseenCount : cachedCount + newUnseenCount;
+
+    if (!snapshot.empty) {
+      const latestNotif = snapshot.docs[snapshot.docs.length - 1].data();
+      sessionStorage.setItem("lastNotifTimestamp", latestNotif.timestamp.toDate().toISOString());
+      console.log(`Updated last timestamp to: ${latestNotif.timestamp.toDate().toISOString()}`);
+    } else {
+      console.log("No new notifications found.");
+    }
+
+    sessionStorage.setItem("notificationCount", cachedCount);
+    sessionStorage.setItem("lastBadgeCheck", now);
+    console.log(`Notification count updated: ${cachedCount}`);
+  } else {
+    console.log(`Using cached count (${cachedCount}) - within 60-second throttle.`);
   }
 
-  sessionStorage.setItem("notificationCount", cachedCount);
-  sessionStorage.setItem("lastBadgeCheck", now);
-
-  const badge = document.getElementById("notificationCount");
-  badge.textContent = cachedCount;
-  badge.style.display = cachedCount > 0 ? "inline" : "none";
+  return cachedCount;
 }
 
-    async function openNotificationsModal(userId) {
+window.updateNotificationBadge = updateNotificationBadge;
+async function updateNotificationBadge(userId) {
+  const count = await getUnseenNotificationCount(userId);
+  const badge = document.getElementById("notificationCount");
+  badge.textContent = count > 0 ? `(${count})` : ""; // Show "(1)" or nothing
+  badge.style.display = count > 0 ? "inline" : "none";
+}
+
+async function openNotificationsModal(userId) {
   const modal = document.getElementById("notificationsModal");
   const notificationList = document.getElementById("notificationList");
   const modalCount = document.getElementById("modalNotificationCount");
   const communityFilter = document.getElementById("communityFilter");
   const goToCommunityBtn = document.getElementById("goToCommunityBtn");
-  notificationList.innerHTML = '<div class="loading">Loading...</div>';
 
-  document.querySelectorAll(".modal:not(#notificationsModal)").forEach(m => m.style.display = "none");
+  // Add buttons if not present
+  let refreshBtn = modal.querySelector("#refreshNotificationsBtn");
+  if (!refreshBtn) {
+    refreshBtn = document.createElement("button");
+    refreshBtn.id = "refreshNotificationsBtn";
+    refreshBtn.textContent = "Refresh";
+    refreshBtn.style.marginLeft = "10px";
+    modal.querySelector(".modal-content").insertBefore(refreshBtn, document.getElementById("clearNotificationsBtn"));
+  }
+
+  notificationList.innerHTML = '<div class="loading">Loading...</div>';
   modal.style.display = "flex";
   modal.classList.remove("hidden");
 
+  // Fetch communities for filter
   const userRef = doc(db, "users", userId);
   const userDoc = await getDoc(userRef);
   const communityIds = userDoc.data().communityIds || [];
@@ -4324,36 +4375,110 @@ async function updateNotificationBadge(userId) {
     communityFilter.appendChild(option);
   });
 
-  async function loadNotifications() {
+  let lastDoc = null; // For pagination
+  const ITEMS_PER_PAGE = 10;
+  let allNotifications = []; // Cache all fetched notifications
+  let displayedCount = 0;
+
+  async function loadNotifications(forceRefresh = false, reset = false) {
     const selectedCommunity = communityFilter.value;
+    const lastTimestamp = sessionStorage.getItem("lastNotifTimestamp") 
+      ? new Date(sessionStorage.getItem("lastNotifTimestamp")) 
+      : new Date(0);
+
+    if (reset || forceRefresh) {
+      lastDoc = null;
+      displayedCount = 0;
+      notificationList.innerHTML = "";
+      if (reset) allNotifications = []; // Full reset on filter change
+    }
+
     let q;
     if (selectedCommunity === "all") {
-      q = query(collection(db, "notifications"), where("userId", "==", userId), orderBy("timestamp", "desc"), limit(10));
+      q = query(
+        collection(db, "notifications"),
+        where("userId", "==", userId),
+        orderBy("timestamp", "desc"),
+        ...(lastDoc ? [startAfter(lastDoc)] : []),
+        limit(ITEMS_PER_PAGE)
+      );
     } else {
-      q = query(collection(db, "notifications"), where("userId", "==", userId), where("communityId", "==", selectedCommunity), orderBy("timestamp", "desc"), limit(10));
+      q = query(
+        collection(db, "notifications"),
+        where("userId", "==", userId),
+        where("communityId", "==", selectedCommunity),
+        orderBy("timestamp", "desc"),
+        ...(lastDoc ? [startAfter(lastDoc)] : []),
+        limit(ITEMS_PER_PAGE)
+      );
+    }
+
+    if (forceRefresh) {
+      // Only fetch new notifications since last timestamp
+      q = query(
+        collection(db, "notifications"),
+        where("userId", "==", userId),
+        where("timestamp", ">", lastTimestamp),
+        orderBy("timestamp", "desc")
+      );
     }
 
     const snapshot = await getDocs(q);
-    notificationList.innerHTML = "";
+    if (snapshot.empty && displayedCount === 0) {
+      notificationList.innerHTML = "<p>No notifications yet.</p>";
+    } else {
+      snapshot.forEach(doc => {
+        if (!allNotifications.some(n => n.id === doc.id)) {
+          allNotifications.push({ id: doc.id, data: doc.data() });
+        }
+      });
 
-    const unseenCount = snapshot.docs.filter(doc => !doc.data().seen).length;
+      if (forceRefresh) {
+        // Prepend new notifications
+        const newContent = snapshot.docs
+          .filter(doc => !notificationList.querySelector(`[data-id="${doc.id}"]`))
+          .map(doc => renderNotification(doc, communities))
+          .join("");
+        notificationList.insertAdjacentHTML("afterbegin", newContent);
+      } else {
+        // Append batch for Load More
+        const startIdx = displayedCount;
+        const endIdx = Math.min(startIdx + ITEMS_PER_PAGE, allNotifications.length);
+        const batchContent = allNotifications
+          .slice(startIdx, endIdx)
+          .map(notif => renderNotification({ id: notif.id, data: () => notif.data }, communities))
+          .join("");
+        notificationList.insertAdjacentHTML("beforeend", batchContent);
+        displayedCount = endIdx;
+        lastDoc = snapshot.docs[snapshot.docs.length - 1];
+      }
+    }
+
+    // Update unseen count
+    const unseenCount = await getUnseenNotificationCount(userId, forceRefresh);
     modalCount.textContent = unseenCount;
 
-    for (const doc of snapshot.docs) {
-      const notif = doc.data();
-      const timestamp = new Date(notif.timestamp.toDate()).toLocaleString();
-      let displayMessage = notif.message;
-      if (notif.communityId && notif.type !== "ban_appeal") {
-        const communityName = communities.find(c => c.id === notif.communityId)?.name || "Unknown Community";
-        displayMessage += ` (${communityName})`;
-      }
+    // Update Load More/Less buttons
+    updateLoadButtons();
 
-      const notifDiv = document.createElement("div");
-      notifDiv.className = `notification-item ${notif.seen ? 'seen' : ''}`;
-      notifDiv.innerHTML = `
+    // Attach event listeners
+    attachNotificationListeners();
+  }
+
+  function renderNotification(doc, communities) {
+    const notif = doc.data();
+    const timestamp = new Date(notif.timestamp.toDate()).toLocaleString();
+    let displayMessage = notif.message;
+    if (notif.communityId && notif.type !== "ban_appeal") {
+      const communityName = communities.find(c => c.id === notif.communityId)?.name || "Unknown Community";
+      displayMessage += ` (${communityName})`;
+    }
+
+    return `
+      <div class="notification-item ${notif.seen ? 'seen' : ''}" data-id="${doc.id}">
         <span>${displayMessage}</span>
         <span class="timestamp">${timestamp}</span>
-        ${notif.postId ? `<button class="copy-id-btn2" data-post-id="${notif.postId}">Copy ID (Search Post)</button>` : ""}
+        ${notif.postId ? `<button class="copy-id-btn2" data-post-id="${notif.postId}">Copy ID</button>` : ""}
         <button class="mark-seen-btn2" data-id="${doc.id}" ${notif.seen ? 'disabled' : ''}>${notif.seen ? 'Seen' : 'Mark as Seen'}</button>
         ${notif.type === "ban_appeal" && !notif.appealSubmitted ? `
           <form class="ban-appeal-form" data-id="${doc.id}">
@@ -4361,44 +4486,48 @@ async function updateNotificationBadge(userId) {
             <button type="submit">Send Appeal</button>
           </form>
         ` : ""}
-      `;
-      notificationList.appendChild(notifDiv);
+      </div>
+    `;
+  }
 
-      if (notif.postId) {
-        notifDiv.querySelector(".copy-id-btn2").addEventListener("click", (e) => {
+  function attachNotificationListeners() {
+    notificationList.querySelectorAll(".copy-id-btn2").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        copyPostId(btn.dataset.postId);
+      });
+    });
+    notificationList.querySelectorAll(".mark-seen-btn2").forEach(btn => {
+      if (!btn.disabled) {
+        btn.addEventListener("click", (e) => {
           e.stopPropagation();
-          copyPostId(notif.postId);
+          markNotificationSeen(btn.dataset.id);
         });
       }
-      const markSeenBtn = notifDiv.querySelector(".mark-seen-btn2");
-      if (!notif.seen) {
-        markSeenBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          markNotificationSeen(doc.id);
-        });
-      } else {
-        markSeenBtn.classList.add("disabled");
-      }
-      if (notif.type === "ban_appeal" && !notif.appealSubmitted) {
-        const appealForm = notifDiv.querySelector(".ban-appeal-form");
-        appealForm.addEventListener("submit", async (e) => {
-          e.preventDefault();
-          const text = appealForm.querySelector("textarea").value.trim();
-          if (text) {
-            await addDoc(collection(db, "banAppeals"), {
-              userId: userId,
-              communityId: notif.communityId,
-              message: text,
-              timestamp: new Date(),
-              notificationId: doc.id
-            });
-            await updateDoc(doc.ref, { appealSubmitted: true });
-            alert("Appeal sent!");
-            openNotificationsModal(userId); // Refresh
-          }
-        });
-      }
-      notifDiv.addEventListener("click", () => {
+    });
+    notificationList.querySelectorAll(".ban-appeal-form").forEach(form => {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const text = form.querySelector("textarea").value.trim();
+        if (text) {
+          const notifId = form.dataset.id;
+          const notif = allNotifications.find(n => n.id === notifId).data;
+          await addDoc(collection(db, "banAppeals"), {
+            userId: userId,
+            communityId: notif.communityId,
+            message: text,
+            timestamp: new Date(),
+            notificationId: notifId
+          });
+          await updateDoc(doc(db, "notifications", notifId), { appealSubmitted: true });
+          alert("Appeal sent!");
+          loadNotifications(true); // Refresh after submission
+        }
+      });
+    });
+    notificationList.querySelectorAll(".notification-item").forEach(item => {
+      item.addEventListener("click", () => {
+        const notif = allNotifications.find(n => n.id === item.dataset.id).data;
         if (notif.postId && notif.communityId) {
           if (notif.communityId !== communityId) {
             window.location.href = `/community.html?id=${notif.communityId}#post-${notif.postId}`;
@@ -4415,93 +4544,247 @@ async function updateNotificationBadge(userId) {
           }
         }
       });
-    }
-
-    goToCommunityBtn.style.display = (selectedCommunity !== "all" && selectedCommunity !== communityId) ? "block" : "none";
-    goToCommunityBtn.onclick = () => {
-      window.location.href = `./community.html?id=${selectedCommunity}`;
-    };
+    });
   }
 
+  function updateLoadButtons() {
+    let moreBtn = notificationList.querySelector("#loadMoreBtn");
+    let lessBtn = notificationList.querySelector("#loadLessBtn");
+
+    if (moreBtn) moreBtn.remove();
+    if (lessBtn) lessBtn.remove();
+
+    if (allNotifications.length > displayedCount) {
+      moreBtn = document.createElement("button");
+      moreBtn.id = "loadMoreBtn";
+      moreBtn.textContent = "Load More";
+      moreBtn.className = "load-more-btn";
+      moreBtn.onclick = () => loadNotifications();
+      notificationList.appendChild(moreBtn);
+    }
+
+    if (displayedCount > ITEMS_PER_PAGE) {
+      lessBtn = document.createElement("button");
+      lessBtn.id = "loadLessBtn";
+      lessBtn.textContent = "Load Less";
+      lessBtn.className = "load-less-btn";
+      lessBtn.onclick = () => {
+        displayedCount = ITEMS_PER_PAGE;
+        notificationList.innerHTML = allNotifications
+          .slice(0, ITEMS_PER_PAGE)
+          .map(notif => renderNotification({ id: notif.id, data: () => notif.data }, communities))
+          .join("");
+        updateLoadButtons();
+        attachNotificationListeners();
+      };
+      notificationList.appendChild(lessBtn);
+    }
+  }
+
+  // Initial load
   await loadNotifications();
-  communityFilter.onchange = loadNotifications;
+
+  // Refresh logic
+  refreshBtn.onclick = async () => {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = "Refreshing...";
+    await loadNotifications(true); // Fetch new notifications only
+    await updateNotificationBadge(userId); // Sync badge
+    refreshBtn.disabled = false;
+    refreshBtn.textContent = "Refresh";
+  };
+
+  // Hint for new notifications
+  setInterval(async () => {
+    const currentCount = parseInt(modalCount.textContent) || 0;
+    const latestCount = await getUnseenNotificationCount(userId);
+    if (latestCount > currentCount && !modal.querySelector("#new-notif-hint")) {
+      const hint = document.createElement("span");
+      hint.id = "new-notif-hint";
+      hint.textContent = "New notifications available—refresh!";
+      hint.style.color = "#ff9800";
+      modal.querySelector(".modal-content").prepend(hint);
+    }
+  }, 15000); // Check every 15s
+
+  communityFilter.onchange = () => loadNotifications(false, true); // Reset on filter change
 }
 
 async function markNotificationSeen(notifId) {
-  const notifRef = doc(db, "notifications", notifId);
-  const userId = auth.currentUser.uid;
-
-  // Update Firestore
-  await updateDoc(notifRef, { seen: true });
-
-  // Update UI immediately
-  const button = document.querySelector(`.mark-seen-btn2[data-id="${notifId}"]`);
-  if (button) {
-    button.disabled = true;
-    button.textContent = "Seen"; // Optional: Change text for clarity
-    button.classList.add("disabled"); // Optional: Style it
+  const userId = auth.currentUser?.uid;
+  if (!userId) {
+    console.error("No authenticated user found to mark notification.");
+    return;
   }
 
-  updateNotificationBadge(userId);
-  openNotificationsModal(userId);
+  const notifRef = doc(db, "notifications", notifId);
+
+  try {
+    // Check if notification exists
+    const notifDoc = await getDoc(notifRef);
+    if (!notifDoc.exists()) {
+      console.warn(`Notification ${notifId} does not exist, skipping mark as seen.`);
+      return;
+    }
+
+    const notifData = notifDoc.data();
+    if (notifData.seen) {
+      console.log(`Notification ${notifId} is already marked as seen, no update needed.`);
+      return;
+    }
+
+    // Update Firestore
+    await updateDoc(notifRef, { seen: true });
+    console.log(`Marked notification ${notifId} as seen in Firestore.`);
+
+    // Update UI immediately
+    const button = document.querySelector(`.mark-seen-btn2[data-id="${notifId}"]`);
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Seen";
+      button.classList.add("disabled");
+      console.log(`Updated UI for notification ${notifId} to 'Seen'.`);
+    } else {
+      console.warn(`No UI button found for notification ${notifId}.`);
+    }
+
+    // Sync badge and modal
+    await updateNotificationBadge(userId);
+    if (!document.getElementById("notificationsModal").classList.contains("hidden")) {
+      await openNotificationsModal(userId);
+    }
+  } catch (error) {
+    console.error(`Error marking notification ${notifId} as seen:`, error);
+  }
 }
 
-    async function clearNotifications() {
-  const communityFilter = document.getElementById("communityFilter");
-  const selectedCommunity = communityFilter.value;
-  const userId = auth.currentUser.uid;
+async function clearNotifications() {
+  const userId = auth.currentUser?.uid;
+  if (!userId) {
+    console.error("No authenticated user found to clear notifications.");
+    return;
+  }
 
-  let confirmMessage = selectedCommunity === "all" 
+  const communityFilter = document.getElementById("communityFilter");
+  if (!communityFilter) {
+    console.error("Community filter element not found.");
+    return;
+  }
+
+  const selectedCommunity = communityFilter.value;
+  const confirmMessage = selectedCommunity === "all" 
     ? "Clear all notifications?" 
-    : `Clear notifications for ${communityFilter.options[communityFilter.selectedIndex].text} only?`;
-  
-  if (confirm(confirmMessage)) {
+    : `Clear notifications for ${communityFilter.options[communityFilter.selectedIndex]?.text || "selected community"} only?`;
+
+  if (!confirm(confirmMessage)) {
+    console.log("User canceled clearing notifications.");
+    return;
+  }
+
+  try {
     let q;
     if (selectedCommunity === "all") {
       q = query(collection(db, "notifications"), where("userId", "==", userId));
     } else {
-      q = query(collection(db, "notifications"), 
-                where("userId", "==", userId), 
-                where("communityId", "==", selectedCommunity));
+      q = query(
+        collection(db, "notifications"),
+        where("userId", "==", userId),
+        where("communityId", "==", selectedCommunity)
+      );
     }
 
     const snapshot = await getDocs(q);
-    const deletePromises = snapshot.docs.map(doc => deleteDoc(doc.ref));
+    if (snapshot.empty) {
+      console.log("No notifications found to clear.");
+      await updateNotificationBadge(userId);
+      await openNotificationsModal(userId);
+      return;
+    }
+
+    console.log(`Found ${snapshot.size} notifications to clear.`);
+    const deletePromises = snapshot.docs.map(async (doc) => {
+      console.log(`Deleting notification ${doc.id}.`);
+      return deleteDoc(doc.ref);
+    });
+
     await Promise.all(deletePromises);
-    updateNotificationBadge(userId);
-    openNotificationsModal(userId);
+    console.log("All targeted notifications cleared successfully.");
+
+    await updateNotificationBadge(userId);
+    await openNotificationsModal(userId);
+  } catch (error) {
+    console.error("Error clearing notifications:", error);
   }
 }
 
-    async function totalComments(postId) {
-      const q = query(collection(db, "communities", communityId, "posts", postId, "comments"));
-      const snapshot = await getDocs(q);
-      return snapshot.size;
+// Cloud function helper: exports.onCommentChange = onDocumentWritten(
+async function totalComments(postId) {
+  const postRef = doc(db, "communities", communityId, "posts", postId);
+  const postDoc = await getDoc(postRef);
+  if (postDoc.exists) {
+    return postDoc.data().commentCount || 0; // If no comments yet, return 0
+  }
+  return 0; // Post doesn’t exist
+}
+
+// Cloud function helper: exports.onReplyChange = onDocumentWritten(
+async function totalReplies(postId, commentId) {
+  const commentRef = doc(db, "communities", communityId, "posts", postId, "comments", commentId);
+  const commentDoc = await getDoc(commentRef);
+  if (commentDoc.exists) {
+    return commentDoc.data().replyCount || 0; // If no replies yet, return 0
+  }
+  return 0; // Comment doesn’t exist
+}
+
+// Timed Refresh for getCommData
+let commDataCache = null;
+let lastFetchTime = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const LOCAL_STORAGE_KEY = `commData_${communityId}`;
+
+async function getCommData(forceRefresh = false) {
+  const now = Date.now();
+
+  if (!commDataCache && !forceRefresh) {
+    const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (cached) {
+      const { data, timestamp } = JSON.parse(cached);
+      if (now - timestamp < CACHE_TTL) {
+        commDataCache = data;
+        lastFetchTime = timestamp;
+        console.log(`Loaded community data from localStorage (fetched ${Math.round((now - timestamp) / 1000)}s ago)`);
+        return commDataCache;
+      }
     }
+  }
 
-    async function totalReplies(postId, commentId) {
-      const q = query(collection(db, "communities", communityId, "posts", postId, "comments", commentId, "replies"));
-      const snapshot = await getDocs(q);
-      return snapshot.size;
-    }
-
-    let commDataCache = null;
-
-async function getCommData() {
-  if (commDataCache) {
-    console.log("Using cached community data!");
+  if (commDataCache && (now - lastFetchTime < CACHE_TTL) && !forceRefresh) {
+    console.log(`Using cached community data (last fetched ${Math.round((now - lastFetchTime) / 1000)}s ago)`);
     return commDataCache;
   }
+
   const commRef = doc(db, "communities", communityId);
-  const commDoc = await getDoc(commRef);
-  commDataCache = commDoc.data();
-  console.log("Fetched fresh community data!");
-  return commDataCache;
+  try {
+    const commDoc = await getDoc(commRef);
+    if (!commDoc.exists()) throw new Error("Community not found");
+    commDataCache = commDoc.data();
+    lastFetchTime = now;
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ data: commDataCache, timestamp: now }));
+    console.log(`Fetched fresh community data for ${communityId}`);
+    return commDataCache;
+  } catch (error) {
+    console.error("Error fetching community data:", error);
+    if (commDataCache) return commDataCache;
+    return { members: [], bannedUsers: [], admins: [], creatorId: "", name: "Unknown" };
+  }
 }
 
-// Reset cache when needed (e.g., after updates like banning users)
 function resetCommDataCache() {
   commDataCache = null;
+  lastFetchTime = 0;
+  localStorage.removeItem(LOCAL_STORAGE_KEY);
+  console.log("Cleared community data cache");
 }
 
     function debounce(func, wait) {
