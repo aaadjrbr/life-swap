@@ -6,6 +6,7 @@
   <title>Life Swap - Community</title>
   <link rel="stylesheet" href="community.css">
   <link rel="stylesheet" href="./customHeader.css">
+  <link rel="stylesheet" href="./chat.css">
 </head>
 <body>
   <div class="community-page">
@@ -257,6 +258,7 @@
   <!-- Autocomplete Suggestions for @ Tagging -->
   <div id="tagSuggestions" class="suggestions hidden"></div>
 
+  <script type="module" src="./chat.js"></script>
   <script type="module" src="./customHeader.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
@@ -422,7 +424,8 @@ enableIndexedDbPersistence(db)
           ${commData.members.includes(user.uid) && commData.creatorId !== user.uid ? `<button class="leave-btn" id="leaveCommunityBtn">Leave Community</button>` : ""}
           <button id="viewProfileViewRequestsBtn">See Profile View Requests ${profileViewRequestCount > 0 ? `<span class="request-badge">${profileViewRequestCount}</span>` : ''}</button>
           ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="editNameBtn">Edit Name (Community)</button>` : ""}
-          <button id="viewSavedPostsBtn">View Saved Posts</button> <!-- New Button -->
+          <button id="viewSavedPostsBtn">View Saved Posts</button>
+          <button id="viewChatsBtn">View Chats</button>
         `;
 
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -452,6 +455,7 @@ enableIndexedDbPersistence(db)
         const editNameBtn = document.getElementById("editNameBtn");
         const viewCommunitiesBtn = document.getElementById("viewCommunitiesBtn");
         const viewSavedPostsBtn = document.getElementById("viewSavedPostsBtn");
+        const viewChatsBtn = document.getElementById("viewChatsBtn");
 
         if (postIdSearch) {
           postIdSearch.addEventListener("input", debounce((e) => {
@@ -499,6 +503,7 @@ enableIndexedDbPersistence(db)
         if (editNameBtn) editNameBtn.addEventListener("click", () => editCommunityName(communityId));
         if (viewCommunitiesBtn) viewCommunitiesBtn.addEventListener("click", () => viewCommunities(user.uid));
         if (viewSavedPostsBtn) viewSavedPostsBtn.addEventListener("click", () => viewSavedPosts(user.uid));
+        if (viewChatsBtn) viewChatsBtn.addEventListener("click", () => window.viewChats(communityId));
 
         setupLocationAutocomplete();
         setupCommunitySelection();
@@ -738,7 +743,8 @@ async function fetchUserData(uids) {
           email: data.email || null,
           city: data.city || null,
           phone: data.phone || null,
-          uid: doc.id
+          uid: doc.id,
+          swaps: data.swaps || 0 // Ensure swaps is included
         };
         userDataCache[`username:${data.username}`] = userDataCache[doc.id];
       });
@@ -1274,8 +1280,8 @@ async function createPost() {
   const lon = document.getElementById("postLocation").dataset.lon;
   const communityCheckboxes = document.querySelectorAll("#communityCheckboxes input[name='communities']:checked");
   const category = document.getElementById("category").value;
-  const lookingFor = document.getElementById("lookingFor").value; // Fixed: Use form dropdown
-  const offering = document.getElementById("offering").value;     // Fixed: Use form dropdown
+  const lookingFor = document.getElementById("lookingFor").value;
+  const offering = document.getElementById("offering").value;
 
   if (!title || !description || !location || !lat || !lon || !category || !lookingFor || !offering) {
     alert("Fill out all fields, pick a category, and select what you're looking for and offering!");
@@ -1312,38 +1318,44 @@ async function createPost() {
     return;
   }
 
-  const photoUrls = [];
-  for (let i = 0; i < Math.min(photos.length, 5); i++) {
-    const compressedBlob = await compressImage(photos[i]);
-    const photoRef = ref(storage, `posts/${communityId}/${user.uid}/${Date.now()}_${i}`);
-    await uploadBytes(photoRef, compressedBlob);
-    const url = await getDownloadURL(photoRef);
-    photoUrls.push(url);
+  // Upload images per community
+  const photoUrlsByCommunity = {};
+  for (const commId of selectedCommunities) {
+    photoUrlsByCommunity[commId] = [];
+    for (let i = 0; i < Math.min(photos.length, 5); i++) {
+      const compressedBlob = await compressImage(photos[i]);
+      const photoRef = ref(storage, `posts/${commId}/${user.uid}/${Date.now()}_${i}`);
+      await uploadBytes(photoRef, compressedBlob);
+      const url = await getDownloadURL(photoRef);
+      photoUrlsByCommunity[commId].push(url);
+    }
   }
 
-  const postData = {
-    title,
-    description,
-    photoUrls,
-    location: { latitude: parseFloat(lat), longitude: parseFloat(lon), name: location },
-    userId: user.uid,
-    createdAt: new Date(),
-    category,
-    lookingFor,  // Now correctly set
-    offering     // Now correctly set
-  };
+  // Create separate posts for each community with their own photo URLs
+  const postPromises = selectedCommunities.map(commId => {
+    const postData = {
+      title,
+      description,
+      photoUrls: photoUrlsByCommunity[commId], // Each community gets its own URLs
+      location: { latitude: parseFloat(lat), longitude: parseFloat(lon), name: location },
+      userId: user.uid,
+      createdAt: new Date(),
+      category,
+      lookingFor,
+      offering,
+      communityId: commId // Add this to track the community (optional, helps deletion)
+    };
+    return addDoc(collection(db, "communities", commId, "posts"), postData);
+  });
+  const postRefs = await Promise.all(postPromises);
 
-  const postPromises = selectedCommunities.map(commId =>
-    addDoc(collection(db, "communities", commId, "posts"), postData)
-  );
-  await Promise.all(postPromises);
-
-  alert(`Post created in ${selectedCommunities.length} community${selectedCommunities.length > 1 ? 'ies' : ''}!`);
+  // Alert with all post IDs
+  alert(`Post created in ${selectedCommunities.length} community${selectedCommunities.length > 1 ? 'ies' : ''}! IDs: ${postRefs.map(ref => ref.id).join(", ")}`);
   document.getElementById("newPostForm").reset();
   totalYourPosts = 0;
   loadYourPosts(user.uid);
   loadPosts(communityId, true);
-  totalCarouselPosts = 0; // Reset count
+  totalCarouselPosts = 0;
   carouselIndex = 0;
   loadCarouselPosts(communityId);
 }
@@ -1420,6 +1432,10 @@ async function deletePost(postId) {
   const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
   const postRef = doc(db, "communities", communityId, "posts", postId);
   const postDoc = await getDoc(postRef);
+  if (!postDoc.exists()) {
+    alert("Post not found!");
+    return;
+  }
   const postData = postDoc.data();
 
   if (!isAdmin && postData.userId !== user.uid) {
@@ -1464,7 +1480,7 @@ async function deletePost(postId) {
 
   // Handle "Just delete it"
   justDeleteBtn.onclick = async () => {
-    if (confirm("Are you sure you want to delete this post? This will also delete all comments, replies, and photos.")) {
+    if (confirm("Delete this post from this community? It may still exist in other communities you posted to.")) {
       loadingOverlay.classList.remove("hidden");
       try {
         await deletePostAndCleanup(postId, postData.photoUrls, false, null);
@@ -1529,7 +1545,7 @@ async function deletePost(postId) {
     }
 
     const partnerUsername = swapPartner.textContent;
-    if (confirm(`Are you sure you swapped with ${partnerUsername}?`)) {
+    if (confirm(`Mark this post as swapped with ${partnerUsername} in this community? It may still exist in other communities.`)) {
       loadingOverlay.classList.remove("hidden");
       try {
         await deletePostAndCleanup(postId, postData.photoUrls, true, swapPartnerUid);
@@ -3190,7 +3206,7 @@ async function addReply(postId, commentId, commentOwnerId) {
   document.getElementById(`replyForm-${commentId}`).classList.add("hidden");
 }
 
-    async function viewProfile(uid) {
+async function viewProfile(uid) {
   const modal = document.getElementById("viewProfileModal");
   const nameEl = document.getElementById("profileName");
   const photoEl = document.getElementById("profilePhoto");
@@ -3213,6 +3229,12 @@ async function addReply(postId, commentId, commentOwnerId) {
   const isSelf = uid === auth.currentUser.uid;
   const isProfileAdmin = commData.admins?.includes(uid) || commData.creatorId === uid;
 
+  // Always visible: name, photo, swaps
+  nameEl.textContent = `${userData.name} (${userData.swaps || 0} swaps)`;
+  photoEl.src = userData.profilePhoto || "https://via.placeholder.com/40";
+  detailsEl.innerHTML = isProfileAdmin ? '<span class="admin-tag">Admin</span>' : '';
+  actionsEl.innerHTML = "";
+
   const requestQ = query(
     collection(db, "profileRequests"),
     where("requesterId", "==", auth.currentUser.uid),
@@ -3222,11 +3244,7 @@ async function addReply(postId, commentId, commentOwnerId) {
   const request = requestSnapshot.docs[0]?.data();
   const requestId = requestSnapshot.docs[0]?.id;
 
-  nameEl.textContent = userData.name;
-  photoEl.src = userData.profilePhoto || "https://via.placeholder.com/40";
-  detailsEl.innerHTML = isProfileAdmin ? '<span class="admin-tag">Admin</span>' : '';
-  actionsEl.innerHTML = "";
-
+  // Permission-blocked section
   if (isSelf || (request && request.status === "accepted") || isCreator || isAdmin) {
     detailsEl.innerHTML += `
       <p>Email: ${userData.email || "Not set"}</p>
@@ -3236,6 +3254,8 @@ async function addReply(postId, commentId, commentOwnerId) {
     if (request && request.status === "accepted" && !isSelf && !isAdmin && !isCreator) {
       actionsEl.innerHTML += `<button class="revoke-btn" id="revokeProfileBtn" data-request-id="${requestId}">Revoke Profile Access</button>`;
     }
+    // Add Chat button here (blocked section)
+    actionsEl.innerHTML += `<button id="chatBtn" data-uid="${uid}">Chat</button>`;
   } else if (request && request.status === "pending") {
     actionsEl.innerHTML = `<button class="request-btn pending" id="requestProfileBtn" data-request-id="${requestId}" disabled>Pending...</button>`;
   } else if (!isSelf) {
@@ -3274,6 +3294,19 @@ async function addReply(postId, commentId, commentOwnerId) {
   if (document.getElementById("revokeProfileBtn")) {
     document.getElementById("revokeProfileBtn").addEventListener("click", () => revokeProfileAccess(uid, document.getElementById("revokeProfileBtn").dataset.requestId));
   }
+  // Chat button listener
+  const chatBtn = document.getElementById("chatBtn");
+  if (chatBtn) {
+  chatBtn.addEventListener("click", () => {
+    if (typeof window.openChat === "function") {
+      closeModal("viewProfileModal");
+      window.openChat(uid, communityId);
+    } else {
+      console.error("Chat functionality not loaded yet!");
+      alert("Chat system isn’t ready. Try again in a sec.");
+    }
+  });
+}
 }
 
 async function requestProfileAccess(targetId) {
@@ -4035,6 +4068,7 @@ async function viewCommunities(userId) {
   };
 }
 
+window.updateNotificationBadge = updateNotificationBadge;
 async function updateNotificationBadge(userId) {
   const now = Date.now();
   let lastCheck = parseInt(sessionStorage.getItem("lastBadgeCheck")) || 0;
