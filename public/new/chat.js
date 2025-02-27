@@ -28,6 +28,7 @@ let chatModal = null;
 let postSuggestions = null;
 let postConfirmPopup = null;
 let linkConfirmPopup = null;
+let selectedPost = null; // Moved outside to persist across function calls
 
 function getChatId(uid1, uid2) {
   return [uid1, uid2].sort().join("_");
@@ -154,7 +155,14 @@ async function openChat(targetUid, communityId = null) {
     if (reset) {
       lastMessageDoc = null;
       loadedMessageIds.clear();
-      messagesDiv.innerHTML = "<div id='chatPostSuggestions' class='chat-suggestions hidden'></div>";
+      // Preserve suggestions
+      const existingSuggestions = messagesDiv.querySelector("#chatPostSuggestions");
+      messagesDiv.innerHTML = "";
+      if (existingSuggestions) {
+        messagesDiv.appendChild(existingSuggestions);
+      } else {
+        messagesDiv.innerHTML = "<div id='chatPostSuggestions' class='chat-suggestions hidden'></div>";
+      }
     }
 
     const messagesQ = query(
@@ -165,7 +173,9 @@ async function openChat(targetUid, communityId = null) {
     );
     const snapshot = await getDocs(messagesQ);
     if (snapshot.empty && reset) {
-      messagesDiv.innerHTML = "<p>No messages yet!</p><div id='chatPostSuggestions' class='chat-suggestions hidden'></div>";
+      messagesDiv.innerHTML = "<p>No messages yet!</p>";
+      messagesDiv.appendChild(document.createElement("div")).id = "chatPostSuggestions";
+      messagesDiv.querySelector("#chatPostSuggestions").className = "chat-suggestions hidden";
       document.getElementById("loadMoreMessages").style.display = "none";
       return;
     }
@@ -260,9 +270,9 @@ async function openChat(targetUid, communityId = null) {
         postSuggestions.appendChild(suggestion);
       });
       console.log("Showing suggestions");
-      postSuggestions.style.display = "block";
+      postSuggestions.style.display = "block"; // Ensure display kicks in
       postSuggestions.classList.remove("hidden");
-      messagesDiv.scrollTop = 0;
+      messagesDiv.scrollTop = 0; // Scroll to top to show suggestions
     } else {
       console.log("Hiding suggestions - no @");
       postSuggestions.classList.add("hidden");
@@ -283,10 +293,10 @@ async function openChat(targetUid, communityId = null) {
       await sendChatNotification(targetUid, currentUser.uid, chatId);
       chatInput.value = "";
       await loadMessages(true);
+      selectedPost = null; // Clear after sending
     }
     postConfirmPopup.style.display = "none";
     postConfirmPopup.classList.add("hidden");
-    selectedPost = null;
   };
 
   document.getElementById("cancelSendPost").onclick = () => {
@@ -525,7 +535,6 @@ async function deleteChat(chatId, modal, contentDiv, fromViewChats = false) {
     deleteOverlay.innerHTML = '<div class="loading-text">Deleting...</div>';
     modal.appendChild(deleteOverlay);
 
-    // Delete messages subcollection
     const messagesRef = collection(db, "chats", chatId, "messages");
     const q = query(messagesRef, limit(500));
     let snapshot = await getDocs(q);
@@ -536,10 +545,8 @@ async function deleteChat(chatId, modal, contentDiv, fromViewChats = false) {
       snapshot = await getDocs(q);
     }
 
-    // Delete chat document itself
     await deleteDoc(doc(db, "chats", chatId));
 
-    // Remove from chatIds
     const [uid1, uid2] = chatId.split("_");
     await Promise.all([
       deleteDoc(doc(db, "users", uid1, "chatIds", chatId)),
