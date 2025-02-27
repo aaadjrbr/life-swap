@@ -8,7 +8,7 @@ body {
 }
 
 .community-page {
-  padding: 20px;
+  padding: 10px;
   max-width: 800px;
   margin: 0 auto;
 }
@@ -1407,4 +1407,143 @@ justify-content: center;
 .saved-post-item button {
 padding: 5px 10px;
 cursor: pointer;
+}
+
+.saved-note {
+font-style: italic;
+color: #555;
+}
+
+.edit-note-btn, .delete-saved-btn {
+margin-left: 10px;
+padding: 5px 10px;
+background-color: #007bff;
+color: white;
+border: none;
+border-radius: 3px;
+cursor: pointer;
+}
+
+.delete-saved-btn {
+background-color: #dc3545;
+}
+
+.edit-note-btn:hover, .delete-saved-btn:hover {
+opacity: 0.9;
+}
+
+.save-post-btn {
+margin-left: 10px;
+padding: 5px 10px;
+background-color: #28a745;
+color: white;
+border: none;
+border-radius: 3px;
+cursor: pointer;
+}
+
+.save-post-btn:hover {
+opacity: 0.9;
+}
+
+.copyable-post-id {
+color: #007bff;
+cursor: pointer;
+text-decoration: underline;
+}
+
+.copyable-post-id:hover {
+color: #0056b3;
+}
+
+.save-toggle-btn {
+margin-left: 10px;
+padding: 5px 10px;
+background-color: #28a745; /* Green for Save */
+color: white;
+border: none;
+border-radius: 3px;
+cursor: pointer;
+}
+
+.save-toggle-btn:hover {
+opacity: 0.9;
+}
+
+/* Red when it says "Unsave" */
+.save-toggle-btn[style*="Unsave"] {
+background-color: #dc3545;
+}
+
+.saved-posts-grid {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+gap: 20px;
+padding: 20px;
+max-width: 1200px;
+margin: 0 auto;
+}
+
+.saved-post-card {
+background: #fff;
+border: 1px solid #ddd;
+border-radius: 8px;
+padding: 15px;
+box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+transition: transform 0.2s ease;
+}
+
+.saved-post-card:hover {
+transform: translateY(-5px);
+}
+
+.post-card-content h3 {
+margin: 0 0 10px;
+font-size: 1.2em;
+color: #333;
+}
+
+.post-card-content p {
+margin: 5px 0;
+color: #666;
+}
+
+.post-card-actions {
+margin-top: 10px;
+display: flex;
+gap: 10px;
+}
+
+.edit-note-btn {
+background-color: #007bff;
+}
+
+.edit-note-btn:hover {
+background-color: #0056b3;
+}
+
+.delete-saved-btn {
+background-color: #dc3545;
+}
+
+.delete-saved-btn:hover {
+background-color: #b02a37;
+}
+
+.no-posts-message, .error-message {
+text-align: center;
+color: #666;
+padding: 20px;
+width: 100%;
+}
+
+.error-message {
+color: #dc3545;
+}
+
+/* Responsive tweak */
+@media (max-width: 600px) {
+.saved-posts-grid {
+  grid-template-columns: 1fr;
+}
 }
