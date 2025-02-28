@@ -5211,25 +5211,13 @@ async function totalReplies(postId, commentId) {
 // Timed Refresh for getCommData
 let commDataCache = null;
 let lastFetchTime = 0;
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-const LOCAL_STORAGE_KEY = `commData_${communityId}`;
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes - longer TTL for stability
+const ITEMS_PER_PAGE = 100; // Paginate arrays in chunks
 
 async function getCommData(forceRefresh = false) {
   const now = Date.now();
 
-  if (!commDataCache && !forceRefresh) {
-    const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (cached) {
-      const { data, timestamp } = JSON.parse(cached);
-      if (now - timestamp < CACHE_TTL) {
-        commDataCache = data;
-        lastFetchTime = timestamp;
-        console.log(`Loaded community data from localStorage (fetched ${Math.round((now - timestamp) / 1000)}s ago)`);
-        return commDataCache;
-      }
-    }
-  }
-
+  // Use in-memory cache if fresh and not forced
   if (commDataCache && (now - lastFetchTime < CACHE_TTL) && !forceRefresh) {
     //console.log(`Using cached community data (last fetched ${Math.round((now - lastFetchTime) / 1000)}s ago)`);
     return commDataCache;
@@ -5239,22 +5227,74 @@ async function getCommData(forceRefresh = false) {
   try {
     const commDoc = await getDoc(commRef);
     if (!commDoc.exists()) throw new Error("Community not found");
-    commDataCache = commDoc.data();
+
+    const rawData = commDoc.data();
+
+    // Proxy arrays to paginate access lazily
+    const paginatedMembers = new Proxy(rawData.members || [], {
+      get(target, prop) {
+        if (typeof prop === "string" && !isNaN(prop)) {
+          // Return paginated chunk if numeric index
+          const index = parseInt(prop);
+          const start = Math.floor(index / ITEMS_PER_PAGE) * ITEMS_PER_PAGE;
+          return target.slice(start, start + ITEMS_PER_PAGE)[index % ITEMS_PER_PAGE];
+        }
+        if (prop === "length") return target.length;
+        if (prop === "includes") return (uid) => target.includes(uid); // Preserve includes
+        if (prop === Symbol.iterator) return target[Symbol.iterator].bind(target); // Preserve iteration
+        return target[prop];
+      }
+    });
+
+    const paginatedBannedUsers = new Proxy(rawData.bannedUsers || [], {
+      get(target, prop) {
+        if (typeof prop === "string" && !isNaN(prop)) {
+          const index = parseInt(prop);
+          const start = Math.floor(index / ITEMS_PER_PAGE) * ITEMS_PER_PAGE;
+          return target.slice(start, start + ITEMS_PER_PAGE)[index % ITEMS_PER_PAGE];
+        }
+        if (prop === "length") return target.length;
+        if (prop === "includes") return (uid) => target.includes(uid);
+        if (prop === Symbol.iterator) return target[Symbol.iterator].bind(target);
+        return target[prop];
+      }
+    });
+
+    const paginatedAdmins = new Proxy(rawData.admins || [], {
+      get(target, prop) {
+        if (typeof prop === "string" && !isNaN(prop)) {
+          const index = parseInt(prop);
+          const start = Math.floor(index / ITEMS_PER_PAGE) * ITEMS_PER_PAGE;
+          return target.slice(start, start + ITEMS_PER_PAGE)[index % ITEMS_PER_PAGE];
+        }
+        if (prop === "length") return target.length;
+        if (prop === "includes") return (uid) => target.includes(uid);
+        if (prop === Symbol.iterator) return target[Symbol.iterator].bind(target);
+        return target[prop];
+      }
+    });
+
+    // Build cached object with proxied arrays
+    commDataCache = {
+      ...rawData,
+      members: paginatedMembers,
+      bannedUsers: paginatedBannedUsers,
+      admins: paginatedAdmins
+    };
+
     lastFetchTime = now;
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({ data: commDataCache, timestamp: now }));
     console.log(`Fetched fresh community data for ${communityId}`);
     return commDataCache;
   } catch (error) {
     console.error("Error fetching community data:", error);
     if (commDataCache) return commDataCache;
-    return { members: [], bannedUsers: [], admins: [], creatorId: "", name: "Unknown" };
+    return { members: [], bannedUsers: [], admins: [], creatorId: "", name: "Unknown", banReasons: {} };
   }
 }
 
 function resetCommDataCache() {
   commDataCache = null;
   lastFetchTime = 0;
-  localStorage.removeItem(LOCAL_STORAGE_KEY);
   console.log("Cleared community data cache");
 }
 
