@@ -1,5 +1,5 @@
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, collection, query, where, getDocs, addDoc, doc, getDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, query, getDoc, where, orderBy, limit, getDocs, addDoc, doc, updateDoc, deleteDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 const auth = getAuth();
@@ -9,9 +9,10 @@ const storage = getStorage();
 let communityId;
 let userId;
 let storyCache = new Map();
+let viewedStories = new Set();
 let lastFetchTime = 0;
-let lastFetchedTimestamp = 0;
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_TTL = 24 * 60 * 60 * 1000;
+let isProcessing = false;
 
 document.addEventListener("DOMContentLoaded", () => {
     onAuthStateChanged(auth, (user) => {
@@ -34,110 +35,102 @@ async function initializeStories() {
     await loadStories();
     setupAddStoryForm();
     setupStoryModal();
-    document.getElementById("refreshStoriesBtn").addEventListener("click", () => loadStories(true));
+    document.getElementById("refreshStoriesBtn")?.addEventListener("click", () => loadStories(true));
 }
 
 async function loadStories(forceRefresh = false) {
+    if (isProcessing) return;
+    isProcessing = true;
     try {
         const now = Date.now();
         const storiesWrapper = document.getElementById("storiesWrapper");
         if (!storiesWrapper) throw new Error("storiesWrapper not found!");
-        storiesWrapper.innerHTML = "";
 
-        if (!forceRefresh && now - lastFetchTime < CACHE_TTL && storyCache.size > 0) {
+        if (forceRefresh || now - lastFetchTime >= CACHE_TTL || storyCache.size === 0) {
+            const storiesRef = collection(db, "communities", communityId, "stories");
+            const q = query(
+                storiesRef,
+                where("timestamp", ">", Timestamp.fromMillis(now - 24 * 60 * 60 * 1000)),
+                orderBy("timestamp", "desc"),
+                limit(10)
+            );
+            const snapshot = await getDocs(q);
+            const newStories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            console.log(`[Fetch] Got ${newStories.length} stories`);
+            newStories.forEach(story => storyCache.set(story.id, story));
+            lastFetchTime = now;
+
+            const validStories = [...storyCache.values()]
+                .filter(story => story.timestamp.toMillis() > now - 24 * 60 * 60 * 1000)
+                .sort(() => Math.random() - 0.5); // Random order
+
+            console.log(`[Render] Total valid stories: ${validStories.length}`);
+            renderStories(validStories);
+        } else {
             console.log(`[Cache Hit] Using ${storyCache.size} cached stories`);
-            renderStories([...storyCache.values()]);
-            return;
+            const validStories = [...storyCache.values()]
+                .filter(story => story.timestamp.toMillis() > now - 24 * 60 * 60 * 1000)
+                .sort(() => Math.random() - 0.5);
+            renderStories(validStories);
         }
-
-        const storiesRef = collection(db, "stories");
-        const q = query(
-            storiesRef,
-            where("communityId", "==", communityId),
-            where("timestamp", ">", lastFetchedTimestamp ? new Date(lastFetchedTimestamp) : new Date(now - 24 * 60 * 60 * 1000))
-        );
-        const snapshot = await getDocs(q);
-        const newStories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-        console.log(`[Fetch] Got ${newStories.length} new stories`);
-        newStories.forEach(story => storyCache.set(story.id, story));
-        lastFetchTime = now;
-        lastFetchedTimestamp = Math.max(...newStories.map(s => s.timestamp.toMillis()), lastFetchedTimestamp);
-
-        const allStories = [...storyCache.values()]
-            .filter(story => story.timestamp.toMillis() > now - 24 * 60 * 60 * 1000)
-            .sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
-
-        console.log(`[Render] Total stories: ${allStories.length}`);
-        renderStories(allStories);
     } catch (error) {
         console.error("[Error] Loading stories:", error);
         alert("Failed to load stories, bro!");
+    } finally {
+        isProcessing = false;
     }
 }
 
 function renderStories(stories) {
     const storiesWrapper = document.getElementById("storiesWrapper");
     if (!storiesWrapper) return;
-    storiesWrapper.innerHTML = "";
+    storiesWrapper.innerHTML = stories.length === 0 ? "<p>No stories yet, bro!</p>" : "";
 
-    if (stories.length === 0) {
-        storiesWrapper.innerHTML = "<p>No stories yet, bro!</p>";
-        return;
-    }
-
-    const userStories = {};
     stories.forEach(story => {
-        if (!userStories[story.userId]) userStories[story.userId] = [];
-        userStories[story.userId].push(story);
-    });
-
-    Object.keys(userStories).forEach(userId => {
-        const storiesForUser = userStories[userId];
-        const latestStory = storiesForUser.sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis())[0];
-        const username = latestStory.username.length > 10 ? `${latestStory.username.slice(0, 7)}...` : latestStory.username;
-        const hasUnviewed = storiesForUser.some(story => !story.viewedBy.includes(userId));
-
+        const hasUnviewed = !viewedStories.has(story.id);
         const slide = document.createElement("div");
         slide.className = "swiper-slide";
         slide.innerHTML = `
-            <img src="${latestStory.userProfilePhoto || 'https://via.placeholder.com/60'}" 
+            <img src="${story.userProfilePhoto || 'https://via.placeholder.com/60'}" 
                  alt="Profile" 
                  class="story-profile ${hasUnviewed ? '' : 'viewed'}" 
-                 data-user-id="${userId}">
-            <span class="clickable2" data-user-id="${userId}">${username}</span>
+                 data-story-id="${story.id}">
+            <span class="clickable2" data-user-id="${story.userId}">${story.username.length > 10 ? `${story.username.slice(0, 7)}...` : story.username}</span>
         `;
         storiesWrapper.appendChild(slide);
-        slide.querySelector(".story-profile").addEventListener("click", () => viewStory(userId));
-        slide.querySelector("span").addEventListener("click", () => viewProfile(userId));
+        slide.querySelector(".story-profile").addEventListener("click", () => viewStory(story.id));
+        slide.querySelector("span").addEventListener("click", () => viewProfile(story.userId));
     });
 
-    console.log("[Swiper] Initializing outer Swiper");
-    new Swiper('.swiper-container', {
+    if (window.outerSwiper) window.outerSwiper.destroy(true, true);
+    window.outerSwiper = new Swiper('.swiper-container', {
         slidesPerView: window.innerWidth < 768 ? 3 : 5,
         spaceBetween: 10,
         navigation: { nextEl: '.swiper-button-next', prevEl: '.swiper-button-prev' },
-        loop: true,
+        loop: stories.length > 1,
     });
 }
 
-async function viewStory(userId) {
+async function viewStory(storyId) {
+    if (isProcessing) return;
+    isProcessing = true;
     try {
-        console.log("[View] Viewing stories for user:", userId);
-        const userStories = [...storyCache.values()]
-            .filter(s => s.userId === userId && s.timestamp.toMillis() > Date.now() - 24 * 60 * 60 * 1000)
-            .sort((a, b) => a.timestamp.toMillis() - b.timestamp.toMillis());
-
-        if (userStories.length === 0) {
-            console.error("[View] No stories found for user:", userId);
-            alert("No stories found!");
+        console.log("[View] Viewing story:", storyId);
+        const now = Date.now();
+        const story = storyCache.get(storyId);
+        if (!story || !story.images.some(img => img.timestamp.toMillis() > now - 24 * 60 * 60 * 1000)) {
+            alert("No story found, bro!");
             return;
         }
 
+        if (!viewedStories.has(storyId)) {
+            viewedStories.add(storyId);
+            renderStories([...storyCache.values()]);
+        }
+
         const modal = document.getElementById("storyModal");
-        if (!modal) throw new Error("storyModal not found!");
         const storyPhotosWrapper = document.getElementById("storyPhotosWrapper");
-        if (!storyPhotosWrapper) throw new Error("storyPhotosWrapper not found!");
         const storyUsername = document.getElementById("storyUsername");
         const storyTimestamp = document.getElementById("storyTimestamp");
         const storyText = document.getElementById("storyText");
@@ -147,163 +140,149 @@ async function viewStory(userId) {
         const prevBtn = document.getElementById("prevStoryBtn");
         const nextBtn = document.getElementById("nextStoryBtn");
 
-        for (const story of userStories) {
-            if (!story.viewedBy.includes(userId)) {
-                story.viewedBy.push(userId);
-                await updateDoc(doc(db, "stories", story.id), { viewedBy: story.viewedBy });
-                storyCache.set(story.id, { ...story, viewedBy: story.viewedBy });
-            }
-        }
-        await loadStories();
+        if (!modal || !storyPhotosWrapper) throw new Error("Modal or photos wrapper missing!");
 
-        storyUsername.textContent = userStories[0].username;
-        storyUsername.onclick = () => viewProfile(userId);
+        storyUsername.textContent = story.username;
+        storyUsername.onclick = () => viewProfile(story.userId);
 
-        if (window.innerSwiper) {
-            window.innerSwiper.destroy(true, true);
-            window.innerSwiper = null;
-        }
-
+        if (window.innerSwiper) window.innerSwiper.destroy(true, true);
         storyPhotosWrapper.innerHTML = "";
-        userStories.forEach(story => {
-            const imageUrls = story.imageUrls || [story.imageUrl];
-            imageUrls.forEach((url, index) => {
-                const slide = document.createElement("div");
-                slide.className = "swiper-slide";
-                slide.innerHTML = `
-                    <img src="${url}" alt="Story Photo" data-story-id="${story.id}" data-photo-index="${index}">
-                    <div class="story-details">
-                        <p>${story.text || ""}</p>
-                    </div>
-                `;
-                storyPhotosWrapper.appendChild(slide);
-            });
+        let totalPhotos = 0;
+        let firstValidSlide = true;
+
+        story.images.forEach((img, index) => {
+            const isExpired = img.timestamp.toMillis() <= now - 24 * 60 * 60 * 1000;
+            if (story.userId !== userId && isExpired) return;
+            totalPhotos++;
+            const slide = document.createElement("div");
+            slide.className = "swiper-slide";
+            let slideContent = `
+                <img src="${img.imageUrl}" alt="Story Photo" data-story-id="${storyId}" data-photo-index="${index}">
+                <div class="story-details">
+                    <p>${story.text || ""}</p>
+            `;
+            if (isExpired && story.userId === userId) {
+                slideContent += `<div class="expired-warning">Photo expired (24h+)</div>`;
+            } else if (totalPhotos > 1 && firstValidSlide && !isExpired) {
+                slideContent += `<div class="slide-hint">Slide to see more</div>`;
+                console.log("Slide hint added to first valid photo, total photos:", totalPhotos);
+                firstValidSlide = false;
+            }
+            slideContent += `</div>`;
+            slide.innerHTML = slideContent;
+            storyPhotosWrapper.appendChild(slide);
         });
 
-        if (storyPhotosWrapper.children.length > 0) {
-            window.innerSwiper = new Swiper('.swiper-container-inner', {
-                slidesPerView: 1,
-                navigation: { nextEl: '.swiper-button-next-inner', prevEl: '.swiper-button-prev-inner' },
-                loop: userStories.length > 1,
-                on: {
-                    slideChange: () => {
-                        const activeSlide = storyPhotosWrapper.querySelector(".swiper-slide-active");
-                        if (!activeSlide) return;
-                        const storyId = activeSlide.querySelector("img").dataset.storyId;
-                        const story = storyCache.get(storyId);
-                        if (!story) return;
-                        storyTimestamp.textContent = new Date(story.timestamp.toMillis()).toLocaleString();
-                        storyText.textContent = story.text || "";
-                        if (story.postId) {
-                            viewPostBtn.classList.remove("hidden");
-                            viewPostBtn.onclick = () => {
-                                window.communitySearchPostsById(story.postId);
-                                const scrollTarget = document.getElementById("search-scrolldown2");
-                                if (scrollTarget) scrollTarget.scrollIntoView({ behavior: "smooth" });
-                                closeModal("storyModal");
-                            };
-                        } else {
-                            viewPostBtn.classList.add("hidden");
-                        }
-                    }
-                }
-            });
-        } else {
-            console.warn("No slides to initialize Swiper!");
+        window.innerSwiper = new Swiper('.swiper-container-inner', {
+            slidesPerView: 1,
+            navigation: { nextEl: '.swiper-button-next-inner', prevEl: '.swiper-button-prev-inner' },
+            loop: totalPhotos > 1 && story.userId !== userId,
+            on: {
+                init: () => {
+                    setTimeout(() => {
+                        updateSlideDetails();
+                        console.log("Swiper initialized and details updated on init");
+                    }, 100);
+                },
+                slideChangeTransitionEnd: debounce(updateSlideDetails, 50)
+            }
+        });
+
+        function updateSlideDetails() {
+            const activeSlide = storyPhotosWrapper.querySelector(".swiper-slide-active");
+            if (!activeSlide) {
+                console.log("No active slide found yet!");
+                return;
+            }
+            const photoIndex = parseInt(activeSlide.querySelector("img").dataset.photoIndex);
+            const imgData = story.images[photoIndex];
+            storyTimestamp.textContent = new Date(imgData.timestamp.toMillis()).toLocaleString();
+            storyText.textContent = story.text || "";
+            viewPostBtn.classList.toggle("hidden", !imgData.postId || imgData.timestamp.toMillis() <= now - 24 * 60 * 60 * 1000);
+            if (imgData.postId && imgData.timestamp.toMillis() > now - 24 * 60 * 60 * 1000) {
+                viewPostBtn.onclick = () => {
+                    window.communitySearchPostsById(imgData.postId);
+                    document.getElementById("search-scrolldown2")?.scrollIntoView({ behavior: "smooth" });
+                    closeModal("storyModal");
+                };
+            } else {
+                viewPostBtn.onclick = null;
+            }
+            console.log("Slide details updated - Story:", storyId, "Photo Index:", photoIndex, "Timestamp:", storyTimestamp.textContent, "Post ID:", imgData.postId);
         }
 
-        const firstStory = userStories[0];
-        storyTimestamp.textContent = new Date(firstStory.timestamp.toMillis()).toLocaleString();
-        storyText.textContent = firstStory.text || "";
-        if (firstStory.postId) {
-            viewPostBtn.classList.remove("hidden");
-            viewPostBtn.onclick = () => {
-                window.communitySearchPostsById(firstStory.postId);
-                const scrollTarget = document.getElementById("search-scrolldown2");
-                if (scrollTarget) scrollTarget.scrollIntoView({ behavior: "smooth" });
-                closeModal("storyModal");
+        function debounce(func, wait) {
+            let timeout;
+            return function (...args) {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func.apply(this, args), wait);
             };
-        } else {
-            viewPostBtn.classList.add("hidden");
         }
 
-        if (userId === auth.currentUser.uid) {
+        if (story.userId === userId) {
             editBtn.classList.remove("hidden");
             deleteBtn.classList.remove("hidden");
             editBtn.onclick = () => {
+                if (isProcessing) return;
                 const activeSlide = storyPhotosWrapper.querySelector(".swiper-slide-active");
                 if (!activeSlide) return;
-                const storyId = activeSlide.querySelector("img").dataset.storyId;
-                const photoIndex = parseInt(activeSlide.querySelector("img").dataset.photoIndex);
-                editStory(storyId, photoIndex);
+                editStory(activeSlide.querySelector("img").dataset.storyId, parseInt(activeSlide.querySelector("img").dataset.photoIndex));
             };
-            deleteBtn.onclick = () => deleteStory(firstStory.id, firstStory.imageUrls ? firstStory.imageUrls[0] : firstStory.imageUrl);
-            storyPhotosWrapper.querySelectorAll("img").forEach(img => {
-                img.addEventListener("click", () => {
-                    const storyId = img.dataset.storyId;
-                    const photoIndex = parseInt(img.dataset.photoIndex);
-                    editStory(storyId, photoIndex);
-                });
-            });
+            deleteBtn.onclick = () => {
+                if (isProcessing) return;
+                const activeSlide = storyPhotosWrapper.querySelector(".swiper-slide-active");
+                if (!activeSlide) return;
+                deleteStory(activeSlide.querySelector("img").dataset.storyId, parseInt(activeSlide.querySelector("img").dataset.photoIndex));
+            };
         } else {
             editBtn.classList.add("hidden");
             deleteBtn.classList.add("hidden");
         }
 
-        const allStories = [...storyCache.values()].filter(s => s.timestamp.toMillis() > Date.now() - 24 * 60 * 60 * 1000);
-        const allUsers = [...new Set(allStories.map(s => s.userId))];
-        const currentIndex = allUsers.indexOf(userId);
-        prevBtn.style.display = allUsers.length > 1 ? "block" : "none";
-        nextBtn.style.display = allUsers.length > 1 ? "block" : "none";
-        prevBtn.onclick = () => {
-            const prevIndex = (currentIndex - 1 + allUsers.length) % allUsers.length;
-            viewStory(allUsers[prevIndex]);
-        };
-        nextBtn.onclick = () => {
-            const nextIndex = (currentIndex + 1) % allUsers.length;
-            viewStory(allUsers[nextIndex]);
-        };
+        const allStories = [...storyCache.values()];
+        const currentIndex = allStories.findIndex(s => s.id === storyId);
+        prevBtn.style.display = allStories.length > 1 ? "block" : "none";
+        nextBtn.style.display = allStories.length > 1 ? "block" : "none";
+        prevBtn.onclick = () => viewStory(allStories[(currentIndex - 1 + allStories.length) % allStories.length].id);
+        nextBtn.onclick = () => viewStory(allStories[(currentIndex + 1) % allStories.length].id);
 
         modal.style.display = "flex";
         modal.classList.remove("hidden");
     } catch (error) {
         console.error("[Error] Viewing story:", error);
         alert("Failed to load story, bro!");
+    } finally {
+        isProcessing = false;
     }
 }
 
 function setupStoryModal() {
-    const closeBtn = document.getElementById("closeStoryBtn");
-    if (closeBtn) closeBtn.addEventListener("click", () => closeModal("storyModal"));
+    document.getElementById("closeStoryBtn")?.addEventListener("click", () => closeModal("storyModal"));
 }
 
 async function setupAddStoryForm() {
     const addStoryBtn = document.getElementById("addStoryBtn");
-    if (!addStoryBtn) {
-        console.error("addStoryBtn not found in the DOM!");
-        return;
-    }
+    if (!addStoryBtn) return console.error("addStoryBtn not found!");
 
     addStoryBtn.addEventListener("click", async () => {
+        if (isProcessing) return;
+        isProcessing = true;
         try {
-            const userStoriesRef = collection(db, "stories");
-            const q = query(
-                userStoriesRef,
-                where("userId", "==", userId),
-                where("communityId", "==", communityId),
-                where("timestamp", ">", new Date(Date.now() - 24 * 60 * 60 * 1000))
-            );
+            const now = Date.now();
+            const storiesRef = collection(db, "communities", communityId, "stories");
+            const q = query(storiesRef, where("userId", "==", userId));
             const snapshot = await getDocs(q);
-            const oldStories = snapshot.docs.filter(doc => doc.data().timestamp.toMillis() < Date.now() - 3 * 60 * 60 * 1000);
+            const userStories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const expiredStories = userStories.filter(s => s.images.some(img => img.timestamp.toMillis() <= now - 24 * 60 * 60 * 1000));
+            const activeImages = userStories.flatMap(s => s.images).filter(img => img.timestamp.toMillis() > now - 24 * 60 * 60 * 1000);
 
-            if (snapshot.size >= 3) {
-                if (oldStories.length > 0) {
-                    alert("You’ve hit the 3-story limit! Delete an old one (over 3 hours) to add a new one.");
-                    return;
-                } else {
-                    alert("You’ve got 3 active stories, bro. Wait for one to expire or delete it!");
-                    return;
-                }
+            if (expiredStories.length > 0) {
+                alert("You’ve got expired photos (24h+). Delete them before posting new ones, bro!");
+                return;
+            }
+            if (activeImages.length >= 3) {
+                alert("Max 3 active photos, bro. Wait for one to expire or delete it!");
+                return;
             }
 
             const modal = document.getElementById("addStoryModal");
@@ -318,92 +297,83 @@ async function setupAddStoryForm() {
             const uploadBtn = document.getElementById("uploadStoryBtn");
             const cancelBtn = document.getElementById("cancelStoryBtn");
 
-            if (!fileInput || !textInput || !tagPostSelect || !uploadBtn || !cancelBtn) {
-                console.error("One or more form elements not found!");
-                closeModal("addStoryModal");
-                return;
-            }
-
             fileInput.value = "";
             textInput.value = "";
-            tagPostSelect.innerHTML = '<option value="">Select a post to tag (optional)</option>';
-            uploadBtn.textContent = "Upload Story";
-
+            tagPostSelect.innerHTML = '<option value="">Select a post (optional)</option>';
             const postsRef = collection(db, "communities", communityId, "posts");
-            const postsQ = query(postsRef, where("userId", "==", userId));
-            const postsSnapshot = await getDocs(postsQ);
+            const postsSnapshot = await getDocs(query(postsRef, where("userId", "==", userId)));
             postsSnapshot.forEach(doc => {
                 const option = document.createElement("option");
                 option.value = doc.id;
                 option.textContent = doc.data().title;
                 tagPostSelect.appendChild(option);
             });
+            uploadBtn.textContent = "Upload Story";
 
             uploadBtn.onclick = async () => {
-                const files = fileInput.files;
-                if (files.length === 0) {
-                    alert("Please select at least one image, bro!");
-                    return;
+                if (isProcessing) return;
+                isProcessing = true;
+                try {
+                    if (fileInput.files.length === 0) {
+                        alert("Pick an image, bro!");
+                        return;
+                    }
+                    const images = [];
+                    const timestamp = Timestamp.now();
+                    for (const file of fileInput.files) {
+                        const compressedBlob = await compressImage(file);
+                        const storageRef = ref(storage, `stories/${communityId}/${userId}/${Date.now()}.jpg`);
+                        await uploadBytes(storageRef, compressedBlob);
+                        images.push({
+                            imageUrl: await getDownloadURL(storageRef),
+                            timestamp,
+                            postId: tagPostSelect.value || null
+                        });
+                    }
+
+                    const userData = await fetchUserData(userId);
+                    const storyData = {
+                        userId,
+                        communityId,
+                        images,
+                        text: textInput.value.trim() || "",
+                        username: userData.username,
+                        userProfilePhoto: userData.profilePhoto || "https://via.placeholder.com/60",
+                        timestamp
+                    };
+
+                    const docRef = await addDoc(storiesRef, storyData);
+                    storyCache.set(docRef.id, { id: docRef.id, ...storyData });
+                    alert("Story up, bro!");
+                    closeModal("addStoryModal");
+                    renderStories([...storyCache.values()]);
+                } catch (error) {
+                    console.error("Error uploading story:", error);
+                    alert("Upload failed, bro!");
+                } finally {
+                    isProcessing = false;
                 }
-
-                const imageUrls = [];
-                for (const file of files) {
-                    const compressedBlob = await compressImage(file);
-                    const storageRef = ref(storage, `stories/${communityId}/${userId}/${Date.now()}.jpg`);
-                    await uploadBytes(storageRef, compressedBlob);
-                    const imageUrl = await getDownloadURL(storageRef);
-                    imageUrls.push(imageUrl);
-                }
-
-                const userData = await fetchUserData(userId);
-                const storyData = {
-                    userId,
-                    communityId,
-                    imageUrls,
-                    timestamp: serverTimestamp(),
-                    viewedBy: [],
-                    postId: tagPostSelect.value || null,
-                    text: textInput.value.trim() || "",
-                    username: userData.username,
-                    userProfilePhoto: userData.profilePhoto || "https://via.placeholder.com/60"
-                };
-
-                const docRef = await addDoc(collection(db, "stories"), storyData);
-                storyCache.set(docRef.id, { id: docRef.id, ...storyData });
-                console.log("Story uploaded:", storyData);
-                alert("Story uploaded, dope!");
-
-                fileInput.value = "";
-                textInput.value = "";
-                tagPostSelect.value = "";
-                closeModal("addStoryModal");
-                await loadStories(true);
             };
 
-            cancelBtn.onclick = () => {
-                fileInput.value = "";
-                textInput.value = "";
-                tagPostSelect.value = "";
-                closeModal("addStoryModal");
-            };
+            cancelBtn.onclick = () => closeModal("addStoryModal");
         } catch (error) {
-            console.error("Error setting up add story form:", error);
-            alert("Something went wrong, try again, bro!");
+            console.error("Error in add story form:", error);
+            alert("Shit broke, try again, bro!");
             closeModal("addStoryModal");
+        } finally {
+            isProcessing = false;
         }
     });
 }
 
 async function editStory(storyId, photoIndex) {
+    if (isProcessing) return;
+    isProcessing = true;
     try {
         const story = storyCache.get(storyId);
-        if (!story) {
-            alert("Story not found, bro!");
-            return;
-        }
+        if (!story) return alert("Story gone, bro!");
 
         const modal = document.getElementById("addStoryModal");
-        if (!modal) throw new Error("addStoryModal not found!");
         modal.querySelector("h2").textContent = `Edit Story Photo #${photoIndex + 1}`;
         modal.style.display = "flex";
         modal.classList.remove("hidden");
@@ -414,120 +384,181 @@ async function editStory(storyId, photoIndex) {
         const uploadBtn = document.getElementById("uploadStoryBtn");
         const cancelBtn = document.getElementById("cancelStoryBtn");
 
-        if (!fileInput || !textInput || !tagPostSelect || !uploadBtn || !cancelBtn) {
-            console.error("One or more form elements not found!");
-            closeModal("addStoryModal");
-            return;
-        }
-
         fileInput.value = "";
         textInput.value = story.text || "";
-        tagPostSelect.innerHTML = '<option value="">Select a post to tag (optional)</option>';
-        const postsRef = collection(db, "communities", communityId, "posts");
-        const postsQ = query(postsRef, where("userId", "==", userId));
-        const postsSnapshot = await getDocs(postsQ);
+        tagPostSelect.innerHTML = '<option value="">Select a post (optional)</option>';
+        const postsSnapshot = await getDocs(query(collection(db, "communities", communityId, "posts"), where("userId", "==", userId)));
         postsSnapshot.forEach(doc => {
             const option = document.createElement("option");
             option.value = doc.id;
             option.textContent = doc.data().title;
             tagPostSelect.appendChild(option);
         });
-        tagPostSelect.value = story.postId || "";
+        tagPostSelect.value = story.images[photoIndex].postId || "";
         uploadBtn.textContent = "Save Changes";
 
-        const currentPhotoUrl = (story.imageUrls || [story.imageUrl])[photoIndex];
-        console.log(`Editing photo at index ${photoIndex}: ${currentPhotoUrl}`);
-
         uploadBtn.onclick = async () => {
-            const file = fileInput.files[0];
-            let updatedImageUrls = [...(story.imageUrls || [story.imageUrl])];
-
-            if (file) {
-                const compressedBlob = await compressImage(file);
-                const storageRef = ref(storage, `stories/${communityId}/${userId}/${Date.now()}.jpg`);
-                await uploadBytes(storageRef, compressedBlob);
-                const newImageUrl = await getDownloadURL(storageRef);
-                if (updatedImageUrls[photoIndex]) {
-                    await deleteObject(ref(storage, updatedImageUrls[photoIndex]));
+            if (isProcessing) return;
+            isProcessing = true;
+            try {
+                let updatedImages = [...story.images];
+                if (fileInput.files[0]) {
+                    const compressedBlob = await compressImage(fileInput.files[0]);
+                    const storageRef = ref(storage, `stories/${communityId}/${userId}/${Date.now()}.jpg`);
+                    await uploadBytes(storageRef, compressedBlob);
+                    const newImageUrl = await getDownloadURL(storageRef);
+                    if (updatedImages[photoIndex].imageUrl) await deleteObject(ref(storage, updatedImages[photoIndex].imageUrl));
+                    updatedImages[photoIndex] = {
+                        ...updatedImages[photoIndex],
+                        imageUrl: newImageUrl,
+                        timestamp: Timestamp.now()
+                    };
+                } else {
+                    updatedImages[photoIndex] = {
+                        ...updatedImages[photoIndex],
+                        postId: tagPostSelect.value || null
+                    };
                 }
-                updatedImageUrls[photoIndex] = newImageUrl;
+
+                const updatedStory = {
+                    ...story,
+                    images: updatedImages,
+                    text: textInput.value.trim() || "",
+                    timestamp: updatedImages.reduce((max, img) => 
+                        img.timestamp.toMillis() > max.toMillis() ? img.timestamp : max, 
+                        Timestamp.fromMillis(0)
+                    )
+                };
+
+                await updateDoc(doc(db, "communities", communityId, "stories", storyId), updatedStory);
+                storyCache.set(storyId, updatedStory);
+                alert("Story fixed, bro!");
+                closeModal("addStoryModal");
+                renderStories([...storyCache.values()]);
+            } catch (error) {
+                console.error("Error editing story:", error);
+                alert("Edit failed, bro!");
+            } finally {
+                isProcessing = false;
             }
-
-            const updatedStory = {
-                imageUrls: updatedImageUrls,
-                text: textInput.value.trim() || "",
-                postId: tagPostSelect.value || null
-            };
-
-            await updateDoc(doc(db, "stories", storyId), updatedStory);
-            storyCache.set(storyId, { ...story, ...updatedStory });
-            console.log("Story edited:", { id: storyId, ...updatedStory });
-            alert("Story updated, bro!");
-
-            fileInput.value = "";
-            textInput.value = "";
-            tagPostSelect.value = "";
-            closeModal("addStoryModal");
-            await loadStories(true);
         };
 
-        cancelBtn.onclick = () => {
-            fileInput.value = "";
-            textInput.value = "";
-            tagPostSelect.value = "";
-            closeModal("addStoryModal");
-        };
+        cancelBtn.onclick = () => closeModal("addStoryModal");
     } catch (error) {
-        console.error("Error editing story:", error);
-        alert("Failed to edit story, bro!");
+        console.error("Error setting up edit form:", error);
+        alert("Edit setup fucked up, bro!");
         closeModal("addStoryModal");
+    } finally {
+        isProcessing = false;
     }
 }
 
-async function deleteStory(storyId, imageUrl) {
-    if (!confirm("Delete this story?")) return;
-
-    const overlay = document.getElementById("deleteStoryOverlay");
-    if (overlay) {
-        overlay.style.display = "flex";
-        overlay.classList.remove("hidden");
-    }
-
+async function deleteStory(storyId, photoIndex) {
+    if (isProcessing) return;
+    if (!confirm("Delete this photo, bro?")) return;
+    isProcessing = true;
     try {
         const story = storyCache.get(storyId);
-        if (!story) {
-            console.error("Story not found in cache:", storyId);
-            return;
+        if (!story || !story.images[photoIndex]) return;
+
+        const updatedImages = [...story.images];
+        const [deletedImage] = updatedImages.splice(photoIndex, 1);
+        if (deletedImage.imageUrl) await deleteObject(ref(storage, deletedImage.imageUrl));
+
+        if (updatedImages.length === 0) {
+            await deleteDoc(doc(db, "communities", communityId, "stories", storyId));
+            storyCache.delete(storyId);
+        } else {
+            const updatedStory = {
+                ...story,
+                images: updatedImages,
+                timestamp: updatedImages.reduce((max, img) => 
+                    img.timestamp.toMillis() > max.toMillis() ? img.timestamp : max, 
+                    Timestamp.fromMillis(0)
+                )
+            };
+            await updateDoc(doc(db, "communities", communityId, "stories", storyId), updatedStory);
+            storyCache.set(storyId, updatedStory);
         }
 
-        if (story.imageUrls) {
-            for (const url of story.imageUrls) {
-                await deleteObject(ref(storage, url));
+        alert("Photo trashed, bro!");
+        const modalPhotos = document.getElementById("storyPhotosWrapper");
+        if (modalPhotos) {
+            modalPhotos.innerHTML = "";
+            const now = Date.now();
+            let totalPhotos = 0;
+            let firstValidSlide = true;
+            updatedImages.forEach((img, index) => {
+                const isExpired = img.timestamp.toMillis() <= now - 24 * 60 * 60 * 1000;
+                if (story.userId !== userId && isExpired) return;
+                totalPhotos++;
+                const slide = document.createElement("div");
+                slide.className = "swiper-slide";
+                let slideContent = `
+                    <img src="${img.imageUrl}" alt="Story Photo" data-story-id="${storyId}" data-photo-index="${index}">
+                    <div class="story-details">
+                        <p>${story.text || ""}</p>
+                `;
+                if (isExpired && story.userId === userId) {
+                    slideContent += `<div class="expired-warning">Photo expired (24h+)</div>`;
+                } else if (totalPhotos > 1 && firstValidSlide && !isExpired) {
+                    slideContent += `<div class="slide-hint">Slide to see more</div>`;
+                    firstValidSlide = false;
+                }
+                slideContent += `</div>`;
+                slide.innerHTML = slideContent;
+                modalPhotos.appendChild(slide);
+            });
+
+            if (window.innerSwiper) window.innerSwiper.destroy(true, true);
+            if (totalPhotos > 0) {
+                window.innerSwiper = new Swiper('.swiper-container-inner', {
+                    slidesPerView: 1,
+                    navigation: { nextEl: '.swiper-button-next-inner', prevEl: '.swiper-button-prev-inner' },
+                    loop: totalPhotos > 1 && story.userId !== userId,
+                    on: {
+                        init: () => setTimeout(() => updateSlideDetails(), 100),
+                        slideChangeTransitionEnd: debounce(() => updateSlideDetails(), 50)
+                    }
+                });
+            } else {
+                closeModal("storyModal");
             }
-        } else if (imageUrl) {
-            await deleteObject(ref(storage, imageUrl));
         }
-        await deleteDoc(doc(db, "stories", storyId));
-        storyCache.delete(storyId);
-        console.log("Story deleted:", storyId);
-        alert("Story deleted, bro!");
-
-        // Immediately re-render stories from cache
-        const remainingStories = [...storyCache.values()]
-            .filter(s => s.timestamp.toMillis() > Date.now() - 24 * 60 * 60 * 1000)
-            .sort((a, b) => b.timestamp.toMillis() - a.timestamp.toMillis());
-        renderStories(remainingStories);
-
-        // Close modal and hide overlay
-        closeModal("storyModal");
+        renderStories([...storyCache.values()]);
     } catch (error) {
-        console.error("Error deleting story:", error);
-        alert("Failed to delete story, bro!");
+        console.error("Error deleting story photo:", error);
+        alert("Delete failed, bro!");
     } finally {
-        if (overlay) {
-            overlay.style.display = "none";
-            overlay.classList.add("hidden");
+        isProcessing = false;
+    }
+
+    function updateSlideDetails() {
+        const activeSlide = document.getElementById("storyPhotosWrapper")?.querySelector(".swiper-slide-active");
+        if (!activeSlide) return;
+        const photoIndex = parseInt(activeSlide.querySelector("img").dataset.photoIndex);
+        const imgData = updatedImages[photoIndex];
+        document.getElementById("storyTimestamp").textContent = new Date(imgData.timestamp.toMillis()).toLocaleString();
+        document.getElementById("storyText").textContent = story.text || "";
+        const viewPostBtn = document.getElementById("viewPostBtn");
+        viewPostBtn.classList.toggle("hidden", !imgData.postId || imgData.timestamp.toMillis() <= now - 24 * 60 * 60 * 1000);
+        if (imgData.postId && imgData.timestamp.toMillis() > now - 24 * 60 * 60 * 1000) {
+            viewPostBtn.onclick = () => {
+                window.communitySearchPostsById(imgData.postId);
+                document.getElementById("search-scrolldown2")?.scrollIntoView({ behavior: "smooth" });
+                closeModal("storyModal");
+            };
+        } else {
+            viewPostBtn.onclick = null;
         }
+    }
+
+    function debounce(func, wait) {
+        let timeout;
+        return function (...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), wait);
+        };
     }
 }
 
@@ -541,8 +572,7 @@ function closeModal(modalId) {
 
 async function fetchUserData(uid) {
     try {
-        const userRef = doc(db, "users", uid);
-        const userDoc = await getDoc(userRef);
+        const userDoc = await getDoc(doc(db, "users", uid));
         return userDoc.exists() ? userDoc.data() : { username: `user_${uid.slice(0, 8)}`, profilePhoto: null };
     } catch (error) {
         console.error("Error fetching user data:", error);
@@ -556,27 +586,17 @@ async function compressImage(file) {
         const canvas = document.createElement("canvas");
         const ctx = canvas.getContext("2d");
         img.onload = () => {
-            const maxWidth = 800;
-            const maxHeight = 800;
-            let width = img.width;
-            let height = img.height;
-
+            const maxWidth = 800, maxHeight = 800;
+            let width = img.width, height = img.height;
             if (width > height) {
-                if (width > maxWidth) {
-                    height *= maxWidth / width;
-                    width = maxWidth;
-                }
+                if (width > maxWidth) { height *= maxWidth / width; width = maxWidth; }
             } else {
-                if (height > maxHeight) {
-                    width *= maxHeight / height;
-                    height = maxHeight;
-                }
+                if (height > maxHeight) { width *= maxHeight / height; height = maxHeight; }
             }
-
             canvas.width = width;
             canvas.height = height;
             ctx.drawImage(img, 0, 0, width, height);
-            canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.7);
+            canvas.toBlob(blob => resolve(blob), "image/jpeg", 0.7);
         };
         img.onerror = () => reject(new Error("Image compression failed"));
         img.src = URL.createObjectURL(file);
