@@ -98,6 +98,7 @@
   <button class="carousel-arrow next" id="carouselNextBtn">&gt;</button>
 </div>
 
+    <div id="scroll-down-posts"></div>
     <!-- Community Posts -->
     <div id="posts">
       <h3>Community Posts</h3>
@@ -551,7 +552,7 @@ enableIndexedDbPersistence(db)
         }
 
         async function handleViewChatsClick() {
-          console.log("View Chats clicked");
+          //console.log("View Chats clicked");
           await updateChatBadge(user.uid, true); // Clear unread
           await window.viewChats(communityId); // Open modal
           await updateChatBadge(user.uid); // Refresh badge UI
@@ -2899,7 +2900,6 @@ async function searchPostsById(postId) {
       userData = await fetchUserData(post.userId || "unknown");
 
       // Cache the fetched post
-      const cachedPosts = getCachedPosts();
       cachedPosts.set(actualPostId, { id: actualPostId, data: post, score: getPostScore(post, getLikedPrefs()) });
       setCachedPosts(cachedPosts);
 
@@ -2923,7 +2923,11 @@ async function searchPostsById(postId) {
     const photoUrls = post.photoUrls || [];
     const photoCount = photoUrls.length;
 
+    // Add the message and button above the post
     postsDiv.innerHTML = `
+      <div id="searchMessage" class="search-message">
+        <p>Showing post with ID: ${actualPostId}. <button id="showAllPostsBtn">Click here to see all posts again</button></p>
+      </div>
       <div class="post" id="post-${actualPostId}">
         <h3>${post.title || "No Title"}</h3>
         <p>${post.description || "No Description"}</p>
@@ -2965,6 +2969,18 @@ async function searchPostsById(postId) {
         </div>
       </div>
     `;
+
+    // Add event listener for the "Show All Posts" button
+    const showAllPostsBtn = postsDiv.querySelector("#showAllPostsBtn");
+    if (showAllPostsBtn) {
+      showAllPostsBtn.addEventListener("click", async () => {
+        const searchInput = document.getElementById("postSearch");
+        if (searchInput) searchInput.value = ""; // Clear the search input
+        isSearching = false;
+        postsDiv.innerHTML = ""; // Clear current content
+        await loadPosts(communityId, true); // Reload all posts
+      });
+    }
 
     const postDiv = postsDiv.querySelector(`#post-${actualPostId}`);
     postDiv.querySelector(`.username[data-uid="${post.userId || 'unknown'}"]`).addEventListener("click", () => viewProfile(post.userId || "unknown"));
@@ -3025,7 +3041,6 @@ async function searchPostsById(postId) {
       }
 
       // Update cached post
-      const cachedPosts = getCachedPosts();
       cachedPosts.set(actualPostId, { 
         id: actualPostId, 
         data: { ...postData, likes: newLikes, likedBy: newLikedBy }, 
@@ -4762,6 +4777,12 @@ async function openNotificationsModal(userId) {
   const modalCount = document.getElementById("modalNotificationCount");
   const communityFilter = document.getElementById("communityFilter");
 
+  if (!modal || !notificationList || !modalCount || !communityFilter) {
+    console.error("Notifications modal elements missing from DOM!");
+    alert("Something’s broken—refresh the page!");
+    return;
+  }
+
   let refreshBtn = modal.querySelector("#refreshNotificationsBtn");
   if (!refreshBtn) {
     refreshBtn = document.createElement("button");
@@ -4775,7 +4796,6 @@ async function openNotificationsModal(userId) {
   modal.style.display = "flex";
   modal.classList.remove("hidden");
 
-  // Fetch communities
   const userRef = doc(db, "users", userId);
   let communities = [];
   try {
@@ -4802,18 +4822,21 @@ async function openNotificationsModal(userId) {
 
   const ITEMS_PER_PAGE = 10;
   let allNotifications = [];
-  let displayedCount = 0;
   let lastDoc = null;
+  let displayedCount = 0;
 
-  const initialCount = await updateNotificationBadge(userId); // Use cached count
+  const initialCount = await updateNotificationBadge(userId, false);
   modalCount.textContent = initialCount;
 
-  async function loadNotifications(forceRefresh = false, reset = false) {
-    const selectedCommunity = communityFilter.value;
-    const lastTimestamp = sessionStorage.getItem("lastNotifTimestamp")
-      ? new Date(sessionStorage.getItem("lastNotifTimestamp"))
-      : new Date(0);
+  async function handleViewChatsClick() {
+    console.log("handleViewChatsClick triggered with userId:", userId, "communityId:", communityId);
+    await updateChatBadge(userId, true); // Clear unread
+    await window.viewChats(communityId); // Open modal
+    await updateChatBadge(userId); // Refresh badge UI
+  }
 
+  async function loadNotifications(reset = false, forceRefresh = false) {
+    const selectedCommunity = communityFilter.value;
     if (reset) {
       lastDoc = null;
       displayedCount = 0;
@@ -4821,74 +4844,77 @@ async function openNotificationsModal(userId) {
       notificationList.innerHTML = '<div class="loading">Loading...</div>';
     }
 
-    let q;
-    try {
-      const notifsCollection = collection(db, "users", userId, "notifications");
-      if (forceRefresh) {
-        q = query(
-          notifsCollection,
-          where("timestamp", ">", lastTimestamp),
-          orderBy("timestamp", "desc")
-        );
-      } else if (selectedCommunity === "all") {
-        q = query(
-          notifsCollection,
-          orderBy("timestamp", "desc"),
-          ...(lastDoc ? [startAfter(lastDoc)] : []),
-          limit(ITEMS_PER_PAGE)
-        );
-      } else {
-        q = query(
-          notifsCollection,
-          where("communityId", "==", selectedCommunity),
-          orderBy("timestamp", "desc"),
-          ...(lastDoc ? [startAfter(lastDoc)] : []),
-          limit(ITEMS_PER_PAGE)
-        );
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        const notifsCollection = collection(db, "users", userId, "notifications");
+        let q;
+        if (selectedCommunity === "all") {
+          q = query(
+            notifsCollection,
+            orderBy("timestamp", "desc"),
+            ...(lastDoc && !reset ? [startAfter(lastDoc)] : []),
+            limit(ITEMS_PER_PAGE)
+          );
+        } else {
+          q = query(
+            notifsCollection,
+            where("communityId", "==", selectedCommunity),
+            orderBy("timestamp", "desc"),
+            ...(lastDoc && !reset ? [startAfter(lastDoc)] : []),
+            limit(ITEMS_PER_PAGE)
+          );
+        }
+
+        const snapshot = await getDocs(q);
+        const newNotifications = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }));
+
+        if (forceRefresh) {
+          newNotifications.forEach(notif => {
+            if (!allNotifications.some(n => n.id === notif.id)) {
+              allNotifications.unshift(notif);
+            }
+          });
+        } else {
+          newNotifications.forEach(notif => {
+            if (!allNotifications.some(n => n.id === notif.id)) {
+              allNotifications.push(notif);
+            }
+          });
+          lastDoc = snapshot.docs.length === ITEMS_PER_PAGE ? snapshot.docs[snapshot.docs.length - 1] : null;
+        }
+
+        allNotifications.sort((a, b) => b.data.timestamp.toDate() - a.data.timestamp.toDate());
+
+        if (allNotifications.length === 0) {
+          notificationList.innerHTML = "<p>No notifications yet.</p>";
+        } else {
+          const startIdx = reset ? 0 : displayedCount;
+          const endIdx = Math.min(startIdx + ITEMS_PER_PAGE, allNotifications.length);
+          const content = allNotifications
+            .slice(0, endIdx)
+            .map(notif => renderNotification({ id: notif.id, data: () => notif.data }, communities))
+            .join("");
+          notificationList.innerHTML = content;
+          displayedCount = endIdx;
+        }
+
+        const unseenCount = await getUnseenNotificationCount(userId, forceRefresh);
+        modalCount.textContent = unseenCount;
+        updateLoadButtons();
+        attachNotificationListeners();
+        break;
+      } catch (error) {
+        console.error("Error fetching notifications:", error);
+        retries--;
+        if (retries === 0) {
+          notificationList.innerHTML = "<p>Failed to load notifications after retries. Check your connection!</p>";
+          updateLoadButtons();
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-
-      const snapshot = await getDocs(q);
-      const newNotifications = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }));
-
-      if (forceRefresh) {
-        newNotifications.forEach(notif => {
-          if (!allNotifications.some(n => n.id === notif.id)) {
-            allNotifications.unshift(notif);
-          }
-        });
-      } else {
-        newNotifications.forEach(notif => {
-          if (!allNotifications.some(n => n.id === notif.id)) {
-            allNotifications.push(notif);
-          }
-        });
-        lastDoc = snapshot.docs[snapshot.docs.length - 1] || lastDoc;
-      }
-
-      allNotifications.sort((a, b) => b.data.timestamp.toDate() - a.data.timestamp.toDate());
-
-      if (allNotifications.length === 0) {
-        notificationList.innerHTML = "<p>No notifications yet.</p>";
-      } else {
-        const startIdx = reset ? 0 : displayedCount;
-        const endIdx = forceRefresh ? allNotifications.length : Math.min(startIdx + ITEMS_PER_PAGE, allNotifications.length);
-        const content = allNotifications
-          .slice(0, endIdx)
-          .map(notif => renderNotification({ id: notif.id, data: () => notif.data }, communities))
-          .join("");
-        notificationList.innerHTML = content;
-        displayedCount = endIdx;
-      }
-    } catch (error) {
-      console.error("Error fetching notifications:", error);
-      notificationList.innerHTML = "<p>Failed to load notifications. Try refreshing.</p>";
-      return;
     }
-
-    const unseenCount = await getUnseenNotificationCount(userId, forceRefresh);
-    modalCount.textContent = unseenCount;
-    updateLoadButtons();
-    attachNotificationListeners();
   }
 
   function renderNotification(doc, communities) {
@@ -4901,7 +4927,7 @@ async function openNotificationsModal(userId) {
     }
 
     return `
-      <div class="notification-item ${notif.seen ? 'seen' : ''}" data-id="${doc.id}">
+      <div class="notification-item ${notif.seen ? 'seen' : ''}" data-id="${doc.id}" data-type="${notif.type}">
         <span>${displayMessage}</span>
         <span class="timestamp">${timestamp}</span>
         ${notif.postId ? `<button class="copy-id-btn2" data-post-id="${notif.postId}">Copy ID</button>` : ""}
@@ -4932,51 +4958,56 @@ async function openNotificationsModal(userId) {
       }
     });
     notificationList.querySelectorAll(".ban-appeal-form").forEach(form => {
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const text = form.querySelector("textarea").value.trim();
-    if (text) {
-      const notifId = form.dataset.id;
-      const notif = allNotifications.find(n => n.id === notifId).data;
-      try {
-        // Fetch username
-        const userDoc = await getDoc(doc(db, "users", userId));
-        const userData = userDoc.exists() ? userDoc.data() : { username: `user_${userId.slice(0, 8)}` };
-
-        // Write to community subcollection
-        await addDoc(collection(db, "communities", notif.communityId, "banAppeals"), {
-          userId: userId,
-          username: userData.username, // Include username
-          message: text,
-          timestamp: new Date(),
-          notificationId: notifId
-        });
-        await updateDoc(doc(db, "users", userId, "notifications", notifId), { appealSubmitted: true });
-        alert("Appeal sent!");
-        await loadNotifications(true);
-      } catch (error) {
-        console.error("Error submitting appeal:", error);
-        alert("Failed to send appeal.");
-      }
-    }
-  });
-});
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const text = form.querySelector("textarea").value.trim();
+        if (text) {
+          const notifId = form.dataset.id;
+          const notif = allNotifications.find(n => n.id === notifId).data;
+          try {
+            const userDoc = await getDoc(doc(db, "users", userId));
+            const userData = userDoc.exists() ? userDoc.data() : { username: `user_${userId.slice(0, 8)}` };
+            await addDoc(collection(db, "communities", notif.communityId, "banAppeals"), {
+              userId: userId,
+              username: userData.username,
+              message: text,
+              timestamp: new Date(),
+              notificationId: notifId
+            });
+            await updateDoc(doc(db, "users", userId, "notifications", notifId), { appealSubmitted: true });
+            alert("Appeal sent!");
+            await loadNotifications(true);
+          } catch (error) {
+            console.error("Error submitting appeal:", error);
+            alert("Failed to send appeal.");
+          }
+        }
+      });
+    });
     notificationList.querySelectorAll(".notification-item").forEach(item => {
-      item.addEventListener("click", () => {
+      item.addEventListener("click", async () => {
         const notif = allNotifications.find(n => n.id === item.dataset.id).data;
-        if (notif.postId && notif.communityId) {
+        const notifType = item.dataset.type;
+
+        if (notifType === "profile_request" || notifType === "profile_request_accepted" || notifType === "profile_request_declined") {
+          closeModal("notificationsModal");
+          await viewProfileViewRequests(userId);
+        } else if (notifType === "new_message" || notifType === "chat") {
+          console.log("Chat notification clicked, triggering handleViewChatsClick");
+          closeModal("notificationsModal");
+          await handleViewChatsClick(); // Reuse the working handler
+        } else if (notif.postId && notif.communityId) {
           if (notif.communityId !== communityId) {
             window.location.href = `/community.html?id=${notif.communityId}#post-${notif.postId}`;
           } else {
-            window.location.hash = `post-${notif.postId}`;
-            loadPosts(communityId, currentPage).then(() => {
-              const postComments = document.getElementById(`comments-${notif.postId}`);
-              if (postComments) {
-                postComments.style.display = "block";
-                toggleComments(notif.postId);
-              }
-              closeModal("notificationsModal");
-            });
+            closeModal("notificationsModal");
+            await searchPostsById(notif.postId);
+            const scrollTarget = document.getElementById("search-scrolldown");
+            if (scrollTarget) {
+              scrollTarget.scrollIntoView({ behavior: "smooth" });
+            } else {
+              console.warn("Scroll target #search-scrolldown not found!");
+            }
           }
         }
       });
@@ -4991,12 +5022,12 @@ async function openNotificationsModal(userId) {
     if (lessBtn) lessBtn.remove();
 
     const totalFetched = allNotifications.length;
-    const hasMore = totalFetched > displayedCount;
+    const hasMore = lastDoc && displayedCount < totalFetched;
 
     if (hasMore) {
       moreBtn = document.createElement("button");
       moreBtn.id = "loadMoreBtn";
-      moreBtn.textContent = `See More (${totalFetched - displayedCount} left)`;
+      moreBtn.textContent = "Load More";
       moreBtn.className = "load-more-btn";
       moreBtn.onclick = () => loadNotifications(false, false);
       notificationList.appendChild(moreBtn);
@@ -5005,7 +5036,7 @@ async function openNotificationsModal(userId) {
     if (displayedCount > ITEMS_PER_PAGE) {
       lessBtn = document.createElement("button");
       lessBtn.id = "loadLessBtn";
-      lessBtn.textContent = "See Less";
+      lessBtn.textContent = "Load Less";
       lessBtn.className = "load-less-btn";
       lessBtn.onclick = () => {
         displayedCount = ITEMS_PER_PAGE;
@@ -5021,7 +5052,7 @@ async function openNotificationsModal(userId) {
   }
 
   try {
-    await loadNotifications();
+    await loadNotifications(true);
   } catch (error) {
     console.error("Initial load failed:", error);
     notificationList.innerHTML = "<p>Failed to load notifications. Try refreshing.</p>";
@@ -5031,7 +5062,7 @@ async function openNotificationsModal(userId) {
     refreshBtn.disabled = true;
     refreshBtn.textContent = "Refreshing...";
     try {
-      await loadNotifications(true);
+      await loadNotifications(false, true);
       await updateNotificationBadge(userId, true);
     } catch (error) {
       console.error("Refresh failed:", error);
@@ -5041,7 +5072,7 @@ async function openNotificationsModal(userId) {
     refreshBtn.textContent = "Refresh";
   };
 
-  communityFilter.onchange = () => loadNotifications(false, true);
+  communityFilter.onchange = () => loadNotifications(true);
 }
 
 // Mark notification as seen and decrement unseenCount

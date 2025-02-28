@@ -1584,3 +1584,35 @@ color: #333;
 #pasteSearchBtn:hover, #clearSearchBtn:hover {
 background-color: #e0e0e0;
 }
+
+.search-message {
+padding: 10px;
+background-color: #f0f0f0;
+border-bottom: 1px solid #ddd;
+text-align: center;
+}
+
+.search-message button {
+background-color: #007bff;
+color: white;
+border: none;
+padding: 5px 10px;
+cursor: pointer;
+border-radius: 3px;
+}
+
+.search-message button:hover {
+background-color: #0056b3;
+}
+
+.notification-item {
+padding: 10px;
+border-bottom: 1px solid #eee;
+display: flex;
+align-items: stretch;
+flex-direction: column;
+background: yellow;
+margin-bottom: 5px;
+border-radius: 8px;
+cursor: pointer;
+}
