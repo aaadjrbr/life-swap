@@ -3219,7 +3219,7 @@ async function loadMoreReplies(event) {
   }
 }
 
-    async function addComment(postId, postOwnerId) {
+async function addComment(postId, postOwnerId) {
   const user = auth.currentUser;
   const text = document.getElementById(`commentForm-${postId}`).querySelector("textarea").value.trim();
   if (!text) return;
@@ -3229,101 +3229,114 @@ async function loadMoreReplies(event) {
   const commData = await getCommData();
   const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
 
-  // Add to Firebase
-  const commentDoc = await addDoc(collection(db, "communities", communityId, "posts", postId, "comments"), {
-    text,
-    userId: user.uid,
-    createdAt: new Date()
-  });
+  try {
+    const commentDoc = await addDoc(collection(db, "communities", communityId, "posts", postId, "comments"), {
+      text,
+      userId: user.uid,
+      createdAt: new Date()
+    });
 
-  // Instant UI update
-  const userData = await fetchCurrentUserData();
-  const isCommentAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
-  const commentText = await processMentions(text);
-  const timestamp = new Date().toLocaleString();
-  const newCommentDiv = document.createElement("div");
-  newCommentDiv.className = "comment-bubble";
-  newCommentDiv.innerHTML = `
-    <div class="comment-content">
-      <img src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" class="profile-photo" alt="Profile">
-      <div class="comment-text">
-        <span class="username" data-uid="${user.uid}">${userData.name}</span> ${isCommentAdmin ? '<span class="admin-tag">Admin</span>' : ''}
-        <p>${commentText}</p>
-        <span class="timestamp">${timestamp}</span>
-        <div class="comment-actions">
-          <button class="reply-btn" id="replyBtn-${commentDoc.id}">Reply</button>
-          ${isAdmin || user.uid === user.uid ? `<button class="delete-comment-btn" id="deleteComment-${commentDoc.id}">Delete</button>` : ""}
+    // UI update
+    const userData = await fetchCurrentUserData();
+    const isCommentAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
+    const commentText = await processMentions(text);
+    const timestamp = new Date().toLocaleString();
+    const newCommentDiv = document.createElement("div");
+    newCommentDiv.className = "comment-bubble";
+    newCommentDiv.innerHTML = `
+      <div class="comment-content">
+        <img src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" class="profile-photo" alt="Profile">
+        <div class="comment-text">
+          <span class="username" data-uid="${user.uid}">${userData.name}</span> ${isCommentAdmin ? '<span class="admin-tag">Admin</span>' : ''}
+          <p>${commentText}</p>
+          <span class="timestamp">${timestamp}</span>
+          <div class="comment-actions">
+            <button class="reply-btn" id="replyBtn-${commentDoc.id}">Reply</button>
+            ${isAdmin || user.uid === user.uid ? `<button class="delete-comment-btn" id="deleteComment-${commentDoc.id}">Delete</button>` : ""}
+          </div>
         </div>
       </div>
-    </div>
-    <div class="replies-thread" id="replies-${commentDoc.id}" style="display: none;"></div>
-    <form id="replyForm-${commentDoc.id}" class="reply-form hidden">
-      <div class="replying-to">Replying to ${userData.name}'s comment <button type="button" class="cancel-reply">Cancel</button></div>
-      <textarea placeholder="Your reply..." required></textarea>
-      <div id="tagSuggestions-${commentDoc.id}-${commentDoc.id}" class="suggestions hidden"></div>
-      <button type="submit">Reply</button>
-    </form>
-  `;
+      <div class="replies-thread" id="replies-${commentDoc.id}" style="display: none;"></div>
+      <form id="replyForm-${commentDoc.id}" class="reply-form hidden">
+        <div class="replying-to">Replying to ${userData.name}'s comment <button type="button" class="cancel-reply">Cancel</button></div>
+        <textarea placeholder="Your reply..." required></textarea>
+        <div id="tagSuggestions-${commentDoc.id}-${commentDoc.id}" class="suggestions hidden"></div>
+        <button type="submit">Reply</button>
+      </form>
+    `;
 
-  // If comments are visible, prepend the new comment
-  if (commentsDiv.style.display !== "none") {
-    commentsDiv.insertBefore(newCommentDiv, commentsDiv.firstChild);
-  } else {
-    commentsDiv.style.display = "block";
-    commentsDiv.innerHTML = "";
-    commentsDiv.appendChild(newCommentDiv);
-    toggleLink.textContent = "Hide comments";
-  }
+    if (commentsDiv.style.display !== "none") {
+      commentsDiv.insertBefore(newCommentDiv, commentsDiv.firstChild);
+    } else {
+      commentsDiv.style.display = "block";
+      commentsDiv.innerHTML = "";
+      commentsDiv.appendChild(newCommentDiv);
+      toggleLink.textContent = "Hide comments";
+    }
 
-  // Add event listeners
-  newCommentDiv.querySelectorAll(".username").forEach(el => {
-    el.addEventListener("click", () => viewProfile(user.uid));
-  });
-  newCommentDiv.querySelectorAll(".mention").forEach(el => {
-    const uid = el.dataset.uid;
-    el.addEventListener("click", (e) => {
+    // Event listeners
+    newCommentDiv.querySelectorAll(".username").forEach(el => el.addEventListener("click", () => viewProfile(user.uid)));
+    newCommentDiv.querySelectorAll(".mention").forEach(el => {
+      const uid = el.dataset.uid;
+      el.addEventListener("click", (e) => {
+        e.preventDefault();
+        viewProfile(uid);
+      });
+    });
+    const replyBtn = newCommentDiv.querySelector(`#replyBtn-${commentDoc.id}`);
+    replyBtn.addEventListener("click", () => {
+      const replyForm = newCommentDiv.querySelector(`#replyForm-${commentDoc.id}`);
+      replyForm.classList.toggle("hidden");
+      if (!replyForm.classList.contains("hidden")) replyForm.querySelector("textarea").focus();
+    });
+    newCommentDiv.querySelector(`#replyForm-${commentDoc.id}`).addEventListener("submit", (e) => {
       e.preventDefault();
-      viewProfile(uid);
+      addReply(postId, commentDoc.id, user.uid);
     });
-  });
-  const replyBtn = newCommentDiv.querySelector(`#replyBtn-${commentDoc.id}`);
-  replyBtn.addEventListener("click", () => {
-    const replyForm = newCommentDiv.querySelector(`#replyForm-${commentDoc.id}`);
-    replyForm.classList.toggle("hidden");
-    if (!replyForm.classList.contains("hidden")) replyForm.querySelector("textarea").focus();
-  });
-  newCommentDiv.querySelector(`#replyForm-${commentDoc.id}`).addEventListener("submit", (e) => {
-    e.preventDefault();
-    addReply(postId, commentDoc.id, user.uid);
-  });
-  newCommentDiv.querySelector(".cancel-reply").addEventListener("click", () => {
-    newCommentDiv.querySelector(`#replyForm-${commentDoc.id}`).classList.add("hidden");
-  });
-  const deleteBtn = newCommentDiv.querySelector(`#deleteComment-${commentDoc.id}`);
-  if (deleteBtn) deleteBtn.addEventListener("click", () => deleteComment(postId, commentDoc.id));
-
-  // Update comment count
-  const commentCount = (await totalComments(postId));
-  commentsDiv.dataset.totalComments = commentCount; // Update the stored count
-  toggleLink.textContent = `${commentCount} comments`;
-
-  // Send notification if not the post owner
-  if (user.uid !== postOwnerId) {
-    const commenterData = await fetchCurrentUserData();
-    await addDoc(collection(db, "notifications"), {
-      userId: postOwnerId,
-      type: "comment",
-      message: `${commenterData.name || "Someone"} commented on your post: "${text.substring(0, 50)}..."`,
-      postId,
-      communityId,
-      commentId: commentDoc.id,
-      timestamp: new Date(),
-      seen: false
+    newCommentDiv.querySelector(".cancel-reply").addEventListener("click", () => {
+      newCommentDiv.querySelector(`#replyForm-${commentDoc.id}`).classList.add("hidden");
     });
-    updateNotificationBadge(postOwnerId);
+    const deleteBtn = newCommentDiv.querySelector(`#deleteComment-${commentDoc.id}`);
+    if (deleteBtn) deleteBtn.addEventListener("click", () => deleteComment(postId, commentDoc.id));
+
+    // Send notification and increment unseenCount (client-side)
+    if (user.uid !== postOwnerId) {
+      const commenterData = await fetchCurrentUserData();
+      await addDoc(collection(db, "users", postOwnerId, "notifications"), {
+        type: "new_comment",
+        message: `${commenterData.name || "Someone"} commented on your post: "${text.substring(0, 50)}..."`,
+        postId,
+        communityId,
+        commentId: commentDoc.id,
+        timestamp: new Date(),
+        seen: false
+      });
+
+      const ownerRef = doc(db, "users", postOwnerId);
+      await runTransaction(db, async (transaction) => {
+        const ownerDoc = await transaction.get(ownerRef);
+        const currentCount = ownerDoc.exists() ? ownerDoc.data().unseenCount || 0 : 0;
+        transaction.set(ownerRef, { unseenCount: currentCount + 1, lastUpdated: new Date() }, { merge: true });
+        console.log(`Client: Incremented unseenCount for ${postOwnerId} to ${currentCount + 1}`);
+      });
+      setTimeout(() => updateNotificationBadge(postOwnerId, true), 1000);
+    }
+
+    // Local comment count update, then sync
+    let currentCount = parseInt(commentsDiv.dataset.totalComments || "0", 10);
+    currentCount += 1;
+    commentsDiv.dataset.totalComments = currentCount;
+    toggleLink.textContent = `${currentCount} comments`;
+    setTimeout(async () => {
+      const realCount = await totalComments(postId);
+      commentsDiv.dataset.totalComments = realCount;
+      toggleLink.textContent = `${realCount} comments`;
+    }, 1000);
+
+    document.getElementById(`commentForm-${postId}`).reset();
+  } catch (error) {
+    console.error("Error adding comment:", error);
   }
-
-  document.getElementById(`commentForm-${postId}`).reset();
 }
 
 async function addReply(postId, commentId, commentOwnerId) {
@@ -3336,88 +3349,95 @@ async function addReply(postId, commentId, commentOwnerId) {
   const commData = await getCommData();
   const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
 
-  // Add the reply doc only
-  const replyDoc = await addDoc(collection(db, "communities", communityId, "posts", postId, "comments", commentId, "replies"), {
-    text,
-    userId: user.uid,
-    createdAt: new Date()
-  });
-  console.log(`Added reply ${replyDoc.id} to comment ${commentId}`);
-
-  // Instant UI update
-  const userData = await fetchCurrentUserData();
-  const isReplyAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
-  const replyText = await processMentions(text);
-  const timestamp = new Date().toLocaleString();
-  const newReplyDiv = document.createElement("div");
-  newReplyDiv.className = "reply-bubble";
-  newReplyDiv.innerHTML = `
-    <img src="${userData.profilePhoto || 'https://via.placeholder.com/25'}" class="profile-photo" alt="Profile">
-    <div class="reply-text">
-      <span class="username" data-uid="${user.uid}">${userData.name}</span> ${isReplyAdmin ? '<span class="admin-tag">Admin</span>' : ''}
-      <p>${replyText}</p>
-      <span class="timestamp">${timestamp}</span>
-      ${isAdmin || user.uid === user.uid ? `<button class="delete-reply-btn" id="deleteReply-${replyDoc.id}">Delete</button>` : ""}
-    </div>
-  `;
-
-  if (repliesDiv.style.display !== "none") {
-    repliesDiv.insertBefore(newReplyDiv, repliesDiv.firstChild);
-  } else {
-    repliesDiv.style.display = "block";
-    repliesDiv.innerHTML = "";
-    repliesDiv.appendChild(newReplyDiv);
-    toggleLink.textContent = "Hide replies";
-  }
-
-  // Event listeners
-  newReplyDiv.querySelectorAll(".username").forEach(el => {
-    el.addEventListener("click", () => viewProfile(user.uid));
-  });
-  newReplyDiv.querySelectorAll(".mention").forEach(el => {
-    const uid = el.dataset.uid;
-    el.addEventListener("click", (e) => {
-      e.preventDefault();
-      viewProfile(uid);
+  try {
+    const replyDoc = await addDoc(collection(db, "communities", communityId, "posts", postId, "comments", commentId, "replies"), {
+      text,
+      userId: user.uid,
+      createdAt: new Date()
     });
-  });
-  const deleteBtn = newReplyDiv.querySelector(`#deleteReply-${replyDoc.id}`);
-  if (deleteBtn) deleteBtn.addEventListener("click", () => deleteReply(postId, commentId, replyDoc.id));
+    console.log(`Added reply ${replyDoc.id} to comment ${commentId}`);
 
-  // Fake the count locally, then sync
-  const oldCount = parseInt(repliesDiv.dataset.totalReplies || "0", 10);
-  const tempCount = oldCount + 1;
-  repliesDiv.dataset.totalReplies = tempCount;
-  toggleLink.textContent = repliesDiv.style.display === "none" ? `View ${tempCount} replies` : "Hide replies";
-  console.log(`Faked replyCount to ${tempCount} for UI`);
+    // UI update
+    const userData = await fetchCurrentUserData();
+    const isReplyAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
+    const replyText = await processMentions(text);
+    const timestamp = new Date().toLocaleString();
+    const newReplyDiv = document.createElement("div");
+    newReplyDiv.className = "reply-bubble";
+    newReplyDiv.innerHTML = `
+      <img src="${userData.profilePhoto || 'https://via.placeholder.com/25'}" class="profile-photo" alt="Profile">
+      <div class="reply-text">
+        <span class="username" data-uid="${user.uid}">${userData.name}</span> ${isReplyAdmin ? '<span class="admin-tag">Admin</span>' : ''}
+        <p>${replyText}</p>
+        <span class="timestamp">${timestamp}</span>
+        ${isAdmin || user.uid === user.uid ? `<button class="delete-reply-btn" id="deleteReply-${replyDoc.id}">Delete</button>` : ""}
+      </div>
+    `;
 
-  // Sync with server after Cloud Function runs
-  setTimeout(async () => {
-    const realCount = await totalReplies(postId, commentId);
-    repliesDiv.dataset.totalReplies = realCount;
-    toggleLink.textContent = repliesDiv.style.display === "none" ? `View ${realCount} replies` : "Hide replies";
-    console.log(`Synced replyCount with server: ${realCount}`);
-  }, 1000); // Wait 1s for Cloud Function to finish
+    if (repliesDiv.style.display !== "none") {
+      repliesDiv.insertBefore(newReplyDiv, repliesDiv.firstChild);
+    } else {
+      repliesDiv.style.display = "block";
+      repliesDiv.innerHTML = "";
+      repliesDiv.appendChild(newReplyDiv);
+      toggleLink.textContent = "Hide replies";
+    }
 
-  // Send notification
-  if (user.uid !== commentOwnerId) {
-    const replierData = await fetchCurrentUserData();
-    await addDoc(collection(db, "notifications"), {
-      userId: commentOwnerId,
-      type: "reply",
-      message: `${replierData.name || "Someone"} replied to your comment: "${text.substring(0, 50)}..."`,
-      postId,
-      communityId,
-      commentId,
-      replyId: replyDoc.id,
-      timestamp: new Date(),
-      seen: false
+    // Event listeners
+    newReplyDiv.querySelectorAll(".username").forEach(el => el.addEventListener("click", () => viewProfile(user.uid)));
+    newReplyDiv.querySelectorAll(".mention").forEach(el => {
+      const uid = el.dataset.uid;
+      el.addEventListener("click", (e) => {
+        e.preventDefault();
+        viewProfile(uid);
+      });
     });
-    updateNotificationBadge(commentOwnerId);
-  }
+    const deleteBtn = newReplyDiv.querySelector(`#deleteReply-${replyDoc.id}`);
+    if (deleteBtn) deleteBtn.addEventListener("click", () => deleteReply(postId, commentId, replyDoc.id));
 
-  document.getElementById(`replyForm-${commentId}`).reset();
-  document.getElementById(`replyForm-${commentId}`).classList.add("hidden");
+    // Send notification and increment unseenCount (client-side)
+    if (user.uid !== commentOwnerId) {
+      const replierData = await fetchCurrentUserData();
+      await addDoc(collection(db, "users", commentOwnerId, "notifications"), {
+        type: "new_reply",
+        message: `${replierData.name || "Someone"} replied to your comment: "${text.substring(0, 50)}..."`,
+        postId,
+        communityId,
+        commentId,
+        replyId: replyDoc.id,
+        timestamp: new Date(),
+        seen: false
+      });
+
+      const ownerRef = doc(db, "users", commentOwnerId);
+      await runTransaction(db, async (transaction) => {
+        const ownerDoc = await transaction.get(ownerRef);
+        const currentCount = ownerDoc.exists() ? ownerDoc.data().unseenCount || 0 : 0;
+        transaction.set(ownerRef, { unseenCount: currentCount + 1, lastUpdated: new Date() }, { merge: true });
+        console.log(`Client: Incremented unseenCount for ${commentOwnerId} to ${currentCount + 1}`);
+      });
+      setTimeout(() => updateNotificationBadge(commentOwnerId, true), 1000);
+    }
+
+    // Local reply count update, then sync
+    const oldCount = parseInt(repliesDiv.dataset.totalReplies || "0", 10);
+    const tempCount = oldCount + 1;
+    repliesDiv.dataset.totalReplies = tempCount;
+    toggleLink.textContent = repliesDiv.style.display === "none" ? `View ${tempCount} replies` : "Hide replies";
+    console.log(`Faked replyCount to ${tempCount} for UI`);
+
+    setTimeout(async () => {
+      const realCount = await totalReplies(postId, commentId);
+      repliesDiv.dataset.totalReplies = realCount;
+      toggleLink.textContent = repliesDiv.style.display === "none" ? `View ${realCount} replies` : "Hide replies";
+      console.log(`Synced replyCount with server: ${realCount}`);
+    }, 1000);
+
+    document.getElementById(`replyForm-${commentId}`).reset();
+    document.getElementById(`replyForm-${commentId}`).classList.add("hidden");
+  } catch (error) {
+    console.error("Error adding reply:", error);
+  }
 }
 
 async function viewProfile(uid) {
@@ -3532,7 +3552,6 @@ async function requestProfileAccess(targetId) {
   requestBtn.disabled = true;
 
   const requesterData = await fetchCurrentUserData();
-  console.log(`Requester data for notification:`, requesterData);
 
   const requestDoc = await addDoc(collection(db, "profileRequests"), {
     requesterId: user.uid,
@@ -3543,37 +3562,93 @@ async function requestProfileAccess(targetId) {
 
   requestBtn.dataset.requestId = requestDoc.id;
 
-  await addDoc(collection(db, "notifications"), {
-    userId: targetId,
+  // Write notification to target's subcollection
+  await addDoc(collection(db, "users", targetId, "notifications"), {
     type: "profile_request",
     message: `${requesterData.name || "Someone"} wants to see your full profile!`,
     requestId: requestDoc.id,
-    communityId: communityId, // Add this if you’re in a community context
+    communityId: communityId,
     timestamp: new Date(),
     seen: false
   });
-  updateNotificationBadge(targetId);
 
+  // Force unseenCount increment, create if doesn’t exist
+  const targetRef = doc(db, "users", targetId);
+  await runTransaction(db, async (transaction) => {
+    const targetDoc = await transaction.get(targetRef);
+    const currentCount = targetDoc.exists() ? targetDoc.data().unseenCount || 0 : 0;
+    transaction.set(targetRef, { unseenCount: currentCount + 1, lastUpdated: new Date() }, { merge: true });
+    console.log(`Client: Incremented unseenCount for ${targetId} to ${currentCount + 1}`);
+  });
+
+  setTimeout(() => updateNotificationBadge(targetId, true), 1000); // Shorter delay since we’re doing it client-side
   alert("Profile access requested!");
 }
 
-// Update accept/decline to clean up properly (no pendingRequests references anymore)
 async function acceptProfileRequest(requestId, userId) {
   const requestRef = doc(db, "profileRequests", requestId);
+  const requestDoc = await getDoc(requestRef);
+  const requesterId = requestDoc.data().requesterId;
+  const targetData = await fetchCurrentUserData(); // Get the accepter’s name
+
   await updateDoc(requestRef, { status: "accepted" });
+
+  // Send notification to requester
+  await addDoc(collection(db, "users", requesterId, "notifications"), {
+    type: "profile_request_accepted",
+    message: `${targetData.name || "Someone"} accepted your profile view request!`,
+    requestId: requestId,
+    timestamp: new Date(),
+    seen: false
+  });
+
+  // Force unseenCount increment for requester
+  const requesterRef = doc(db, "users", requesterId);
+  await runTransaction(db, async (transaction) => {
+    const requesterDoc = await transaction.get(requesterRef);
+    const currentCount = requesterDoc.exists() ? requesterDoc.data().unseenCount || 0 : 0;
+    transaction.set(requesterRef, { unseenCount: currentCount + 1, lastUpdated: new Date() }, { merge: true });
+    console.log(`Client: Incremented unseenCount for ${requesterId} to ${currentCount + 1}`);
+  });
+
   alert("Profile view request accepted!");
   closeModal("viewProfileViewRequestsModal");
   await updateProfileRequestsUI(userId);
   viewProfileViewRequests(userId);
+  setTimeout(() => updateNotificationBadge(requesterId, true), 1000);
 }
 
 async function declineProfileRequest(requestId, userId) {
   const requestRef = doc(db, "profileRequests", requestId);
-  await deleteDoc(requestRef); // Deletes the doc—nice!
+  const requestDoc = await getDoc(requestRef);
+  const requesterId = requestDoc.data().requesterId;
+  const targetData = await fetchCurrentUserData(); // Get the decliner’s name
+
+  await deleteDoc(requestRef);
+
+  // Send notification to requester
+  await addDoc(collection(db, "users", requesterId, "notifications"), {
+    type: "profile_request_declined",
+    message: `${targetData.name || "Someone"} declined your profile view request.`,
+    requestId: requestId,
+    timestamp: new Date(),
+    seen: false
+  });
+
+  // Force unseenCount increment for requester
+  const requesterRef = doc(db, "users", requesterId);
+  await runTransaction(db, async (transaction) => {
+    const requesterDoc = await transaction.get(requesterRef);
+    const currentCount = requesterDoc.exists() ? requesterDoc.data().unseenCount || 0 : 0;
+    transaction.set(requesterRef, { unseenCount: currentCount + 1, lastUpdated: new Date() }, { merge: true });
+    console.log(`Client: Incremented unseenCount for ${requesterId} to ${currentCount + 1}`);
+  });
+
   alert("Profile view request declined!");
   closeModal("viewProfileViewRequestsModal");
   await updateProfileRequestsUI(userId);
   viewProfileViewRequests(userId);
+  setTimeout(() => updateNotificationBadge(requesterId, true), 1000);
 }
 
 async function revokeProfileAccess(targetId, requestId) {
@@ -4282,68 +4357,64 @@ async function viewCommunities(userId) {
   };
 }
 
+// Get unseen notification count from user doc
 async function getUnseenNotificationCount(userId, forceRefresh = false) {
   const now = Date.now();
-  let lastCheck = parseInt(sessionStorage.getItem("lastBadgeCheck")) || 0;
-  let cachedCount = parseInt(sessionStorage.getItem("notificationCount")) || 0;
-  const lastTimestamp = sessionStorage.getItem("lastNotifTimestamp") 
-    ? new Date(sessionStorage.getItem("lastNotifTimestamp")) 
-    : new Date(0);
+  const CACHE_KEY = `unseenNotifCount_${userId}`;
+  const TTL = 60 * 60 * 1000; // 1 hour
+  const cachedData = JSON.parse(localStorage.getItem(CACHE_KEY)) || { count: 0, timestamp: 0 };
 
-  // Check if the document is visible (user is on the screen)
-  if (document.visibilityState === "hidden" && !forceRefresh) {
-    console.log("User is away from screen, stopping notification count fetch.");
-    return cachedCount; // Return cached count without fetching
+  if (!forceRefresh && cachedData.timestamp && (now - cachedData.timestamp < TTL)) {
+    console.log(`Using cached unseen count: ${cachedData.count} (age: ${Math.round((now - cachedData.timestamp) / 1000)}s)`);
+    return cachedData.count;
   }
 
-  if (forceRefresh || now - lastCheck >= 60000) { // 60-second throttle
-    console.log("User is on screen, proceeding with notification count fetch.");
-    const q = query(
-      collection(db, "notifications"),
-      where("userId", "==", userId),
-      where("seen", "==", false),
-      where("timestamp", ">", lastTimestamp),
-      orderBy("timestamp", "desc")
-    );
-    const snapshot = await getDocs(q);
-    const newUnseenCount = snapshot.size;
-
-    cachedCount = forceRefresh ? newUnseenCount : cachedCount + newUnseenCount;
-
-    if (!snapshot.empty) {
-      const latestNotif = snapshot.docs[snapshot.docs.length - 1].data();
-      sessionStorage.setItem("lastNotifTimestamp", latestNotif.timestamp.toDate().toISOString());
-      console.log(`Updated last timestamp to: ${latestNotif.timestamp.toDate().toISOString()}`);
-    } else {
-      console.log("No new notifications found.");
-    }
-
-    sessionStorage.setItem("notificationCount", cachedCount);
-    sessionStorage.setItem("lastBadgeCheck", now);
-    console.log(`Notification count updated: ${cachedCount}`);
-  } else {
-    console.log(`Using cached count (${cachedCount}) - within 60-second throttle.`);
+  console.log("Fetching fresh unseen notification count...");
+  const userRef = doc(db, "users", userId);
+  try {
+    const userDoc = await getDoc(userRef);
+    if (!userDoc.exists()) throw new Error("User not found");
+    const newCount = userDoc.data().unseenCount || 0;
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ count: newCount, timestamp: now }));
+    console.log(`Fetched unseen count: ${newCount}`);
+    return newCount;
+  } catch (error) {
+    console.error("Error fetching unseen count:", error);
+    return cachedData.count; // Fallback to cache
   }
-
-  return cachedCount;
 }
 
+// Update badge with unseen count
+
+//This make the chat.js works 
 window.updateNotificationBadge = updateNotificationBadge;
-async function updateNotificationBadge(userId) {
-  const count = await getUnseenNotificationCount(userId);
+
+async function updateNotificationBadge(userId, forceRefresh = true) {
+  const count = await getUnseenNotificationCount(userId, forceRefresh);
   const badge = document.getElementById("notificationCount");
-  badge.textContent = count > 0 ? `(${count})` : ""; // Show "(1)" or nothing
-  badge.style.display = count > 0 ? "inline" : "none";
+  if (badge) {
+    badge.textContent = count > 0 ? `(${count})` : "";
+    badge.style.display = count > 0 ? "inline" : "none";
+    console.log(`Badge updated to: ${count}`);
+  }
+  return count;
 }
 
+// Force refresh on page load
+document.addEventListener("DOMContentLoaded", async () => {
+  const user = auth.currentUser;
+  if (user) {
+    await updateNotificationBadge(user.uid, true);
+  }
+});
+
+// Open notifications modal
 async function openNotificationsModal(userId) {
   const modal = document.getElementById("notificationsModal");
   const notificationList = document.getElementById("notificationList");
   const modalCount = document.getElementById("modalNotificationCount");
   const communityFilter = document.getElementById("communityFilter");
-  const goToCommunityBtn = document.getElementById("goToCommunityBtn");
 
-  // Add buttons if not present
   let refreshBtn = modal.querySelector("#refreshNotificationsBtn");
   if (!refreshBtn) {
     refreshBtn = document.createElement("button");
@@ -4357,15 +4428,22 @@ async function openNotificationsModal(userId) {
   modal.style.display = "flex";
   modal.classList.remove("hidden");
 
-  // Fetch communities for filter
+  // Fetch communities
   const userRef = doc(db, "users", userId);
-  const userDoc = await getDoc(userRef);
-  const communityIds = userDoc.data().communityIds || [];
-  const communityPromises = communityIds.map(id => getDoc(doc(db, "communities", id)));
-  const communityDocs = await Promise.all(communityPromises);
-  const communities = communityDocs
-    .filter(doc => doc.exists())
-    .map(doc => ({ id: doc.id, name: doc.data().name || "Unnamed Community" }));
+  let communities = [];
+  try {
+    const userDoc = await getDoc(userRef);
+    if (!userDoc.exists()) throw new Error("User not found");
+    const communityIds = userDoc.data().communityIds || [];
+    const communityDocs = await Promise.all(communityIds.map(id => getDoc(doc(db, "communities", id))));
+    communities = communityDocs
+      .filter(doc => doc.exists())
+      .map(doc => ({ id: doc.id, name: doc.data().name || "Unnamed Community" }));
+  } catch (error) {
+    console.error("Error fetching communities:", error);
+    notificationList.innerHTML = "<p>Failed to load communities. Try refreshing.</p>";
+    return;
+  }
 
   communityFilter.innerHTML = '<option value="all">All Communities</option>';
   communities.forEach(comm => {
@@ -4375,100 +4453,101 @@ async function openNotificationsModal(userId) {
     communityFilter.appendChild(option);
   });
 
-  let lastDoc = null; // For pagination
   const ITEMS_PER_PAGE = 10;
-  let allNotifications = []; // Cache all fetched notifications
+  let allNotifications = [];
   let displayedCount = 0;
+  let lastDoc = null;
+
+  const initialCount = await updateNotificationBadge(userId); // Use cached count
+  modalCount.textContent = initialCount;
 
   async function loadNotifications(forceRefresh = false, reset = false) {
     const selectedCommunity = communityFilter.value;
-    const lastTimestamp = sessionStorage.getItem("lastNotifTimestamp") 
-      ? new Date(sessionStorage.getItem("lastNotifTimestamp")) 
+    const lastTimestamp = sessionStorage.getItem("lastNotifTimestamp")
+      ? new Date(sessionStorage.getItem("lastNotifTimestamp"))
       : new Date(0);
 
-    if (reset || forceRefresh) {
+    if (reset) {
       lastDoc = null;
       displayedCount = 0;
-      notificationList.innerHTML = "";
-      if (reset) allNotifications = []; // Full reset on filter change
+      allNotifications = [];
+      notificationList.innerHTML = '<div class="loading">Loading...</div>';
     }
 
     let q;
-    if (selectedCommunity === "all") {
-      q = query(
-        collection(db, "notifications"),
-        where("userId", "==", userId),
-        orderBy("timestamp", "desc"),
-        ...(lastDoc ? [startAfter(lastDoc)] : []),
-        limit(ITEMS_PER_PAGE)
-      );
-    } else {
-      q = query(
-        collection(db, "notifications"),
-        where("userId", "==", userId),
-        where("communityId", "==", selectedCommunity),
-        orderBy("timestamp", "desc"),
-        ...(lastDoc ? [startAfter(lastDoc)] : []),
-        limit(ITEMS_PER_PAGE)
-      );
-    }
+    try {
+      const notifsCollection = collection(db, "users", userId, "notifications");
+      if (forceRefresh) {
+        q = query(
+          notifsCollection,
+          where("timestamp", ">", lastTimestamp),
+          orderBy("timestamp", "desc")
+        );
+      } else if (selectedCommunity === "all") {
+        q = query(
+          notifsCollection,
+          orderBy("timestamp", "desc"),
+          ...(lastDoc ? [startAfter(lastDoc)] : []),
+          limit(ITEMS_PER_PAGE)
+        );
+      } else {
+        q = query(
+          notifsCollection,
+          where("communityId", "==", selectedCommunity),
+          orderBy("timestamp", "desc"),
+          ...(lastDoc ? [startAfter(lastDoc)] : []),
+          limit(ITEMS_PER_PAGE)
+        );
+      }
 
-    if (forceRefresh) {
-      // Only fetch new notifications since last timestamp
-      q = query(
-        collection(db, "notifications"),
-        where("userId", "==", userId),
-        where("timestamp", ">", lastTimestamp),
-        orderBy("timestamp", "desc")
-      );
-    }
-
-    const snapshot = await getDocs(q);
-    if (snapshot.empty && displayedCount === 0) {
-      notificationList.innerHTML = "<p>No notifications yet.</p>";
-    } else {
-      snapshot.forEach(doc => {
-        if (!allNotifications.some(n => n.id === doc.id)) {
-          allNotifications.push({ id: doc.id, data: doc.data() });
-        }
-      });
+      const snapshot = await getDocs(q);
+      const newNotifications = snapshot.docs.map(doc => ({ id: doc.id, data: doc.data() }));
 
       if (forceRefresh) {
-        // Prepend new notifications
-        const newContent = snapshot.docs
-          .filter(doc => !notificationList.querySelector(`[data-id="${doc.id}"]`))
-          .map(doc => renderNotification(doc, communities))
-          .join("");
-        notificationList.insertAdjacentHTML("afterbegin", newContent);
+        newNotifications.forEach(notif => {
+          if (!allNotifications.some(n => n.id === notif.id)) {
+            allNotifications.unshift(notif);
+          }
+        });
       } else {
-        // Append batch for Load More
-        const startIdx = displayedCount;
-        const endIdx = Math.min(startIdx + ITEMS_PER_PAGE, allNotifications.length);
-        const batchContent = allNotifications
-          .slice(startIdx, endIdx)
+        newNotifications.forEach(notif => {
+          if (!allNotifications.some(n => n.id === notif.id)) {
+            allNotifications.push(notif);
+          }
+        });
+        lastDoc = snapshot.docs[snapshot.docs.length - 1] || lastDoc;
+      }
+
+      allNotifications.sort((a, b) => b.data.timestamp.toDate() - a.data.timestamp.toDate());
+
+      if (allNotifications.length === 0) {
+        notificationList.innerHTML = "<p>No notifications yet.</p>";
+      } else {
+        const startIdx = reset ? 0 : displayedCount;
+        const endIdx = forceRefresh ? allNotifications.length : Math.min(startIdx + ITEMS_PER_PAGE, allNotifications.length);
+        const content = allNotifications
+          .slice(0, endIdx)
           .map(notif => renderNotification({ id: notif.id, data: () => notif.data }, communities))
           .join("");
-        notificationList.insertAdjacentHTML("beforeend", batchContent);
+        notificationList.innerHTML = content;
         displayedCount = endIdx;
-        lastDoc = snapshot.docs[snapshot.docs.length - 1];
       }
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+      notificationList.innerHTML = "<p>Failed to load notifications. Try refreshing.</p>";
+      return;
     }
 
-    // Update unseen count
     const unseenCount = await getUnseenNotificationCount(userId, forceRefresh);
     modalCount.textContent = unseenCount;
-
-    // Update Load More/Less buttons
     updateLoadButtons();
-
-    // Attach event listeners
     attachNotificationListeners();
   }
 
   function renderNotification(doc, communities) {
     const notif = doc.data();
     const timestamp = new Date(notif.timestamp.toDate()).toLocaleString();
-    let displayMessage = notif.message;
+    let displayMessage = notif.message || "No message";
     if (notif.communityId && notif.type !== "ban_appeal") {
       const communityName = communities.find(c => c.id === notif.communityId)?.name || "Unknown Community";
       displayMessage += ` (${communityName})`;
@@ -4512,16 +4591,21 @@ async function openNotificationsModal(userId) {
         if (text) {
           const notifId = form.dataset.id;
           const notif = allNotifications.find(n => n.id === notifId).data;
-          await addDoc(collection(db, "banAppeals"), {
-            userId: userId,
-            communityId: notif.communityId,
-            message: text,
-            timestamp: new Date(),
-            notificationId: notifId
-          });
-          await updateDoc(doc(db, "notifications", notifId), { appealSubmitted: true });
-          alert("Appeal sent!");
-          loadNotifications(true); // Refresh after submission
+          try {
+            await addDoc(collection(db, "banAppeals"), {
+              userId: userId,
+              communityId: notif.communityId,
+              message: text,
+              timestamp: new Date(),
+              notificationId: notifId
+            });
+            await updateDoc(doc(db, "users", userId, "notifications", notifId), { appealSubmitted: true });
+            alert("Appeal sent!");
+            await loadNotifications(true);
+          } catch (error) {
+            console.error("Error submitting appeal:", error);
+            alert("Failed to send appeal.");
+          }
         }
       });
     });
@@ -4554,19 +4638,22 @@ async function openNotificationsModal(userId) {
     if (moreBtn) moreBtn.remove();
     if (lessBtn) lessBtn.remove();
 
-    if (allNotifications.length > displayedCount) {
+    const totalFetched = allNotifications.length;
+    const hasMore = totalFetched > displayedCount;
+
+    if (hasMore) {
       moreBtn = document.createElement("button");
       moreBtn.id = "loadMoreBtn";
-      moreBtn.textContent = "Load More";
+      moreBtn.textContent = `See More (${totalFetched - displayedCount} left)`;
       moreBtn.className = "load-more-btn";
-      moreBtn.onclick = () => loadNotifications();
+      moreBtn.onclick = () => loadNotifications(false, false);
       notificationList.appendChild(moreBtn);
     }
 
     if (displayedCount > ITEMS_PER_PAGE) {
       lessBtn = document.createElement("button");
       lessBtn.id = "loadLessBtn";
-      lessBtn.textContent = "Load Less";
+      lessBtn.textContent = "See Less";
       lessBtn.className = "load-less-btn";
       lessBtn.onclick = () => {
         displayedCount = ITEMS_PER_PAGE;
@@ -4581,74 +4668,73 @@ async function openNotificationsModal(userId) {
     }
   }
 
-  // Initial load
-  await loadNotifications();
+  try {
+    await loadNotifications();
+  } catch (error) {
+    console.error("Initial load failed:", error);
+    notificationList.innerHTML = "<p>Failed to load notifications. Try refreshing.</p>";
+  }
 
-  // Refresh logic
   refreshBtn.onclick = async () => {
     refreshBtn.disabled = true;
     refreshBtn.textContent = "Refreshing...";
-    await loadNotifications(true); // Fetch new notifications only
-    await updateNotificationBadge(userId); // Sync badge
+    try {
+      await loadNotifications(true);
+      await updateNotificationBadge(userId, true);
+    } catch (error) {
+      console.error("Refresh failed:", error);
+      notificationList.innerHTML = "<p>Refresh failed. Try again.</p>";
+    }
     refreshBtn.disabled = false;
     refreshBtn.textContent = "Refresh";
   };
 
-  // Hint for new notifications
-  setInterval(async () => {
-    const currentCount = parseInt(modalCount.textContent) || 0;
-    const latestCount = await getUnseenNotificationCount(userId);
-    if (latestCount > currentCount && !modal.querySelector("#new-notif-hint")) {
-      const hint = document.createElement("span");
-      hint.id = "new-notif-hint";
-      hint.textContent = "New notifications available—refresh!";
-      hint.style.color = "#ff9800";
-      modal.querySelector(".modal-content").prepend(hint);
-    }
-  }, 15000); // Check every 15s
-
-  communityFilter.onchange = () => loadNotifications(false, true); // Reset on filter change
+  communityFilter.onchange = () => loadNotifications(false, true);
 }
 
+// Mark notification as seen and decrement unseenCount
 async function markNotificationSeen(notifId) {
   const userId = auth.currentUser?.uid;
   if (!userId) {
-    console.error("No authenticated user found to mark notification.");
+    console.error("No authenticated user found.");
     return;
   }
 
-  const notifRef = doc(db, "notifications", notifId);
+  const notifRef = doc(db, "users", userId, "notifications", notifId);
+  const userRef = doc(db, "users", userId);
 
   try {
-    // Check if notification exists
     const notifDoc = await getDoc(notifRef);
     if (!notifDoc.exists()) {
-      console.warn(`Notification ${notifId} does not exist, skipping mark as seen.`);
+      console.warn(`Notification ${notifId} not found.`);
       return;
     }
 
     const notifData = notifDoc.data();
     if (notifData.seen) {
-      console.log(`Notification ${notifId} is already marked as seen, no update needed.`);
+      console.log(`Notification ${notifId} already seen.`);
       return;
     }
 
-    // Update Firestore
-    await updateDoc(notifRef, { seen: true });
-    console.log(`Marked notification ${notifId} as seen in Firestore.`);
+    await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists()) throw new Error("User not found");
+      const currentCount = userDoc.data().unseenCount || 0;
+      transaction.update(notifRef, { seen: true });
+      if (currentCount > 0) {
+        transaction.update(userRef, { unseenCount: currentCount - 1, lastUpdated: new Date() });
+      }
+    });
 
-    // Update UI immediately
+    console.log(`Marked notification ${notifId} as seen.`);
+
     const button = document.querySelector(`.mark-seen-btn2[data-id="${notifId}"]`);
     if (button) {
       button.disabled = true;
       button.textContent = "Seen";
       button.classList.add("disabled");
-      console.log(`Updated UI for notification ${notifId} to 'Seen'.`);
-    } else {
-      console.warn(`No UI button found for notification ${notifId}.`);
     }
 
-    // Sync badge and modal
     await updateNotificationBadge(userId);
     if (!document.getElementById("notificationsModal").classList.contains("hidden")) {
       await openNotificationsModal(userId);
@@ -4658,22 +4744,23 @@ async function markNotificationSeen(notifId) {
   }
 }
 
+// Clear notifications and reset unseenCount
 async function clearNotifications() {
   const userId = auth.currentUser?.uid;
   if (!userId) {
-    console.error("No authenticated user found to clear notifications.");
+    console.error("No authenticated user found.");
     return;
   }
 
   const communityFilter = document.getElementById("communityFilter");
   if (!communityFilter) {
-    console.error("Community filter element not found.");
+    console.error("Community filter not found.");
     return;
   }
 
   const selectedCommunity = communityFilter.value;
-  const confirmMessage = selectedCommunity === "all" 
-    ? "Clear all notifications?" 
+  const confirmMessage = selectedCommunity === "all"
+    ? "Clear all notifications?"
     : `Clear notifications for ${communityFilter.options[communityFilter.selectedIndex]?.text || "selected community"} only?`;
 
   if (!confirm(confirmMessage)) {
@@ -4682,33 +4769,34 @@ async function clearNotifications() {
   }
 
   try {
+    const notifsCollection = collection(db, "users", userId, "notifications");
     let q;
     if (selectedCommunity === "all") {
-      q = query(collection(db, "notifications"), where("userId", "==", userId));
+      q = query(notifsCollection);
     } else {
-      q = query(
-        collection(db, "notifications"),
-        where("userId", "==", userId),
-        where("communityId", "==", selectedCommunity)
-      );
+      q = query(notifsCollection, where("communityId", "==", selectedCommunity));
     }
 
     const snapshot = await getDocs(q);
     if (snapshot.empty) {
-      console.log("No notifications found to clear.");
+      console.log("No notifications to clear.");
       await updateNotificationBadge(userId);
       await openNotificationsModal(userId);
       return;
     }
 
-    console.log(`Found ${snapshot.size} notifications to clear.`);
-    const deletePromises = snapshot.docs.map(async (doc) => {
-      console.log(`Deleting notification ${doc.id}.`);
-      return deleteDoc(doc.ref);
+    const userRef = doc(db, "users", userId);
+    await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists()) throw new Error("User not found");
+      const currentCount = userDoc.data().unseenCount || 0;
+      const unseenToDelete = snapshot.docs.filter(doc => !doc.data().seen).length;
+      const newCount = Math.max(0, currentCount - unseenToDelete);
+      transaction.update(userRef, { unseenCount: newCount, lastUpdated: new Date() });
+      snapshot.docs.forEach(doc => transaction.delete(doc.ref));
     });
 
-    await Promise.all(deletePromises);
-    console.log("All targeted notifications cleared successfully.");
+    console.log(`Cleared ${snapshot.size} notifications.`);
 
     await updateNotificationBadge(userId);
     await openNotificationsModal(userId);
@@ -4760,7 +4848,7 @@ async function getCommData(forceRefresh = false) {
   }
 
   if (commDataCache && (now - lastFetchTime < CACHE_TTL) && !forceRefresh) {
-    console.log(`Using cached community data (last fetched ${Math.round((now - lastFetchTime) / 1000)}s ago)`);
+    //console.log(`Using cached community data (last fetched ${Math.round((now - lastFetchTime) / 1000)}s ago)`);
     return commDataCache;
   }
 
