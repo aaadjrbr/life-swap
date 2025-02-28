@@ -1557,3 +1557,27 @@ color: #dc3545;
   grid-template-columns: 1fr;
 }
 }
+
+.search-bar {
+display: flex;
+align-items: center;
+gap: 8px; /* Space between input and buttons */
+}
+
+#postSearch {
+flex-grow: 1; /* Input takes most space */
+padding: 8px;
+}
+
+#pasteSearchBtn, #clearSearchBtn {
+padding: 8px 12px;
+background-color: #f0f0f0;
+border: 1px solid #ccc;
+border-radius: 4px;
+cursor: pointer;
+color: #333;
+}
+
+#pasteSearchBtn:hover, #clearSearchBtn:hover {
+background-color: #e0e0e0;
+}

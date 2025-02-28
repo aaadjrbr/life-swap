@@ -90,7 +90,7 @@
 
     <!-- Community Posts Carousel -->
 <div id="postsCarousel" class="posts-carousel">
-  <h3>Quick View (Posts)</h3>
+  <h3>Trending Posts 🔥</h3>
   <button class="carousel-arrow prev" id="carouselPrevBtn">&lt;</button>
   <div class="carousel-track" id="carouselTrack">
     <!-- Posts populated dynamically -->
@@ -136,6 +136,8 @@
       </div>
       <div class="search-bar">
         <input type="text" id="postSearch" placeholder="Search by Post ID...">
+        <button type="button" id="pasteSearchBtn" title="Paste from clipboard">Paste</button>
+        <button type="button" id="clearSearchBtn" title="Clear search">Clear</button>
       </div>
       <div id="search-scrolldown"></div>
       <button id="refreshPostsBtn">Refresh Posts</button>
@@ -475,12 +477,30 @@ enableIndexedDbPersistence(db)
         const viewCommunitiesBtn = document.getElementById("viewCommunitiesBtn");
         const viewSavedPostsBtn = document.getElementById("viewSavedPostsBtn");
         const viewChatsBtn = document.getElementById("viewChatsBtn");
+        const postSearchInput = document.getElementById("postSearch");
+        const pasteSearchBtn = document.getElementById("pasteSearchBtn");
+        const clearSearchBtn = document.getElementById("clearSearchBtn");
         
         if (postIdSearch) {
           postIdSearch.addEventListener("input", debounce((e) => {
             searchPostsById(e.target.value);
           }, 300));
         }
+        pasteSearchBtn.addEventListener("click", async () => {
+          try {
+            const clipboardText = await navigator.clipboard.readText();
+            postSearchInput.value = clipboardText;
+            searchPostsById(clipboardText); // Trigger search immediately
+          } catch (error) {
+            console.error("Paste failed:", error);
+            alert("Couldn’t paste—check clipboard permissions!");
+          }
+        });
+
+        clearSearchBtn.addEventListener("click", () => {        
+  postSearchInput.value = "";
+  searchPostsById(""); // Reset to full list
+});
         if (categoryFilter) {
           categoryFilter.addEventListener("change", () => {
             loadPosts(communityId, true);
@@ -1396,14 +1416,18 @@ async function createPost() {
       category,
       lookingFor,
       offering,
-      communityId: commId // Add this to track the community (optional, helps deletion)
+      communityId: commId, // Good to keep this for tracking
+      likes: 0,            // Already added—looks good!
+      likedBy: [],         // Already added—looks good!
+      commentCount: 0      // Optional: Add this since your renderPosts uses it
     };
+    
     return addDoc(collection(db, "communities", commId, "posts"), postData);
   });
   const postRefs = await Promise.all(postPromises);
 
   // Alert with all post IDs
-  alert(`Post created in ${selectedCommunities.length} community${selectedCommunities.length > 1 ? 'ies' : ''}! IDs: ${postRefs.map(ref => ref.id).join(", ")}`);
+  alert(`Post created in ${selectedCommunities.length} communit${selectedCommunities.length > 1 ? 'ies' : 'y'}! IDs: ${postRefs.map(ref => ref.id).join(", ")}`);
   document.getElementById("newPostForm").reset();
   totalYourPosts = 0;
   loadYourPosts(user.uid);
@@ -1792,10 +1816,27 @@ function setupCommunityCarousel(postId) {
 }
 
 // Add these globals near your other vars (around line 320-ish in your original)
+// Add these globals near your other vars (around line 320-ish in your original)
+// These are already in your code, just confirming they’re there
 let lastCarouselDoc = null;
 let firstCarouselDoc = null;
 let totalCarouselPosts = 0;
 let lastFilterState = { lookingFor: "", offering: "" };
+let cachedMemberCount = null; // Cache member count
+
+// Helper to get member count (cached)
+async function getMemberCount(communityId) {
+  if (cachedMemberCount !== null) return cachedMemberCount;
+
+  const commRef = doc(db, "communities", communityId);
+  const commDoc = await getDoc(commRef);
+  if (!commDoc.exists()) {
+    console.error("Community not found!");
+    return 0;
+  }
+  cachedMemberCount = (commDoc.data().members || []).length;
+  return cachedMemberCount;
+}
 
 async function loadCarouselPosts(communityId, direction = 1) {
   const track = document.getElementById("carouselTrack");
@@ -1807,13 +1848,18 @@ async function loadCarouselPosts(communityId, direction = 1) {
 
   track.innerHTML = '<div class="loading">Loading...</div>';
 
-  // Get total post count if not cached or filters changed
+  // Get member count and set trending threshold
+  const memberCount = await getMemberCount(communityId);
+  const minLikesThreshold = Math.max(5, Math.ceil(memberCount * 0.01)); // 1% of members or 5, whichever’s higher
+
+  // Get total trending post count if not cached or filters changed
   const currentFilterState = { lookingFor: lookingForFilter, offering: offeringFilter };
   if (totalCarouselPosts === 0 || 
       lastFilterState.lookingFor !== currentFilterState.lookingFor || 
       lastFilterState.offering !== currentFilterState.offering) {
     const totalQ = query(
       collection(db, "communities", communityId, "posts"),
+      where("likes", ">=", minLikesThreshold), // Only posts with decent likes
       ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
       ...(offeringFilter ? [where("offering", "==", offeringFilter)] : [])
     );
@@ -1821,8 +1867,8 @@ async function loadCarouselPosts(communityId, direction = 1) {
     lastFilterState = currentFilterState;
   }
 
-  // Calculate max index (for reference, not disabling)
-  const maxIndex = Math.ceil(totalCarouselPosts / postsPerPage) - 1;
+  // Calculate max index
+  const maxIndex = Math.max(0, Math.ceil(totalCarouselPosts / postsPerPage) - 1);
 
   // Handle looping
   if (carouselIndex < 0) {
@@ -1831,12 +1877,13 @@ async function loadCarouselPosts(communityId, direction = 1) {
     carouselIndex = 0; // Loop to start
   }
 
-  // Build the query based on direction
+  // Build the query: only trending posts (likes >= threshold)
   let q = query(
     collection(db, "communities", communityId, "posts"),
+    where("likes", ">=", minLikesThreshold), // Filter out low-like posts
     ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
     ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
-    orderBy("createdAt", "desc")
+    orderBy("likes", "desc")
   );
 
   if (direction > 0 && carouselIndex > 0 && lastCarouselDoc && carouselIndex <= maxIndex) {
@@ -1852,9 +1899,10 @@ async function loadCarouselPosts(communityId, direction = 1) {
     } else if (carouselIndex === maxIndex) {
       q = query(
         collection(db, "communities", communityId, "posts"),
+        where("likes", ">=", minLikesThreshold),
         ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
         ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
-        orderBy("createdAt", "desc"),
+        orderBy("likes", "desc"),
         limitToLast(postsPerPage) // Fetch last batch
       );
     }
@@ -1873,18 +1921,20 @@ async function loadCarouselPosts(communityId, direction = 1) {
       carouselIndex = 0;
       q = query(
         collection(db, "communities", communityId, "posts"),
+        where("likes", ">=", minLikesThreshold),
         ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
         ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
-        orderBy("createdAt", "desc"),
+        orderBy("likes", "desc"),
         limit(postsPerPage)
       );
     } else if (direction < 0) {
       carouselIndex = maxIndex;
       q = query(
         collection(db, "communities", communityId, "posts"),
+        where("likes", ">=", minLikesThreshold),
         ...(lookingForFilter ? [where("lookingFor", "==", lookingForFilter)] : []),
         ...(offeringFilter ? [where("offering", "==", offeringFilter)] : []),
-        orderBy("createdAt", "desc"),
+        orderBy("likes", "desc"),
         limitToLast(postsPerPage)
       );
     }
@@ -1897,7 +1947,7 @@ async function loadCarouselPosts(communityId, direction = 1) {
   }
 
   // Render posts
-  track.innerHTML = posts.length === 0 ? '<p class="no-posts">No posts here!</p>' : "";
+  track.innerHTML = posts.length === 0 ? '<p class="no-posts">No trending posts yet!</p>' : "";
   for (const post of posts) {
     const userData = await fetchUserData(post.userId);
     const postDiv = document.createElement("div");
@@ -1906,6 +1956,7 @@ async function loadCarouselPosts(communityId, direction = 1) {
       <h4>${post.title || "Untitled"}</h4>
       <p>Looking For: ${post.lookingFor || "N/A"}</p>
       <p>Offering: ${post.offering || "N/A"}</p>
+      <p>Likes: ${post.likes || 0}</p>
       <p>By: <span class="username" data-uid="${post.userId}">${userData.name || "Unknown"}</span></p>
       <button class="copy-btn" data-post-id="${post.id}">Copy Post ID</button>
     `;
@@ -1917,9 +1968,9 @@ async function loadCarouselPosts(communityId, direction = 1) {
     });
   }
 
-  // Keep buttons enabled for infinite looping
-  prevBtn.disabled = false;
-  nextBtn.disabled = false;
+  // Keep buttons enabled for looping, disable if no posts
+  prevBtn.disabled = totalCarouselPosts === 0;
+  nextBtn.disabled = totalCarouselPosts === 0;
 }
 
 function slideCarousel(direction) {
@@ -1956,8 +2007,107 @@ window.addEventListener("touchmove", debounce(() => {
 }, 200));
 
 
-// Add this delay helper right before loadPosts
+// Add delay helper
+// Add delay helper
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// Session storage keys with expiration
+const POST_CACHE_KEY = `postCache_${communityId}`;
+const LIKED_PREFS_KEY = `likedPrefs_${communityId}`;
+const CACHE_TIMESTAMP_KEY = `cacheTimestamp_${communityId}`;
+const CACHE_EXPIRY_HOURS = 8; // Expires after 8 hours
+
+// Helper to check/set cache expiration
+function isCacheExpired() {
+  const timestamp = sessionStorage.getItem(CACHE_TIMESTAMP_KEY);
+  if (!timestamp) return true;
+  const ageMs = Date.now() - parseInt(timestamp);
+  return ageMs > (CACHE_EXPIRY_HOURS * 60 * 60 * 1000); // 8 hours in ms
+}
+
+function resetCache() {
+  sessionStorage.removeItem(POST_CACHE_KEY);
+  sessionStorage.removeItem(LIKED_PREFS_KEY);
+  sessionStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
+}
+
+// Helper to get/set liked preferences
+function getLikedPrefs() {
+  if (isCacheExpired()) resetCache();
+  const cached = sessionStorage.getItem(LIKED_PREFS_KEY);
+  if (!cached) return { categories: new Set(), offerings: new Set() };
+  const parsed = JSON.parse(cached);
+  return {
+    categories: new Set(parsed.categories), // Convert array back to Set
+    offerings: new Set(parsed.offerings)    // Convert array back to Set
+  };
+}
+
+function addLikedPref(category, offering) {
+  const prefs = getLikedPrefs();
+  prefs.categories.add(category);
+  prefs.offerings.add(offering);
+  sessionStorage.setItem(LIKED_PREFS_KEY, JSON.stringify({
+    categories: Array.from(prefs.categories),
+    offerings: Array.from(prefs.offerings)
+  }));
+}
+
+// Helper to convert Timestamp to Date for caching
+function normalizePostData(postData) {
+  return {
+    ...postData,
+    createdAt: postData.createdAt instanceof Object && 'toDate' in postData.createdAt 
+      ? postData.createdAt.toDate() 
+      : new Date(postData.createdAt) // Handle plain dates or serialized objects
+  };
+}
+
+// Helper to get/set cached posts
+function getCachedPosts() {
+  if (isCacheExpired()) resetCache();
+  const cached = sessionStorage.getItem(POST_CACHE_KEY);
+  if (!cached) return new Map();
+  const postArray = JSON.parse(cached);
+  return new Map(postArray.map(([id, post]) => {
+    // Rehydrate createdAt as a Date
+    post.data.createdAt = new Date(post.data.createdAt);
+    return [id, post];
+  }));
+}
+
+function setCachedPosts(postMap) {
+  const serializableMap = new Map(Array.from(postMap.entries()).map(([id, post]) => {
+    return [id, { ...post, data: { ...post.data, createdAt: post.data.createdAt.toISOString() } }];
+  }));
+  sessionStorage.setItem(POST_CACHE_KEY, JSON.stringify(Array.from(serializableMap.entries())));
+  if (!sessionStorage.getItem(CACHE_TIMESTAMP_KEY)) {
+    sessionStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
+  }
+}
+
+// Post scoring with personalization and new post boost
+function getPostScore(postData, likedPrefs) {
+  const now = Date.now();
+  const ageInHours = (now - postData.createdAt.getTime()) / (1000 * 60 * 60); // Hours old
+  const recencyScore = Math.max(0, 30 - (ageInHours / 24)) / 30; // Fade over 30 days
+  const likesScore = Math.min(postData.likes || 0, 50) / 50; // Cap at 50
+  const commentsScore = Math.min(postData.commentCount || 0, 20) / 20; // Cap at 20
+
+  let score = (0.4 * likesScore) + (0.4 * commentsScore) + (0.2 * recencyScore);
+  const userCategories = new Set(likedPrefs.categories);
+  const userOfferings = new Set(likedPrefs.offerings);
+  if (userCategories.has(postData.category) || userOfferings.has(postData.offering)) {
+    score += 0.3; // Boost for matching liked types
+  }
+
+  // Boost new posts (<24 hours) by +0.5
+  if (ageInHours < 24) {
+    score += 0.5;
+  }
+
+  return Math.min(1.5, score); // Cap at 1.5 to allow new post boost
+}
 
 async function loadPosts(communityId, reset = false) {
   if (isFetching || isSearching) return;
@@ -1979,50 +2129,88 @@ async function loadPosts(communityId, reset = false) {
     postCache.clear();
   }
 
+  const cachedPosts = getCachedPosts();
+  const likedPrefs = getLikedPrefs();
+  const batchSize = 50; // Fetch 50 to score, pick top 20
+
+  // Get latest timestamp from cache
+  let lastCachedTime = null;
+  if (cachedPosts.size > 0) {
+    const times = Array.from(cachedPosts.values()).map(post => post.data.createdAt.getTime());
+    lastCachedTime = Math.max(...times);
+    console.log(`Using ${cachedPosts.size} cached posts, last cached at: ${new Date(lastCachedTime).toLocaleString()}`);
+  } else {
+    console.log("No cached posts found—fetching fresh batch.");
+  }
+
+  // Fetch only new posts since last cached time
   let q = query(
     collection(db, "communities", communityId, "posts"),
     ...(filters.category ? [where("category", "==", filters.category)] : []),
     ...(filters.lookingFor ? [where("lookingFor", "==", filters.lookingFor)] : []),
     ...(filters.offering ? [where("offering", "==", filters.offering)] : []),
     orderBy("createdAt", "desc"),
-    limit(POSTS_PER_LOAD)
+    limit(batchSize),
+    ...(lastPostDoc && !reset ? [startAfter(lastPostDoc)] : []),
+    ...(lastCachedTime ? [where("createdAt", ">", new Date(lastCachedTime))] : [])
   );
-  if (lastPostDoc && !reset) q = query(q, startAfter(lastPostDoc));
 
   try {
     const snapshot = await getDocs(q);
-    if (snapshot.empty && !initialPostsLoaded) {
-      postsDiv.innerHTML = "<p>No posts match your filters!</p>";
+    const newPosts = snapshot.docs.map(doc => ({
+      id: doc.id,
+      data: normalizePostData(doc.data()),
+      score: getPostScore(normalizePostData(doc.data()), likedPrefs)
+    }));
+
+    console.log(`Fetched ${newPosts.length} new posts.`);
+
+    // Merge new posts into cache
+    newPosts.forEach(post => cachedPosts.set(post.id, post));
+    setCachedPosts(cachedPosts);
+
+    // Score all cached posts and pick top POSTS_PER_LOAD
+    const allPosts = Array.from(cachedPosts.values()).map(post => ({
+      ...post,
+      score: getPostScore(post.data, likedPrefs)
+    }));
+    allPosts.sort((a, b) => b.score - a.score);
+
+    const postsToShow = allPosts
+      .filter(post => !loadedPostIds.has(post.id))
+      .slice(0, POSTS_PER_LOAD);
+
+    console.log(`Showing ${postsToShow.length} posts: ${newPosts.length} new, ${postsToShow.length - newPosts.length} cached.`);
+
+    if (postsToShow.length === 0 && !initialPostsLoaded) {
+      postsDiv.innerHTML = "<p>No new posts to show!</p>";
       caughtUpDiv.style.display = "none";
       isFetching = false;
       return;
     }
 
-    lastPostDoc = snapshot.docs[snapshot.docs.length - 1];
+    lastPostDoc = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : lastPostDoc;
     totalPosts = totalPosts || parseInt(sessionStorage.getItem(`totalPosts_${communityId}`)) || (await getTotalPosts(communityId));
     sessionStorage.setItem(`totalPosts_${communityId}`, totalPosts);
     initialPostsLoaded = true;
 
-    const newPosts = snapshot.docs.filter(doc => !loadedPostIds.has(doc.id));
-    newPosts.forEach(doc => postCache.set(doc.id, { id: doc.id, data: doc.data() }));
-
-    // Fetch saved posts for the current user once
-    const user = auth.currentUser;
-    const userRef = doc(db, "users", user.uid);
-    const savedPostsQ = query(collection(userRef, "savedPosts"), where("communityId", "==", communityId));
+    postsToShow.forEach(post => postCache.set(post.id, { id: post.id, data: post.data }));
+    const savedPostsQ = query(collection(doc(db, "users", auth.currentUser.uid), "savedPosts"), where("communityId", "==", communityId));
     const savedPostsSnapshot = await getDocs(savedPostsQ);
     const savedPostIds = new Set(savedPostsSnapshot.docs.map(doc => doc.data().postId));
 
-    await renderPosts({ docs: newPosts }, postsDiv, savedPostIds); // Pass savedPostIds to renderPosts
+    await renderPosts({ docs: postsToShow.map(post => ({ id: post.id, data: () => post.data })) }, postsDiv, savedPostIds);
 
-    // Memory management (unchanged)
+    // Memory management
     const MAX_CACHED_POSTS = 100;
     if (loadedPostIds.size > MAX_CACHED_POSTS) {
       const oldestIds = [...loadedPostIds].slice(0, loadedPostIds.size - MAX_CACHED_POSTS);
       oldestIds.forEach(id => {
         loadedPostIds.delete(id);
         postCache.delete(id);
+        cachedPosts.delete(id);
       });
+      setCachedPosts(cachedPosts);
     }
 
     if (loadedPostIds.size > POSTS_PER_LOAD) {
@@ -2042,7 +2230,7 @@ async function loadPosts(communityId, reset = false) {
     postsDiv.innerHTML += "<p>Oops, something broke! Refresh, bro.</p>";
   } finally {
     isFetching = false;
-    await delay(200); // Throttle subsequent calls
+    await delay(200);
   }
 }
 
@@ -2050,12 +2238,11 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
   const commData = await getCommData();
   const isAdmin = commData?.admins?.includes(auth.currentUser.uid) || commData?.creatorId === auth.currentUser.uid;
   
-  // Batch fetch all user data at once (unchanged)
   const uids = [...new Set(snapshot.docs.map(doc => doc.data().userId).filter(Boolean))];
   await fetchUserData(uids);
 
-  for (const doc of snapshot.docs) {
-    const postId = doc.id;
+  for (const postDoc of snapshot.docs) {
+    const postId = postDoc.id;
     if (loadedPostIds.has(postId)) continue;
     loadedPostIds.add(postId);
 
@@ -2065,11 +2252,11 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
     const commentsQ = query(collection(db, "communities", communityId, "posts", postId, "comments"), orderBy("createdAt", "desc"));
     const commentsSnapshot = await getDocs(commentsQ);
     const commentCount = commentsSnapshot.size;
-    const timestamp = post.createdAt ? new Date(post.createdAt.toDate()).toLocaleString() : "N/A";
+    const timestamp = post.createdAt ? new Date(post.createdAt).toLocaleString() : "N/A";
     const photoUrls = post.photoUrls || [];
     const photoCount = photoUrls.length;
     const reportStatus = await getPostReportStatus(postId);
-    const isSaved = savedPostIds.has(postId); // Check if post is saved
+    const isSaved = savedPostIds.has(postId);
 
     if (reportStatus?.isHidden) {
       loadedPostIds.delete(postId);
@@ -2097,6 +2284,7 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
       <p class="timestamp">${timestamp}</p>
       <p class="post-id">Post ID: ${postId} <button class="copy-btn" data-post-id="${postId}">Copy</button></p>
       <button class="save-toggle-btn" data-post-id="${postId}" data-community-id="${communityId}">${isSaved ? "Unsave" : "Save"}</button>
+      <button class="like-btn" data-post-id="${postId}">${(post.likedBy || []).includes(auth.currentUser.uid) ? 'Unlike' : 'Like'} (${post.likes || 0})</button>
       <button class="report-btn" id="reportPost-${postId}">Report Post</button>
       ${post.userId === auth.currentUser.uid || isAdmin ? `<button class="delete-btn" id="deletePost-${postId}">Delete Post</button>` : ""}
       ${reportStatus?.isOwner && reportStatus.reportCount === 1 ? `
@@ -2126,40 +2314,69 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
 
     postsDiv.appendChild(postDiv);
 
-    // Add event listener for save/unsave toggle with debouncing and listener cleanup
+    // Like/Unlike button logic with personalization
+    const likeBtn = postDiv.querySelector(`.like-btn[data-post-id="${postId}"]`);
+    likeBtn.addEventListener("click", async () => {
+      const postRef = doc(db, "communities", communityId, "posts", postId);
+      const postSnapshot = await getDoc(postRef);
+      
+      if (!postSnapshot.exists()) {
+        alert("Post not found—might’ve been deleted!");
+        return;
+      }
+
+      const postData = normalizePostData(postSnapshot.data());
+      const userId = auth.currentUser.uid;
+      const likedBy = postData.likedBy || [];
+      let newLikes = postData.likes || 0;
+      let newLikedBy = [...likedBy];
+
+      if (likedBy.includes(userId)) {
+        newLikedBy = newLikedBy.filter(id => id !== userId);
+        newLikes = Math.max(0, newLikes - 1);
+        await updateDoc(postRef, {
+          likes: newLikes,
+          likedBy: newLikedBy
+        });
+        likeBtn.textContent = `Like (${newLikes})`;
+      } else {
+        newLikedBy.push(userId);
+        newLikes += 1;
+        await updateDoc(postRef, {
+          likes: newLikes,
+          likedBy: newLikedBy
+        });
+        likeBtn.textContent = `Unlike (${newLikes})`;
+        addLikedPref(postData.category, postData.offering);
+      }
+
+      // Update cached post
+      const cachedPosts = getCachedPosts();
+      cachedPosts.set(postId, { id: postId, data: { ...postData, likes: newLikes, likedBy: newLikedBy } });
+      setCachedPosts(cachedPosts);
+    });
+
+    // Rest of your event listeners
     const saveToggleBtn = postDiv.querySelector(`.save-toggle-btn[data-post-id="${postId}"]`);
-    // Clone to remove any existing listeners
     saveToggleBtn.replaceWith(saveToggleBtn.cloneNode(true));
     const newSaveToggleBtn = postDiv.querySelector(`.save-toggle-btn[data-post-id="${postId}"]`);
     
     let isProcessing = false;
     newSaveToggleBtn.addEventListener("click", (e) => {
       e.preventDefault();
-      if (isProcessing) {
-        console.log(`Click ignored for postId: ${postId} - still processing`);
-        return;
-      }
+      if (isProcessing) return;
       isProcessing = true;
-      console.log(`saveToggleBtn clicked for postId: ${postId}, text: ${newSaveToggleBtn.textContent}`);
-
       if (newSaveToggleBtn.textContent === "Unsave") {
         deleteSavedPostFromPost(postId, communityId, newSaveToggleBtn)
           .then(() => isProcessing = false)
-          .catch((error) => {
-            console.error(`Error in deleteSavedPostFromPost for ${postId}:`, error);
-            isProcessing = false;
-          });
+          .catch(() => isProcessing = false);
       } else if (newSaveToggleBtn.textContent === "Save") {
         savePost(postId, communityId, newSaveToggleBtn)
           .then(() => isProcessing = false)
-          .catch((error) => {
-            console.error(`Error in savePost for ${postId}:`, error);
-            isProcessing = false;
-          });
+          .catch(() => isProcessing = false);
       }
     });
 
-    // Existing event listeners (unchanged)
     postDiv.querySelector(`.username[data-uid="${post.userId}"]`)?.addEventListener("click", () => viewProfile(post.userId));
     postDiv.querySelector(`#toggleComments-${postId}`)?.addEventListener("click", (e) => {
       e.preventDefault();
@@ -2206,6 +2423,11 @@ function setupInfiniteScroll() {
     }
   }, 400));
 }
+
+// Tie "Refresh Posts" button to fetch new only
+document.getElementById("refreshPostsBtn").addEventListener("click", async () => {
+  await loadPosts(communityId, true); // Reset to fetch new posts
+});
 
 let totalYourPosts = 0; // Global, cached total
 
@@ -2614,21 +2836,38 @@ async function getTotalPosts(communityId) {
 }
 
 async function searchPostsById(postId) {
-    const postsDiv = document.getElementById("postList");
-    const caughtUpDiv = document.getElementById("caughtUpMessage");
-    postsDiv.innerHTML = '<div class="loading">Searching...</div>';
-    caughtUpDiv.style.display = "none";
+  const postsDiv = document.getElementById("postList");
+  const caughtUpDiv = document.getElementById("caughtUpMessage");
+  postsDiv.innerHTML = '<div class="loading">Searching...</div>';
+  caughtUpDiv.style.display = "none";
 
-    if (!postId || postId.trim() === "") {
-      isSearching = false;
-      postsDiv.innerHTML = "";
-      await loadPosts(communityId, true); // Reset to full list
-      return;
-    }
+  if (!postId || postId.trim() === "") {
+    isSearching = false;
+    postsDiv.innerHTML = "";
+    await loadPosts(communityId, true); // Reset to full list
+    return;
+  }
 
-    isSearching = true; // Set flag to pause scrolldown
+  isSearching = true; // Set flag to pause scrolldown
 
-    try {
+  try {
+    // Check cache first to avoid unnecessary reads
+    const cachedPosts = getCachedPosts();
+    const cachedPost = cachedPosts.get(postId.trim());
+    let post, actualPostId, userData, reportStatus, commentCount;
+
+    if (cachedPost) {
+      console.log(`Post ${postId} found in cache—no Firestore read needed.`);
+      post = cachedPost.data;
+      actualPostId = postId.trim();
+      userData = await fetchUserData(post.userId || "unknown");
+      reportStatus = await getPostReportStatus(actualPostId);
+      const commentsQ = query(collection(db, "communities", communityId, "posts", actualPostId, "comments"));
+      const commentsSnapshot = await getDocs(commentsQ);
+      commentCount = commentsSnapshot.size;
+    } else {
+      // Fetch from Firestore if not cached
+      console.log(`Post ${postId} not in cache—fetching from Firestore.`);
       const q = query(
         collection(db, "communities", communityId, "posts"),
         where("__name__", "==", postId.trim())
@@ -2642,99 +2881,155 @@ async function searchPostsById(postId) {
       }
 
       const doc = snapshot.docs[0];
-      const post = doc.data();
-      const actualPostId = doc.id;
+      post = normalizePostData(doc.data()); // Normalize for consistency
+      actualPostId = doc.id;
+      userData = await fetchUserData(post.userId || "unknown");
 
-      const userData = await fetchUserData(post.userId || "unknown");
-      const currentUser = auth.currentUser;
-      const commData = await getCommData();
-      const isAdmin = commData?.admins?.includes(currentUser.uid) || commData?.creatorId === currentUser.uid;
-      const isOwner = post.userId === currentUser.uid;
+      // Cache the fetched post
+      const cachedPosts = getCachedPosts();
+      cachedPosts.set(actualPostId, { id: actualPostId, data: post, score: getPostScore(post, getLikedPrefs()) });
+      setCachedPosts(cachedPosts);
 
-      const reportStatus = await getPostReportStatus(actualPostId);
-      if (reportStatus.isHidden) {
-        postsDiv.innerHTML = `<p>Post ID ${postId} is hidden due to reports (visible to admins/owner only).</p>`;
+      reportStatus = await getPostReportStatus(actualPostId);
+      const commentsQ = query(collection(db, "communities", communityId, "posts", actualPostId, "comments"));
+      const commentsSnapshot = await getDocs(commentsQ);
+      commentCount = commentsSnapshot.size;
+    }
+
+    const currentUser = auth.currentUser;
+    const commData = await getCommData();
+    const isAdmin = commData?.admins?.includes(currentUser.uid) || commData?.creatorId === currentUser.uid;
+    const isOwner = post.userId === currentUser.uid;
+
+    if (reportStatus.isHidden && !isAdmin && !isOwner) {
+      postsDiv.innerHTML = `<p>Post ID ${postId} is hidden due to reports (visible to admins/owner only).</p>`;
+      return;
+    }
+
+    const timestamp = post.createdAt ? new Date(post.createdAt).toLocaleString() : "N/A";
+    const photoUrls = post.photoUrls || [];
+    const photoCount = photoUrls.length;
+
+    postsDiv.innerHTML = `
+      <div class="post" id="post-${actualPostId}">
+        <h3>${post.title || "No Title"}</h3>
+        <p>${post.description || "No Description"}</p>
+        <div class="photo-carousel" id="carousel-${actualPostId}-search" data-photos='${JSON.stringify(photoUrls)}'>
+          ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${actualPostId}-search"><</button>` : ""}
+          <img src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image">
+          ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${actualPostId}-search">></button>` : ""}
+        </div>
+        <p>By: <span class="username" data-uid="${post.userId || 'unknown'}">${userData.name || "Unknown"} (${userData.username || "unknown"})</span></p>
+        <p>Location: ${post.location?.name || "N/A"}</p>
+        <p>Category: ${post.category || "N/A"}</p>
+        <p>Looking For: ${post.lookingFor || "N/A"} | Offering: ${post.offering || "N/A"}</p>
+        <p>Posted: ${timestamp}</p>
+        <p>Post ID: ${actualPostId} <button class="copy-btn" data-post-id="${actualPostId}">Copy</button></p>
+        <button class="like-btn" data-post-id="${actualPostId}">${(post.likedBy || []).includes(currentUser.uid) ? 'Unlike' : 'Like'} (${post.likes || 0})</button>
+        <button class="report-btn" id="reportPost-${actualPostId}">Report Post</button>
+        ${(isOwner || isAdmin) ? `<button class="delete-btn" id="deletePost-${actualPostId}">Delete Post</button>` : ""}
+        ${reportStatus.isOwner && reportStatus.reportCount === 1 ? `
+          <div class="report-warning" id="warning-${actualPostId}">
+            This post has 1 report. One more will hide it—check summary!
+          </div>` : ""}
+        ${reportStatus.isOwner && reportStatus.reportCount >= 2 ? `
+          <div class="report-warning" id="warning-${actualPostId}">
+            This post has ${reportStatus.reportCount} reports and is hidden. Appeal above!
+          </div>` : ""}
+        ${isAdmin && reportStatus.reportCount > 0 ? `
+          <div class="admin-report-controls" id="admin-controls-${actualPostId}">
+            This post received ${reportStatus.reportCount} report${reportStatus.reportCount > 1 ? 's' : ''}.
+            <button class="remove-post-btn" data-post-id="${actualPostId}">Remove Post</button>
+            <button class="clear-reports-btn" data-post-id="${actualPostId}">Clear Reports</button>
+          </div>` : ""}
+        <div class="comments-section">
+          <a href="#" class="comment-count" id="toggleComments-${actualPostId}">${commentCount} comments</a>
+          <div class="comments-thread" id="comments-${actualPostId}" style="display: none;"></div>
+          <form id="commentForm-${actualPostId}" class="comment-form">
+            <textarea placeholder="Add a comment..." required></textarea>
+            <button type="submit">Comment</button>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const postDiv = postsDiv.querySelector(`#post-${actualPostId}`);
+    postDiv.querySelector(`.username[data-uid="${post.userId || 'unknown'}"]`).addEventListener("click", () => viewProfile(post.userId || "unknown"));
+    postDiv.querySelector(`.copy-btn[data-post-id="${actualPostId}"]`).addEventListener("click", (e) => {
+      e.stopPropagation();
+      copyPostId(actualPostId);
+    });
+    postDiv.querySelector(`#reportPost-${actualPostId}`).addEventListener("click", () => reportPost(actualPostId));
+    const deleteBtn = postDiv.querySelector(`#deletePost-${actualPostId}`);
+    if (deleteBtn) deleteBtn.addEventListener("click", () => deletePost(actualPostId));
+    if (isAdmin) {
+      postDiv.querySelector(`.remove-post-btn[data-post-id="${actualPostId}"]`)?.addEventListener("click", () => deletePost(actualPostId));
+      postDiv.querySelector(`.clear-reports-btn[data-post-id="${actualPostId}"]`)?.addEventListener("click", () => clearReports(actualPostId));
+    }
+    postDiv.querySelector(`#toggleComments-${actualPostId}`).addEventListener("click", (e) => {
+      e.preventDefault();
+      toggleComments(actualPostId);
+    });
+    postDiv.querySelector(`#commentForm-${actualPostId}`).addEventListener("submit", (e) => {
+      e.preventDefault();
+      addComment(actualPostId, post.userId);
+    });
+
+    // Like/Unlike button logic
+    const likeBtn = postDiv.querySelector(`.like-btn[data-post-id="${actualPostId}"]`);
+    likeBtn.addEventListener("click", async () => {
+      const postRef = doc(db, "communities", communityId, "posts", actualPostId);
+      const postSnapshot = await getDoc(postRef);
+
+      if (!postSnapshot.exists()) {
+        alert("Post not found—might’ve been deleted!");
         return;
       }
 
-      const commentsQ = query(collection(db, "communities", communityId, "posts", actualPostId, "comments"));
-      const commentsSnapshot = await getDocs(commentsQ);
-      const commentCount = commentsSnapshot.size;
+      const postData = normalizePostData(postSnapshot.data());
+      const userId = auth.currentUser.uid;
+      const likedBy = postData.likedBy || [];
+      let newLikes = postData.likes || 0;
+      let newLikedBy = [...likedBy];
 
-      const timestamp = post.createdAt ? new Date(post.createdAt.toDate()).toLocaleString() : "N/A";
-      const photoUrls = post.photoUrls || [];
-      const photoCount = photoUrls.length;
-
-      postsDiv.innerHTML = `
-        <div class="post" id="post-${actualPostId}">
-          <h3>${post.title || "No Title"}</h3>
-          <p>${post.description || "No Description"}</p>
-          <div class="photo-carousel" id="carousel-${actualPostId}-search" data-photos='${JSON.stringify(photoUrls)}'>
-            ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${actualPostId}-search"><</button>` : ""}
-            <img src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image">
-            ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${actualPostId}-search">></button>` : ""}
-          </div>
-          <p>By: <span class="username" data-uid="${post.userId || 'unknown'}">${userData.name || "Unknown"} (${userData.username || "unknown"})</span></p>
-          <p>Location: ${post.location?.name || "N/A"}</p>
-          <p>Category: ${post.category || "N/A"}</p>
-          <p>Looking For: ${post.lookingFor || "N/A"} | Offering: ${post.offering || "N/A"}</p>
-          <p>Posted: ${timestamp}</p>
-          <p>Post ID: ${actualPostId} <button class="copy-btn" data-post-id="${actualPostId}">Copy</button></p>
-          <button class="report-btn" id="reportPost-${actualPostId}">Report Post</button>
-          ${(isOwner || isAdmin) ? `<button class="delete-btn" id="deletePost-${actualPostId}">Delete Post</button>` : ""}
-          ${reportStatus.isOwner && reportStatus.reportCount === 1 ? `
-            <div class="report-warning" id="warning-${actualPostId}">
-              This post has 1 report. One more will hide it from others—check it in the summary above!
-            </div>` : ""}
-          ${reportStatus.isOwner && reportStatus.reportCount >= 2 ? `
-            <div class="report-warning" id="warning-${actualPostId}">
-              This post has ${reportStatus.reportCount} reports and is hidden from others. Appeal in the summary above!
-            </div>` : ""}
-          ${isAdmin && reportStatus.reportCount > 0 ? `
-            <div class="admin-report-controls" id="admin-controls-${actualPostId}">
-              This post received ${reportStatus.reportCount} report${reportStatus.reportCount > 1 ? 's' : ''}.
-              <button class="remove-post-btn" data-post-id="${actualPostId}">Remove Post</button>
-              <button class="clear-reports-btn" data-post-id="${actualPostId}">Clear Reports</button>
-            </div>` : ""}
-          <div class="comments-section">
-            <a href="#" class="comment-count" id="toggleComments-${actualPostId}">${commentCount} comments</a>
-            <div class="comments-thread" id="comments-${actualPostId}" style="display: none;"></div>
-            <form id="commentForm-${actualPostId}" class="comment-form">
-              <textarea placeholder="Add a comment..." required></textarea>
-              <button type="submit">Comment</button>
-            </form>
-          </div>
-        </div>
-      `;
-
-      const postDiv = postsDiv.querySelector(`#post-${actualPostId}`);
-      postDiv.querySelector(`.username[data-uid="${post.userId || 'unknown'}"]`).addEventListener("click", () => viewProfile(post.userId || "unknown"));
-      postDiv.querySelector(`.copy-btn[data-post-id="${actualPostId}"]`).addEventListener("click", (e) => {
-        e.stopPropagation();
-        copyPostId(actualPostId);
-      });
-      postDiv.querySelector(`#reportPost-${actualPostId}`).addEventListener("click", () => reportPost(actualPostId));
-      const deleteBtn = postDiv.querySelector(`#deletePost-${actualPostId}`);
-      if (deleteBtn) deleteBtn.addEventListener("click", () => deletePost(actualPostId));
-      if (isAdmin) {
-        postDiv.querySelector(`.remove-post-btn[data-post-id="${actualPostId}"]`)?.addEventListener("click", () => deletePost(actualPostId));
-        postDiv.querySelector(`.clear-reports-btn[data-post-id="${actualPostId}"]`)?.addEventListener("click", () => clearReports(actualPostId));
+      if (likedBy.includes(userId)) {
+        newLikedBy = newLikedBy.filter(id => id !== userId);
+        newLikes = Math.max(0, newLikes - 1);
+        await updateDoc(postRef, {
+          likes: newLikes,
+          likedBy: newLikedBy
+        });
+        likeBtn.textContent = `Like (${newLikes})`;
+      } else {
+        newLikedBy.push(userId);
+        newLikes += 1;
+        await updateDoc(postRef, {
+          likes: newLikes,
+          likedBy: newLikedBy
+        });
+        likeBtn.textContent = `Unlike (${newLikes})`;
+        addLikedPref(postData.category, postData.offering); // Track prefs on like
       }
-      postDiv.querySelector(`#toggleComments-${actualPostId}`).addEventListener("click", (e) => {
-        e.preventDefault();
-        toggleComments(actualPostId);
-      });
-      postDiv.querySelector(`#commentForm-${actualPostId}`).addEventListener("submit", (e) => {
-        e.preventDefault();
-        addComment(actualPostId, post.userId);
-      });
-      if (photoCount > 1) setupSearchCarousel(actualPostId);
 
-    } catch (error) {
-      console.error("Search error:", error);
-      postsDiv.innerHTML = "<p>Something went wrong, try again!</p>";
-    }
+      // Update cached post
+      const cachedPosts = getCachedPosts();
+      cachedPosts.set(actualPostId, { 
+        id: actualPostId, 
+        data: { ...postData, likes: newLikes, likedBy: newLikedBy }, 
+        score: getPostScore({ ...postData, likes: newLikes, likedBy: newLikedBy }, getLikedPrefs()) 
+      });
+      setCachedPosts(cachedPosts);
+    });
+
+    if (photoCount > 1) setupSearchCarousel(actualPostId);
+
+  } catch (error) {
+    console.error("Search error:", error);
+    postsDiv.innerHTML = "<p>Something went wrong, try again!</p>";
+  } finally {
+    isSearching = false; // Reset flag
   }
+}
 
 // Define the scroll handler globally so we can remove it later
 const scrollHandler = debounce(async () => {
