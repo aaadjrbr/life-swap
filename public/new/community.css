@@ -496,6 +496,8 @@ button#viewRequestsBtn {
 
 .comments-thread {
   margin-left: 10px;
+  max-height: 400px;
+  overflow: auto;
 }
 
 .comment-bubble {
