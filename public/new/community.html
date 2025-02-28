@@ -349,14 +349,12 @@ enableIndexedDbPersistence(db)
         const isBanned = (commData.bannedUsers || []).includes(user.uid);
 
         if (isBanned) {
-          // Fetch community data and ban reason
           const commRef = doc(db, "communities", communityId);
           const commDoc = await getDoc(commRef);
           const commData = commDoc.data();
           let adminEmail = "No admin email available";
           let banReason = commData.banReasons?.[user.uid] || "No reason provided";
 
-          // Try creator first
           if (commData.creatorId) {
             const creatorDoc = await getDoc(doc(db, "users", commData.creatorId));
             if (creatorDoc.exists() && creatorDoc.data().email) {
@@ -364,7 +362,6 @@ enableIndexedDbPersistence(db)
             }
           }
 
-          // If no creator email, try admins
           if (adminEmail === "No admin email available" && commData.admins?.length > 0) {
             const adminDoc = await getDoc(doc(db, "users", commData.admins[0]));
             if (adminDoc.exists() && adminDoc.data().email) {
@@ -412,13 +409,14 @@ enableIndexedDbPersistence(db)
           return;
         }
 
-        // Log visibility changes
+        // Log visibility changes and update badges
         document.addEventListener("visibilitychange", () => {
           if (document.visibilityState === "visible") {
-            console.log("User is back on screen, resuming notification checks.");
-            updateNotificationBadge(auth.currentUser.uid); // Trigger an immediate check when user returns
+            console.log("User is back on screen, resuming checks.");
+            updateNotificationBadge(auth.currentUser.uid);
+            updateChatBadge(auth.currentUser.uid); // Update chat badge on tab return
           } else {
-            console.log("User is away from screen, stopping notification count updates.");
+            console.log("User is away from screen, stopping updates.");
           }
         });
 
@@ -477,7 +475,7 @@ enableIndexedDbPersistence(db)
         const viewCommunitiesBtn = document.getElementById("viewCommunitiesBtn");
         const viewSavedPostsBtn = document.getElementById("viewSavedPostsBtn");
         const viewChatsBtn = document.getElementById("viewChatsBtn");
-
+        
         if (postIdSearch) {
           postIdSearch.addEventListener("input", debounce((e) => {
             searchPostsById(e.target.value);
@@ -524,7 +522,17 @@ enableIndexedDbPersistence(db)
         if (editNameBtn) editNameBtn.addEventListener("click", () => editCommunityName(communityId));
         if (viewCommunitiesBtn) viewCommunitiesBtn.addEventListener("click", () => viewCommunities(user.uid));
         if (viewSavedPostsBtn) viewSavedPostsBtn.addEventListener("click", () => viewSavedPosts(user.uid));
-        if (viewChatsBtn) viewChatsBtn.addEventListener("click", () => window.viewChats(communityId));
+        if (viewChatsBtn) {
+          viewChatsBtn.removeEventListener("click", handleViewChatsClick); // Clear old listener
+          viewChatsBtn.addEventListener("click", handleViewChatsClick);
+        }
+
+        async function handleViewChatsClick() {
+          console.log("View Chats clicked");
+          await updateChatBadge(user.uid, true); // Clear unread
+          await window.viewChats(communityId); // Open modal
+          await updateChatBadge(user.uid); // Refresh badge UI
+        }
 
         setupLocationAutocomplete();
         setupCommunitySelection();
@@ -533,6 +541,7 @@ enableIndexedDbPersistence(db)
         setupInfiniteScroll();
         loadCarouselPosts(communityId);
         updateNotificationBadge(user.uid);
+        await updateChatBadge(user.uid); // Initial chat badge update
         await loadAdminReportSummary();
       } else {
         alert("Community not found!");
@@ -625,6 +634,29 @@ async function initializeUserSwapInfo() {
       .then(() => alert("Username copied to clipboard!"))
       .catch(err => console.error("Failed to copy username:", err));
   });
+}
+
+async function updateChatBadge(userId, clearUnread = false) {
+  const chatIdsQ = query(
+    collection(db, "users", userId, "chatIds"),
+    where("hasUnread", "==", true)
+  );
+  const snapshot = await getDocs(chatIdsQ);
+  const viewChatsBtn = document.getElementById("viewChatsBtn");
+
+  if (clearUnread && snapshot.size > 0) {
+    const batch = writeBatch(db);
+    snapshot.docs.forEach((doc) => {
+      batch.update(doc.ref, { hasUnread: false });
+    });
+    await batch.commit();
+    console.log("Cleared unread flags for chats:", snapshot.size);
+  }
+
+  const hasUnreadChats = clearUnread ? false : snapshot.size > 0;
+  if (viewChatsBtn) {
+    viewChatsBtn.innerHTML = `View Chats ${hasUnreadChats ? '<span class="chat-badge">(new)</span>' : ''}`;
+  }
 }
 
 async function updateProfileRequestsUI(userId) {
@@ -2209,7 +2241,7 @@ async function loadYourPosts(userId) {
     try {
       const snapshot = await getDocs(q);
       if (snapshot.empty && shownPostIds.size === 0) {
-        yourPostsList.innerHTML = "<p>No posts yet, bro!</p>";
+        yourPostsList.innerHTML = "<p>No posts yet!</p>";
         await updateButtons();
         if (!reset) window.scrollTo(0, scrollTop);
         else document.getElementById("scroll-to-ur-posts")?.scrollIntoView({ behavior: "smooth" });

@@ -37,10 +37,22 @@
 .chat-messages {
   flex: 1;
   overflow-y: auto;
+  max-height: 400px; /* Adjust as needed */
   padding: 10px;
   background: #f9f9f9;
   border-radius: 4px;
   position: relative; /* Anchor suggestions inside */
+}
+
+.message-container {
+  flex-grow: 1;
+}
+
+.load-more-prompt {
+  text-align: center;
+  color: #888;
+  padding: 5px;
+  font-size: 0.9em;
 }
 
 .chat-suggestions {
@@ -241,4 +253,13 @@
 
 #postConfirmPopup button, #linkConfirmPopup button {
   margin: 5px;
+}
+
+.chat-badge {
+  color: #ffffff;
+  font-size: 0.9em;
+  margin-left: 5px;
+  background: #ff1b1b;
+  padding: 5px;
+  border-radius: 8px;
 }
