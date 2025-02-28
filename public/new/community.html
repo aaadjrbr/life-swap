@@ -351,9 +351,6 @@ enableIndexedDbPersistence(db)
         const isBanned = (commData.bannedUsers || []).includes(user.uid);
 
         if (isBanned) {
-          const commRef = doc(db, "communities", communityId);
-          const commDoc = await getDoc(commRef);
-          const commData = commDoc.data();
           let adminEmail = "No admin email available";
           let banReason = commData.banReasons?.[user.uid] || "No reason provided";
 
@@ -388,9 +385,14 @@ enableIndexedDbPersistence(db)
             e.preventDefault();
             const text = appealForm.querySelector("textarea").value.trim();
             if (text) {
-              await addDoc(collection(db, "banAppeals"), {
+              // Fetch user data for username
+              const userDoc = await getDoc(doc(db, "users", user.uid));
+              const userData = userDoc.exists() ? userDoc.data() : { username: `user_${user.uid.slice(0, 8)}` };
+
+              // Add appeal to community’s banAppeals subcollection
+              await addDoc(collection(db, "communities", communityId, "banAppeals"), {
                 userId: user.uid,
-                communityId: communityId,
+                username: userData.username, // Store username directly
                 message: text,
                 timestamp: new Date()
               });
@@ -402,6 +404,7 @@ enableIndexedDbPersistence(db)
           });
           return;
         } else if (!isMember) {
+          // Unchanged non-member logic
           document.querySelector(".community-page").innerHTML = `
             <div class="not-member-message">
               <h2>You aren't a member of this community.</h2>
@@ -680,7 +683,8 @@ async function updateChatBadge(userId, clearUnread = false) {
 }
 
 async function updateProfileRequestsUI(userId) {
-  const requestsQ = query(collection(db, "profileRequests"), where("targetId", "==", userId), where("status", "==", "pending"));
+  const requestsRef = collection(db, "users", userId, "profileRequests");
+  const requestsQ = query(requestsRef, where("status", "==", "pending"));
   const requestsSnapshot = await getDocs(requestsQ);
   const requestCount = requestsSnapshot.size;
   const profileRequestsBtn = document.getElementById("profileRequestsBtn");
@@ -694,7 +698,7 @@ async function updateProfileRequestsUI(userId) {
   }
   const actions = document.getElementById("communityActions");
   if (actions) {
-    const profileViewRequestsQ = query(collection(db, "profileRequests"), where("targetId", "==", userId), where("status", "==", "pending"));
+    const profileViewRequestsQ = query(requestsRef, where("status", "==", "pending"));
     const profileViewRequestsSnapshot = await getDocs(profileViewRequestsQ);
     const profileViewRequestCount = profileViewRequestsSnapshot.size;
     const viewProfileViewRequestsBtn = actions.querySelector("#viewProfileViewRequestsBtn");
@@ -1226,17 +1230,22 @@ function attachSummaryListeners(summaryDiv, isAdmin) {
             `;
           }
 
-          const appealsQ = query(collection(db, "banAppeals"), where("communityId", "==", communityId));
-          const appealsSnapshot = await getDocs(appealsQ);
+          // Appeals from subcollection with ban reasons
+          const appealsRef = collection(db, "communities", communityId, "banAppeals");
+          const appealsSnapshot = await getDocs(appealsRef);
+          const commDoc = await getDoc(doc(db, "communities", communityId)); // Fetch community data for banReasons
+          const commData = commDoc.exists() ? commDoc.data() : { banReasons: {} };
+
           if (!appealsSnapshot.empty) {
-            contentDiv.innerHTML += "<h3>User Appeals</h3>";
+            contentDiv.innerHTML += "<br><h3>User Appeals (Bans)</h3>";
             for (const doc of appealsSnapshot.docs) {
               const appeal = doc.data();
-              const userData = await fetchUserData(appeal.userId);
-              const postId = appeal.postId || "N/A";
+              const userData = await fetchUserData(appeal.userId); // Get name, username is in appeal
+              const displayName = `${userData.name || "Unknown"} (${appeal.username || "unknown"})`;
+              const banReason = commData.banReasons?.[appeal.userId] || "No reason provided"; // Fetch ban reason
               contentDiv.innerHTML += `
                 <div class="appeal-item" data-appeal-id="${doc.id}">
-                  <p><strong>${userData.name || "Unknown"}:</strong> "${appeal.message}" (Post ID: ${postId})</p>
+                  <p><strong>${displayName}:</strong> "${appeal.message}" (Ban Reason: ${banReason})</p>
                   <span>${new Date(appeal.timestamp.toDate()).toLocaleString()}</span>
                   <button class="delete-appeal-btn" data-appeal-id="${doc.id}">Delete</button>
                 </div>
@@ -1265,7 +1274,7 @@ function attachSummaryListeners(summaryDiv, isAdmin) {
         } else {
           contentDiv.innerHTML = "<h3>Your Reported Posts</h3>";
           for (const post of reportedPosts) {
-            const appealQ = query(collection(db, "banAppeals"), where("userId", "==", user.uid), where("postId", "==", post.postId));
+            const appealQ = query(collection(db, "communities", communityId, "banAppeals"), where("userId", "==", user.uid), where("postId", "==", post.postId));
             const appealSnapshot = await getDocs(appealQ);
             const hasAppeal = !appealSnapshot.empty;
 
@@ -1298,7 +1307,7 @@ function attachSummaryListeners(summaryDiv, isAdmin) {
           btn.addEventListener("click", async () => {
             if (confirm("Delete this appeal, bro?")) {
               const appealId = btn.dataset.appealId;
-              await deleteDoc(doc(db, "banAppeals", appealId));
+              await deleteDoc(doc(db, "communities", communityId, "banAppeals", appealId));
               const appealItem = btn.closest(".appeal-item");
               if (appealItem) appealItem.remove();
               refreshReportSummary();
@@ -1312,9 +1321,13 @@ function attachSummaryListeners(summaryDiv, isAdmin) {
             const postId = form.dataset.postId;
             const message = form.querySelector("textarea").value.trim();
             if (message) {
-              await addDoc(collection(db, "banAppeals"), {
+              // Fetch username
+              const userDoc = await getDoc(doc(db, "users", user.uid));
+              const userData = userDoc.exists() ? userDoc.data() : { username: `user_${user.uid.slice(0, 8)}` };
+
+              await addDoc(collection(db, "communities", communityId, "banAppeals"), {
                 userId: user.uid,
-                communityId,
+                username: userData.username, // Include username
                 postId,
                 message,
                 timestamp: new Date()
@@ -3796,10 +3809,11 @@ async function viewProfile(uid) {
   detailsEl.innerHTML = isProfileAdmin ? '<span class="admin-tag">Admin</span>' : '';
   actionsEl.innerHTML = "";
 
+  // Query the target user’s profileRequests subcollection for requests from the current user
+  const requestsRef = collection(db, "users", uid, "profileRequests");
   const requestQ = query(
-    collection(db, "profileRequests"),
-    where("requesterId", "==", auth.currentUser.uid),
-    where("targetId", "==", uid)
+    requestsRef,
+    where("requesterId", "==", auth.currentUser.uid)
   );
   const requestSnapshot = await getDocs(requestQ);
   const request = requestSnapshot.docs[0]?.data();
@@ -3858,16 +3872,16 @@ async function viewProfile(uid) {
   // Chat button listener
   const chatBtn = document.getElementById("chatBtn");
   if (chatBtn) {
-  chatBtn.addEventListener("click", () => {
-    if (typeof window.openChat === "function") {
-      closeModal("viewProfileModal");
-      window.openChat(uid, communityId);
-    } else {
-      console.error("Chat functionality not loaded yet!");
-      alert("Chat system isn’t ready. Try again in a sec.");
-    }
-  });
-}
+    chatBtn.addEventListener("click", () => {
+      if (typeof window.openChat === "function") {
+        closeModal("viewProfileModal");
+        window.openChat(uid, communityId);
+      } else {
+        console.error("Chat functionality not loaded yet!");
+        alert("Chat system isn’t ready. Try again in a sec.");
+      }
+    });
+  }
 }
 
 async function requestProfileAccess(targetId) {
@@ -3880,9 +3894,10 @@ async function requestProfileAccess(targetId) {
 
   const requesterData = await fetchCurrentUserData();
 
-  const requestDoc = await addDoc(collection(db, "profileRequests"), {
+  // Add request to target's profileRequests subcollection
+  const requestsRef = collection(db, "users", targetId, "profileRequests");
+  const requestDoc = await addDoc(requestsRef, {
     requesterId: user.uid,
-    targetId,
     status: "pending",
     createdAt: new Date()
   });
@@ -3913,7 +3928,7 @@ async function requestProfileAccess(targetId) {
 }
 
 async function acceptProfileRequest(requestId, userId) {
-  const requestRef = doc(db, "profileRequests", requestId);
+  const requestRef = doc(db, "users", userId, "profileRequests", requestId);
   const requestDoc = await getDoc(requestRef);
   const requesterId = requestDoc.data().requesterId;
   const targetData = await fetchCurrentUserData(); // Get the accepter’s name
@@ -3929,7 +3944,7 @@ async function acceptProfileRequest(requestId, userId) {
     seen: false
   });
 
-  // Force unseenCount increment for requester
+  // Increment requester’s unseenCount
   const requesterRef = doc(db, "users", requesterId);
   await runTransaction(db, async (transaction) => {
     const requesterDoc = await transaction.get(requesterRef);
@@ -3946,7 +3961,7 @@ async function acceptProfileRequest(requestId, userId) {
 }
 
 async function declineProfileRequest(requestId, userId) {
-  const requestRef = doc(db, "profileRequests", requestId);
+  const requestRef = doc(db, "users", userId, "profileRequests", requestId);
   const requestDoc = await getDoc(requestRef);
   const requesterId = requestDoc.data().requesterId;
   const targetData = await fetchCurrentUserData(); // Get the decliner’s name
@@ -3962,7 +3977,7 @@ async function declineProfileRequest(requestId, userId) {
     seen: false
   });
 
-  // Force unseenCount increment for requester
+  // Increment requester’s unseenCount
   const requesterRef = doc(db, "users", requesterId);
   await runTransaction(db, async (transaction) => {
     const requesterDoc = await transaction.get(requesterRef);
@@ -3979,7 +3994,7 @@ async function declineProfileRequest(requestId, userId) {
 }
 
 async function revokeProfileAccess(targetId, requestId) {
-  const requestRef = doc(db, "profileRequests", requestId);
+  const requestRef = doc(db, "users", targetId, "profileRequests", requestId);
   await deleteDoc(requestRef); // Deletes the doc—clean!
   alert("Profile access revoked!");
   closeModal("viewProfileModal");
@@ -3987,7 +4002,7 @@ async function revokeProfileAccess(targetId, requestId) {
 }
 
 async function revokeProfileAccessFromModal(requestId, userId) {
-  const requestRef = doc(db, "profileRequests", requestId);
+  const requestRef = doc(db, "users", userId, "profileRequests", requestId);
   await deleteDoc(requestRef); // Deletes the doc—clean!
   alert("Profile access revoked!");
   closeModal("viewProfileViewRequestsModal");
@@ -3995,56 +4010,60 @@ async function revokeProfileAccessFromModal(requestId, userId) {
   viewProfileViewRequests(userId); // Refreshes the requests modal
 }
 
-    async function viewProfileViewRequests(userId) {
-      const modal = document.getElementById("viewProfileViewRequestsModal");
-      const requestsList = document.getElementById("profileViewRequestsList");
-      const grantedList = document.getElementById("grantedProfileAccessList");
+async function viewProfileViewRequests(userId) {
+  const modal = document.getElementById("viewProfileViewRequestsModal");
+  const requestsList = document.getElementById("profileViewRequestsList");
+  const grantedList = document.getElementById("grantedProfileAccessList");
 
-      const pendingQ = query(collection(db, "profileRequests"), where("targetId", "==", userId), where("status", "==", "pending"));
-      const pendingSnapshot = await getDocs(pendingQ);
-      requestsList.innerHTML = pendingSnapshot.empty ? "<p>No pending profile view requests.</p>" : "";
+  // Subcollection queries for the user’s profile requests
+  const requestsRef = collection(db, "users", userId, "profileRequests");
+  const pendingQ = query(requestsRef, where("status", "==", "pending"));
+  const pendingSnapshot = await getDocs(pendingQ);
+  requestsList.innerHTML = pendingSnapshot.empty ? "<p>No pending profile view requests.</p>" : "";
 
-      for (const doc of pendingSnapshot.docs) {
-        const request = doc.data();
-        const requesterData = await fetchUserData(request.requesterId);
-        requestsList.innerHTML += `
-          <div class="request-item" id="request-${doc.id}">
-            <span>${requesterData.name} (${requesterData.username})</span>
-            <button class="accept-btn" data-request-id="${doc.id}">Accept</button>
-            <button class="decline-btn" data-request-id="${doc.id}">Decline</button>
-          </div>
-        `;
-      }
+  for (const doc of pendingSnapshot.docs) {
+    const request = doc.data();
+    const requesterData = await fetchUserData(request.requesterId);
+    requestsList.innerHTML += `
+      <div class="request-item" id="request-${doc.id}">
+        <span>${requesterData.name} (${requesterData.username})</span>
+        <button class="accept-btn" data-request-id="${doc.id}">Accept</button>
+        <button class="decline-btn" data-request-id="${doc.id}">Decline</button>
+      </div>
+    `;
+  }
 
-      const grantedQ = query(collection(db, "profileRequests"), where("targetId", "==", userId), where("status", "==", "accepted"));
-      const grantedSnapshot = await getDocs(grantedQ);
-      grantedList.innerHTML = grantedSnapshot.empty ? "<p>No granted profile access.</p>" : "";
+  const grantedQ = query(requestsRef, where("status", "==", "accepted"));
+  const grantedSnapshot = await getDocs(grantedQ);
+  grantedList.innerHTML = grantedSnapshot.empty ? "<p>No granted profile access.</p>" : "";
 
-      for (const doc of grantedSnapshot.docs) {
-        const request = doc.data();
-        const requesterData = await fetchUserData(request.requesterId);
-        grantedList.innerHTML += `
-          <div class="request-item" id="granted-${doc.id}">
-            <span>${requesterData.name} (${requesterData.username})</span>
-            <button class="revoke-btn" data-request-id="${doc.id}">Revoke</button>
-          </div>
-        `;
-      }
+  for (const doc of grantedSnapshot.docs) {
+    const request = doc.data();
+    const requesterData = await fetchUserData(request.requesterId);
+    grantedList.innerHTML += `
+      <div class="request-item" id="granted-${doc.id}">
+        <span>${requesterData.name} (${requesterData.username})</span>
+        <button class="revoke-btn" data-request-id="${doc.id}">Revoke</button>
+      </div>
+    `;
+  }
 
-      document.querySelectorAll(".modal:not(#viewProfileViewRequestsModal)").forEach(m => m.style.display = "none");
-      modal.style.display = "flex";
-      modal.classList.remove("hidden");
+  // Show the modal
+  document.querySelectorAll(".modal:not(#viewProfileViewRequestsModal)").forEach(m => m.style.display = "none");
+  modal.style.display = "flex";
+  modal.classList.remove("hidden");
 
-      requestsList.querySelectorAll(".accept-btn").forEach(btn => {
-        btn.addEventListener("click", () => acceptProfileRequest(btn.dataset.requestId, userId));
-      });
-      requestsList.querySelectorAll(".decline-btn").forEach(btn => {
-        btn.addEventListener("click", () => declineProfileRequest(btn.dataset.requestId, userId));
-      });
-      grantedList.querySelectorAll(".revoke-btn").forEach(btn => {
-        btn.addEventListener("click", () => revokeProfileAccessFromModal(btn.dataset.requestId, userId));
-      });
-    }
+  // Attach event listeners
+  requestsList.querySelectorAll(".accept-btn").forEach(btn => {
+    btn.addEventListener("click", () => acceptProfileRequest(btn.dataset.requestId, userId));
+  });
+  requestsList.querySelectorAll(".decline-btn").forEach(btn => {
+    btn.addEventListener("click", () => declineProfileRequest(btn.dataset.requestId, userId));
+  });
+  grantedList.querySelectorAll(".revoke-btn").forEach(btn => {
+    btn.addEventListener("click", () => revokeProfileAccessFromModal(btn.dataset.requestId, userId));
+  });
+}
 
     async function makeAdmin(communityId, uid) {
       const commRef = doc(db, "communities", communityId);
@@ -4379,23 +4398,24 @@ async function viewBannedUsers(communityId) {
   const bannedUsers = commData.bannedUsers || [];
   console.log("Total banned users:", bannedUsers.length);
 
-  // Load appeals (unchanged)
+  // Load appeals from subcollection
   const messagesDiv = modal.querySelector("#bannedMessages") || document.createElement("div");
   if (!modal.querySelector("#bannedMessages")) {
     messagesDiv.id = "bannedMessages";
     messagesDiv.className = "banned-messages";
     bannedList.before(messagesDiv);
   }
-  const appealsQ = query(collection(db, "banAppeals"), where("communityId", "==", communityId));
-  const appealsSnapshot = await getDocs(appealsQ);
+  const appealsRef = collection(db, "communities", communityId, "banAppeals");
+  const appealsSnapshot = await getDocs(appealsRef);
   if (!appealsSnapshot.empty) {
     messagesDiv.innerHTML = "<h3>Appeal Messages</h3>";
     for (const doc of appealsSnapshot.docs) {
       const appeal = doc.data();
-      const userData = await fetchUserData(appeal.userId);
+      const userData = await fetchUserData(appeal.userId); // Still fetch for name, but username is in appeal
+      const displayName = `${userData.name || "Unknown"} (${appeal.username || "unknown"})`;
       messagesDiv.innerHTML += `
         <div class="appeal-item" data-appeal-id="${doc.id}">
-          <p><strong>${userData.name || "Unknown"}:</strong> ${appeal.message}</p>
+          <p><strong>${displayName}:</strong> ${appeal.message}</p>
           <span>${new Date(appeal.timestamp.toDate()).toLocaleString()}</span>
           <button class="delete-appeal-btn" data-appeal-id="${doc.id}">Delete</button>
         </div>
@@ -4404,7 +4424,7 @@ async function viewBannedUsers(communityId) {
     messagesDiv.querySelectorAll(".delete-appeal-btn").forEach(btn => {
       btn.addEventListener("click", async () => {
         if (confirm("Delete this appeal?")) {
-          await deleteDoc(doc(db, "banAppeals", btn.dataset.appealId));
+          await deleteDoc(doc(db, "communities", communityId, "banAppeals", btn.dataset.appealId));
           messagesDiv.querySelector(`.appeal-item[data-appeal-id="${btn.dataset.appealId}"]`).remove();
           if (!messagesDiv.querySelector(".appeal-item")) messagesDiv.innerHTML = "<p>No appeals yet.</p>";
         }
@@ -4912,30 +4932,35 @@ async function openNotificationsModal(userId) {
       }
     });
     notificationList.querySelectorAll(".ban-appeal-form").forEach(form => {
-      form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const text = form.querySelector("textarea").value.trim();
-        if (text) {
-          const notifId = form.dataset.id;
-          const notif = allNotifications.find(n => n.id === notifId).data;
-          try {
-            await addDoc(collection(db, "banAppeals"), {
-              userId: userId,
-              communityId: notif.communityId,
-              message: text,
-              timestamp: new Date(),
-              notificationId: notifId
-            });
-            await updateDoc(doc(db, "users", userId, "notifications", notifId), { appealSubmitted: true });
-            alert("Appeal sent!");
-            await loadNotifications(true);
-          } catch (error) {
-            console.error("Error submitting appeal:", error);
-            alert("Failed to send appeal.");
-          }
-        }
-      });
-    });
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = form.querySelector("textarea").value.trim();
+    if (text) {
+      const notifId = form.dataset.id;
+      const notif = allNotifications.find(n => n.id === notifId).data;
+      try {
+        // Fetch username
+        const userDoc = await getDoc(doc(db, "users", userId));
+        const userData = userDoc.exists() ? userDoc.data() : { username: `user_${userId.slice(0, 8)}` };
+
+        // Write to community subcollection
+        await addDoc(collection(db, "communities", notif.communityId, "banAppeals"), {
+          userId: userId,
+          username: userData.username, // Include username
+          message: text,
+          timestamp: new Date(),
+          notificationId: notifId
+        });
+        await updateDoc(doc(db, "users", userId, "notifications", notifId), { appealSubmitted: true });
+        alert("Appeal sent!");
+        await loadNotifications(true);
+      } catch (error) {
+        console.error("Error submitting appeal:", error);
+        alert("Failed to send appeal.");
+      }
+    }
+  });
+});
     notificationList.querySelectorAll(".notification-item").forEach(item => {
       item.addEventListener("click", () => {
         const notif = allNotifications.find(n => n.id === item.dataset.id).data;
