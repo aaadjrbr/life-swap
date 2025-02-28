@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="community.css">
   <link rel="stylesheet" href="./customHeader.css">
   <link rel="stylesheet" href="./chat.css">
+  <link rel="stylesheet" href="./stories.css">
+  <link rel="stylesheet" href="https://unpkg.com/swiper/swiper-bundle.min.css">
 </head>
 <body>
   <div class="community-page">
@@ -98,6 +100,62 @@
   <button class="carousel-arrow next" id="carouselNextBtn">&gt;</button>
 </div>
 
+<!-- Stories Carousel -->
+<div id="storiesCarousel" class="stories-carousel">
+  <h3>Stories</h3>
+  <div class="swiper-container">
+    <div class="swiper-wrapper" id="storiesWrapper">
+      <!-- Stories will be dynamically added here -->
+    </div>
+    <div class="swiper-button-next"></div>
+    <div class="swiper-button-prev"></div>
+  </div>
+</div>
+
+<!-- Add Story and Refresh Buttons -->
+<button id="addStoryBtn">Add Story</button>
+<button id="refreshStoriesBtn">Refresh Stories</button>
+
+<!-- Story Modal -->
+<div id="storyModal" class="modal hidden">
+  <div class="modal-content">
+    <button id="prevStoryBtn" class="story-nav"><</button>
+    <div class="swiper-container-inner">
+      <div class="swiper-wrapper" id="storyPhotosWrapper">
+        <!-- Photos will be dynamically added here -->
+      </div>
+      <div class="swiper-button-next-inner"></div>
+      <div class="swiper-button-prev-inner"></div>
+    </div>
+    <p><span id="storyUsername" class="clickable"></span> - <span id="storyTimestamp"></span></p>
+    <p id="storyText" style="display: none;"></p> <!--It already have this on stories.js but if you remove this it will crash lol-->
+    <button id="editStoryBtn" class="hidden">Edit</button>
+    <button id="deleteStoryBtn" class="hidden">Delete</button>
+    <button id="closeStoryBtn">Close</button>
+    <button id="viewPostBtn" class="hidden">View Post</button>
+    <button id="nextStoryBtn" class="story-nav">></button>
+  </div>
+</div>
+
+<!-- Add Story Form Modal -->
+<div id="addStoryModal" class="modal hidden">
+  <div class="modal-content">
+    <h2 id="modalTitle">Add Story</h2>
+    <input type="file" id="storyImageInput" accept="image/*" multiple>
+    <textarea id="storyTextInput" placeholder="Add some text (optional)" maxlength="200"></textarea>
+    <select id="tagPostSelect">
+      <option value="">Select a post to tag (optional)</option>
+    </select>
+    <button id="uploadStoryBtn">Upload Story</button>
+    <button id="cancelStoryBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- Loading Overlay for Deletion -->
+<div id="deleteStoryOverlay" class="loading-overlay hidden">
+  <div class="loading-text">Deleting...</div>
+</div>
+
     <div id="scroll-down-posts"></div>
     <!-- Community Posts -->
     <div id="posts">
@@ -147,6 +205,7 @@
       <div id="sentinel" style="height: 1px;"></div>
       <div class="pagination" id="postPagination"></div>
     </div>
+    <div id="search-scrolldown2"></div>
 
   <!-- View Profile Modal -->
   <div id="viewProfileModal" class="modal hidden">
@@ -274,6 +333,8 @@
 
   <script type="module" src="./chat.js"></script>
   <script type="module" src="./customHeader.js"></script>
+  <script type="module" src="./stories.js"></script>
+  <script src="https://unpkg.com/swiper/swiper-bundle.min.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -5305,6 +5366,9 @@ function resetCommDataCache() {
         timeout = setTimeout(() => func.apply(this, args), wait);
       };
     }
+
+    window.communitySearchPostsById = searchPostsById;
+    window.communityViewProfile = viewProfile;
   </script>
 </body>
 </html>
