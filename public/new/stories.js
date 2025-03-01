@@ -1,5 +1,5 @@
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, collection, query, getDoc, where, orderBy, limit, getDocs, addDoc, doc, updateDoc, deleteDoc, Timestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, query, getDoc, where, orderBy, limit, getDocs, addDoc, doc, updateDoc, deleteDoc, Timestamp, startAfter } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 const auth = getAuth();
@@ -11,8 +11,9 @@ let userId;
 let storyCache = new Map();
 let viewedStories = new Set();
 let lastFetchTime = 0;
-const CACHE_TTL = 24 * 60 * 60 * 1000;
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 let isProcessing = false;
+let lastDoc = null; // For pagination
 
 document.addEventListener("DOMContentLoaded", () => {
     onAuthStateChanged(auth, (user) => {
@@ -35,10 +36,11 @@ async function initializeStories() {
     await loadStories();
     setupAddStoryForm();
     setupStoryModal();
-    document.getElementById("refreshStoriesBtn")?.addEventListener("click", () => loadStories(true));
+    document.getElementById("refreshStoriesBtn")?.addEventListener("click", throttle(() => loadStories(true), 2000)); // Throttled refresh
+    document.getElementById("loadMoreBtn")?.addEventListener("click", () => loadStories(false, lastDoc)); // Pagination trigger
 }
 
-async function loadStories(forceRefresh = false) {
+async function loadStories(forceRefresh = false, lastDocParam = null) {
     if (isProcessing) return;
     isProcessing = true;
     try {
@@ -48,30 +50,35 @@ async function loadStories(forceRefresh = false) {
 
         if (forceRefresh || now - lastFetchTime >= CACHE_TTL || storyCache.size === 0) {
             const storiesRef = collection(db, "communities", communityId, "stories");
-            const q = query(
+            let q = query(
                 storiesRef,
                 where("timestamp", ">", Timestamp.fromMillis(now - 24 * 60 * 60 * 1000)),
                 orderBy("timestamp", "desc"),
-                limit(10)
+                limit(50) // Fetch 50 to have room for shuffling
             );
-            const snapshot = await getDocs(q);
-            const newStories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            if (lastDocParam) q = query(q, startAfter(lastDocParam)); // Paginate if provided
 
-            console.log(`[Fetch] Got ${newStories.length} stories`);
-            newStories.forEach(story => storyCache.set(story.id, story));
+            const snapshot = await getDocs(q);
+            const allStories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            lastDoc = snapshot.docs[snapshot.docs.length - 1]; // Update pagination cursor
+
+            console.log(`[Fetch] Got ${allStories.length} stories`);
+
+            // Shuffle client-side and take 20
+            const shuffledStories = allStories
+                .sort(() => Math.random() - 0.5) // Randomize order
+                .slice(0, 20); // Limit to 20 for display
+
+            shuffledStories.forEach(story => storyCache.set(story.id, story));
             lastFetchTime = now;
 
-            const validStories = [...storyCache.values()]
-                .filter(story => story.timestamp.toMillis() > now - 24 * 60 * 60 * 1000)
-                .sort(() => Math.random() - 0.5); // Random order
-
-            console.log(`[Render] Total valid stories: ${validStories.length}`);
-            renderStories(validStories);
+            renderStories(shuffledStories);
         } else {
             console.log(`[Cache Hit] Using ${storyCache.size} cached stories`);
             const validStories = [...storyCache.values()]
                 .filter(story => story.timestamp.toMillis() > now - 24 * 60 * 60 * 1000)
-                .sort(() => Math.random() - 0.5);
+                .sort(() => Math.random() - 0.5) // Shuffle cached stories
+                .slice(0, 20); // Take 20 from cache
             renderStories(validStories);
         }
     } catch (error) {
@@ -85,6 +92,15 @@ async function loadStories(forceRefresh = false) {
 function renderStories(stories) {
     const storiesWrapper = document.getElementById("storiesWrapper");
     if (!storiesWrapper) return;
+
+    // Check if re-rendering is needed
+    const currentIds = new Set(stories.map(s => s.id));
+    const renderedIds = new Set([...storiesWrapper.querySelectorAll(".swiper-slide")].map(slide => slide.querySelector(".story-profile").dataset.storyId));
+    if (currentIds.size === renderedIds.size && [...currentIds].every(id => renderedIds.has(id))) {
+        console.log("[Render] No changes, skipping");
+        return;
+    }
+
     storiesWrapper.innerHTML = stories.length === 0 ? "<p>No stories yet, bro!</p>" : "";
 
     stories.forEach(story => {
@@ -105,10 +121,16 @@ function renderStories(stories) {
 
     if (window.outerSwiper) window.outerSwiper.destroy(true, true);
     window.outerSwiper = new Swiper('.swiper-container', {
-        slidesPerView: window.innerWidth < 768 ? 3 : 5,
+        slidesPerView: Math.min(10, stories.length), // Cap at 10 visible
         spaceBetween: 10,
+        virtual: true, // Lazy-load slides (if Swiper version supports)
         navigation: { nextEl: '.swiper-button-next', prevEl: '.swiper-button-prev' },
-        loop: stories.length > 1,
+        loop: stories.length > 10, // Loop only if > 10
+        loopedSlides: stories.length,
+        on: {
+            init: () => console.log("Outer Swiper initialized"),
+            loopFix: () => console.log("Loop fixed")
+        }
     });
 }
 
@@ -208,7 +230,7 @@ async function viewStory(storyId) {
             } else {
                 viewPostBtn.onclick = null;
             }
-            console.log("Slide details updated - Story:", storyId, "Photo Index:", photoIndex, "Timestamp:", storyTimestamp.textContent, "Post ID:", imgData.postId);
+            console.log("Slide details updated - Story:", storyId, "Photo Index:", photoIndex);
         }
 
         function debounce(func, wait) {
@@ -339,7 +361,8 @@ async function setupAddStoryForm() {
                         text: textInput.value.trim() || "",
                         username: userData.username,
                         userProfilePhoto: userData.profilePhoto || "https://via.placeholder.com/60",
-                        timestamp
+                        timestamp,
+                        randomIndex: Math.floor(Math.random() * 10000) // Add random index for sampling
                     };
 
                     const docRef = await addDoc(storiesRef, storyData);
@@ -605,4 +628,15 @@ async function compressImage(file) {
 
 function viewProfile(userId) {
     window.communityViewProfile(userId);
+}
+
+function throttle(func, wait) {
+    let lastCall = 0;
+    return function (...args) {
+        const now = Date.now();
+        if (now - lastCall >= wait) {
+            lastCall = now;
+            return func(...args);
+        }
+    };
 }
