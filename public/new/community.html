@@ -8,7 +8,6 @@
   <link rel="stylesheet" href="./customHeader.css">
   <link rel="stylesheet" href="./chat.css">
   <link rel="stylesheet" href="./stories.css">
-  <link rel="stylesheet" href="https://unpkg.com/swiper/swiper-bundle.min.css">
 </head>
 <body>
   <div class="community-page">
@@ -98,62 +97,6 @@
     <!-- Posts populated dynamically -->
   </div>
   <button class="carousel-arrow next" id="carouselNextBtn">&gt;</button>
-</div>
-
-<!-- Stories Carousel -->
-<div id="storiesCarousel" class="stories-carousel">
-  <h3>Stories</h3>
-  <div class="swiper-container">
-    <div class="swiper-wrapper" id="storiesWrapper">
-      <!-- Stories will be dynamically added here -->
-    </div>
-    <div class="swiper-button-next"></div>
-    <div class="swiper-button-prev"></div>
-  </div>
-</div>
-
-<!-- Add Story and Refresh Buttons -->
-<button id="addStoryBtn">Add Story</button>
-<button id="refreshStoriesBtn">Refresh Stories</button>
-
-<!-- Story Modal -->
-<div id="storyModal" class="modal hidden">
-  <div class="modal-content">
-    <button id="prevStoryBtn" class="story-nav"><</button>
-    <div class="swiper-container-inner">
-      <div class="swiper-wrapper" id="storyPhotosWrapper">
-        <!-- Photos will be dynamically added here -->
-      </div>
-      <div class="swiper-button-next-inner"></div>
-      <div class="swiper-button-prev-inner"></div>
-    </div>
-    <p><span id="storyUsername" class="clickable"></span> - <span id="storyTimestamp"></span></p>
-    <p id="storyText" style="display: none;"></p> <!--It already have this on stories.js but if you remove this it will crash lol-->
-    <button id="editStoryBtn" class="hidden">Edit</button>
-    <button id="deleteStoryBtn" class="hidden">Delete</button>
-    <button id="closeStoryBtn">Close</button>
-    <button id="viewPostBtn" class="hidden">View Post</button>
-    <button id="nextStoryBtn" class="story-nav">></button>
-  </div>
-</div>
-
-<!-- Add Story Form Modal -->
-<div id="addStoryModal" class="modal hidden">
-  <div class="modal-content">
-    <h2 id="modalTitle">Add Story</h2>
-    <input type="file" id="storyImageInput" accept="image/*" multiple>
-    <textarea id="storyTextInput" placeholder="Add some text (optional)" maxlength="200"></textarea>
-    <select id="tagPostSelect">
-      <option value="">Select a post to tag (optional)</option>
-    </select>
-    <button id="uploadStoryBtn">Upload Story</button>
-    <button id="cancelStoryBtn">Cancel</button>
-  </div>
-</div>
-
-<!-- Loading Overlay for Deletion -->
-<div id="deleteStoryOverlay" class="loading-overlay hidden">
-  <div class="loading-text">Deleting...</div>
 </div>
 
     <div id="scroll-down-posts"></div>
@@ -334,7 +277,6 @@
   <script type="module" src="./chat.js"></script>
   <script type="module" src="./customHeader.js"></script>
   <script type="module" src="./stories.js"></script>
-  <script src="https://unpkg.com/swiper/swiper-bundle.min.js"></script>
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -391,6 +333,22 @@ enableIndexedDbPersistence(db)
     let postCache = new Map(); // Add this near your other globals (e.g., after userDataCache)
     const POSTS_PER_LOAD = 20; // Bigger batch size
     let isFetching = false; 
+
+    const categoryDisplayMap = {
+  "clothing_accessories": "Clothing & Accessories",
+  "electronics": "Electronics & Gadgets",
+  "furniture_decor": "Furniture & Home Decor",
+  "kitchen_dining": "Kitchen & Dining",
+  "tools_diy": "Tools & DIY",
+  "books_media": "Books, Movies & Music",
+  "arts_crafts": "Arts & Crafts",
+  "toys_games": "Toys & Games",
+  "sports_outdoors": "Sports & Outdoors",
+  "health_beauty": "Health & Beauty",
+  "baby_kids": "Baby & Kids",
+  "pet_supplies": "Pet Supplies",
+  "misc": "Miscellaneous"
+};
 
     document.addEventListener("DOMContentLoaded", () => {
   onAuthStateChanged(auth, async (user) => {
@@ -1427,7 +1385,7 @@ async function createPost() {
   const lat = document.getElementById("postLocation").dataset.lat;
   const lon = document.getElementById("postLocation").dataset.lon;
   const communityCheckboxes = document.querySelectorAll("#communityCheckboxes input[name='communities']:checked");
-  const category = document.getElementById("category").value;
+  const category = document.getElementById("category").value; // e.g., "clothing_accessories"
   const lookingFor = document.getElementById("lookingFor").value;
   const offering = document.getElementById("offering").value;
 
@@ -1466,7 +1424,6 @@ async function createPost() {
     return;
   }
 
-  // Upload images per community
   const photoUrlsByCommunity = {};
   for (const commId of selectedCommunities) {
     photoUrlsByCommunity[commId] = [];
@@ -1479,29 +1436,27 @@ async function createPost() {
     }
   }
 
-  // Create separate posts for each community with their own photo URLs
   const postPromises = selectedCommunities.map(commId => {
     const postData = {
       title,
       description,
-      photoUrls: photoUrlsByCommunity[commId], // Each community gets its own URLs
+      photoUrls: photoUrlsByCommunity[commId],
       location: { latitude: parseFloat(lat), longitude: parseFloat(lon), name: location },
       userId: user.uid,
       createdAt: new Date(),
-      category,
+      category, // Stores as "clothing_accessories", etc.
       lookingFor,
       offering,
-      communityId: commId, // Good to keep this for tracking
-      likes: 0,            // Already added—looks good!
-      likedBy: [],         // Already added—looks good!
-      commentCount: 0      // Optional: Add this since your renderPosts uses it
+      communityId: commId,
+      likes: 0,
+      likedBy: [],
+      commentCount: 0
     };
     
     return addDoc(collection(db, "communities", commId, "posts"), postData);
   });
   const postRefs = await Promise.all(postPromises);
 
-  // Alert with all post IDs
   alert(`Post created in ${selectedCommunities.length} communit${selectedCommunities.length > 1 ? 'ies' : 'y'}! IDs: ${postRefs.map(ref => ref.id).join(", ")}`);
   document.getElementById("newPostForm").reset();
   totalYourPosts = 0;
@@ -2202,13 +2157,13 @@ async function loadPosts(communityId, reset = false) {
     loadedPostIds.clear();
     lastPostDoc = null;
     postCache.clear();
+    resetCache(); // Clear session storage cache on reset
   }
 
   const cachedPosts = getCachedPosts();
   const likedPrefs = getLikedPrefs();
-  const batchSize = 50; // Fetch 50 to score, pick top 20
+  const batchSize = 50;
 
-  // Get latest timestamp from cache
   let lastCachedTime = null;
   if (cachedPosts.size > 0) {
     const times = Array.from(cachedPosts.values()).map(post => post.data.createdAt.getTime());
@@ -2218,7 +2173,6 @@ async function loadPosts(communityId, reset = false) {
     console.log("No cached posts found—fetching fresh batch.");
   }
 
-  // Fetch only new posts since last cached time
   let q = query(
     collection(db, "communities", communityId, "posts"),
     ...(filters.category ? [where("category", "==", filters.category)] : []),
@@ -2240,18 +2194,25 @@ async function loadPosts(communityId, reset = false) {
 
     console.log(`Fetched ${newPosts.length} new posts.`);
 
-    // Merge new posts into cache
     newPosts.forEach(post => cachedPosts.set(post.id, post));
     setCachedPosts(cachedPosts);
 
-    // Score all cached posts and pick top POSTS_PER_LOAD
     const allPosts = Array.from(cachedPosts.values()).map(post => ({
       ...post,
       score: getPostScore(post.data, likedPrefs)
     }));
-    allPosts.sort((a, b) => b.score - a.score);
 
-    const postsToShow = allPosts
+    // Apply filters to cached posts
+    const filteredPosts = allPosts.filter(post => {
+      return (
+        (!filters.category || post.data.category === filters.category) &&
+        (!filters.lookingFor || post.data.lookingFor === filters.lookingFor) &&
+        (!filters.offering || post.data.offering === filters.offering)
+      );
+    });
+
+    filteredPosts.sort((a, b) => b.score - a.score);
+    const postsToShow = filteredPosts
       .filter(post => !loadedPostIds.has(post.id))
       .slice(0, POSTS_PER_LOAD);
 
@@ -2276,7 +2237,6 @@ async function loadPosts(communityId, reset = false) {
 
     await renderPosts({ docs: postsToShow.map(post => ({ id: post.id, data: () => post.data })) }, postsDiv, savedPostIds);
 
-    // Memory management
     const MAX_CACHED_POSTS = 100;
     if (loadedPostIds.size > MAX_CACHED_POSTS) {
       const oldestIds = [...loadedPostIds].slice(0, loadedPostIds.size - MAX_CACHED_POSTS);
@@ -2332,6 +2292,7 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
     const photoCount = photoUrls.length;
     const reportStatus = await getPostReportStatus(postId);
     const isSaved = savedPostIds.has(postId);
+    const displayCategory = categoryDisplayMap[post.category] || post.category; // Nice display
 
     if (reportStatus?.isHidden) {
       loadedPostIds.delete(postId);
@@ -2354,7 +2315,7 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
         ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${postId}-community">></button>` : ''}
       </div>
       <p>Location: ${post.location?.name || 'N/A'}</p>
-      <p>Category: ${post.category || 'N/A'}</p>
+      <p>Category: ${displayCategory}</p> <!-- Nice display here -->
       <p>Looking For: ${post.lookingFor || 'N/A'} | Offering: ${post.offering || 'N/A'}</p>
       <p class="timestamp">${timestamp}</p>
       <p class="post-id">Post ID: ${postId} <button class="copy-btn" data-post-id="${postId}">Copy</button></p>
@@ -2389,7 +2350,6 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
 
     postsDiv.appendChild(postDiv);
 
-    // Like/Unlike button logic with personalization
     const likeBtn = postDiv.querySelector(`.like-btn[data-post-id="${postId}"]`);
     likeBtn.addEventListener("click", async () => {
       const postRef = doc(db, "communities", communityId, "posts", postId);
@@ -2409,29 +2369,21 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
       if (likedBy.includes(userId)) {
         newLikedBy = newLikedBy.filter(id => id !== userId);
         newLikes = Math.max(0, newLikes - 1);
-        await updateDoc(postRef, {
-          likes: newLikes,
-          likedBy: newLikedBy
-        });
+        await updateDoc(postRef, { likes: newLikes, likedBy: newLikedBy });
         likeBtn.textContent = `Like (${newLikes})`;
       } else {
         newLikedBy.push(userId);
         newLikes += 1;
-        await updateDoc(postRef, {
-          likes: newLikes,
-          likedBy: newLikedBy
-        });
+        await updateDoc(postRef, { likes: newLikes, likedBy: newLikedBy });
         likeBtn.textContent = `Unlike (${newLikes})`;
         addLikedPref(postData.category, postData.offering);
       }
 
-      // Update cached post
       const cachedPosts = getCachedPosts();
       cachedPosts.set(postId, { id: postId, data: { ...postData, likes: newLikes, likedBy: newLikedBy } });
       setCachedPosts(cachedPosts);
     });
 
-    // Rest of your event listeners
     const saveToggleBtn = postDiv.querySelector(`.save-toggle-btn[data-post-id="${postId}"]`);
     saveToggleBtn.replaceWith(saveToggleBtn.cloneNode(true));
     const newSaveToggleBtn = postDiv.querySelector(`.save-toggle-btn[data-post-id="${postId}"]`);
