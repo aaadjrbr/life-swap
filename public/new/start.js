@@ -1,6 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, getDocs, query, where, addDoc, limit } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { getFirestore, collection, doc, getDoc, setDoc, updateDoc, getDocs, query, where, addDoc, limit, writeBatch } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 // Firebase Config
 const firebaseConfig = {
@@ -17,6 +17,11 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
+
+// Define goToCommunity globally upfront
+window.goToCommunity = function(communityId) {
+  window.location.href = `./community.html?id=${communityId}`;
+};
 
 // Wait for DOM to load
 document.addEventListener("DOMContentLoaded", () => {
@@ -93,16 +98,20 @@ async function loadYourCommunities(userData) {
 
   snapshot.forEach((doc) => {
     const comm = doc.data();
-    yourCommunityList.innerHTML += `
-      <div>
-        <span>${comm.name} ${comm.creatorId === auth.currentUser.uid ? "(Creator)" : ""}</span>
-        <button onclick="goToCommunity('${doc.id}')">Go</button>
-      </div>
+    const div = document.createElement("div");
+    div.innerHTML = `
+      <span>${comm.name} ${comm.creatorId === auth.currentUser.uid ? "(Creator)" : ""}</span>
+      <button class="go-btn" data-community-id="${doc.id}">Go</button>
     `;
+    yourCommunityList.appendChild(div);
+
+    div.querySelector(".go-btn").addEventListener("click", () => {
+      goToCommunity(doc.id);
+    });
   });
 }
 
-// Load Nearby Communities
+// Load Nearby Communities (unchanged)
 async function loadCommunities(searchQuery = "") {
   const communityList = document.getElementById("communityList");
   if (!communityList) {
@@ -112,13 +121,11 @@ async function loadCommunities(searchQuery = "") {
   communityList.innerHTML = "Loading communities...";
 
   if (searchQuery) {
-    // Case-insensitive search by converting to lowercase
     const lowerQuery = searchQuery.toLowerCase();
     let q;
-    if (searchQuery.length === 20) { // Likely a community ID
+    if (searchQuery.length === 20) {
       q = query(collection(db, "communities"), where("__name__", "==", searchQuery));
     } else {
-      // Store lowercase name in Firestore for case-insensitive search
       q = query(collection(db, "communities"), where("nameLower", ">=", lowerQuery), where("nameLower", "<=", lowerQuery + "\uf8ff"), limit(10));
     }
     const snapshot = await getDocs(q);
@@ -200,33 +207,69 @@ async function loadCommunities(searchQuery = "") {
   };
 }
 
-// Join a Community
+// Join a Community (Fixed!)
 window.joinCommunity = async function(communityId) {
+  console.log("Starting joinCommunity for community:", communityId);
+
   const user = auth.currentUser;
+  if (!user) {
+    console.error("No user authenticated!");
+    alert("Bro, log in first!");
+    return;
+  }
+  console.log("User UID:", user.uid);
+
   const userRef = doc(db, "users", user.uid);
   const commRef = doc(db, "communities", communityId);
+  const memberRef = doc(db, "communities", communityId, "members", user.uid);
 
-  const userDoc = await getDoc(userRef);
-  const communityIds = userDoc.data().communityIds || [];
-  if (!communityIds.includes(communityId)) {
-    communityIds.push(communityId);
-    await updateDoc(userRef, { communityIds });
+  console.log("UserRef path:", userRef.path); // "users/<user.uid>"
+  console.log("CommRef path:", commRef.path); // "communities/<communityId>"
+  console.log("MemberRef path:", memberRef.path); // "communities/<communityId>/members/<user.uid>"
+
+  try {
+    // Check if community exists
+    const commDoc = await getDoc(commRef);
+    if (!commDoc.exists()) {
+      console.error("Community doesn’t exist:", communityId);
+      alert("This community ain’t real, bro!");
+      return;
+    }
+    console.log("Community exists, data:", commDoc.data());
+
+    // Check user doc
+    const userDoc = await getDoc(userRef);
+    if (!userDoc.exists()) {
+      console.error("User doc missing!");
+      return;
+    }
+    const communityIds = userDoc.data().communityIds || [];
+    console.log("User’s current communityIds:", communityIds);
+
+    const batch = writeBatch(db);
+
+    if (!communityIds.includes(communityId)) {
+      communityIds.push(communityId);
+      batch.update(userRef, { communityIds });
+      console.log("Added to user’s communityIds:", communityId);
+    } else {
+      console.log("User already in communityIds:", communityId);
+    }
+
+    // Set member in subcollection
+    batch.set(memberRef, { joinedAt: new Date() }, { merge: true });
+    console.log("Batch set member at:", memberRef.path);
+
+    // Commit the batch
+    await batch.commit();
+    console.log("Batch committed successfully! Check Firestore now.");
+
+    document.getElementById("communityModal").classList.add("hidden");
+    goToCommunity(communityId);
+  } catch (error) {
+    console.error("Join failed, error:", error.message, error.code);
+    alert("Join crashed, bro! Check console for deets.");
   }
-
-  const commDoc = await getDoc(commRef);
-  const members = commDoc.data().members || [];
-  if (!members.includes(user.uid)) {
-    members.push(user.uid);
-    await updateDoc(commRef, { members });
-  }
-
-  document.getElementById("communityModal").classList.add("hidden");
-  goToCommunity(communityId);
-};
-
-// Go to Community Page
-window.goToCommunity = function(communityId) {
-  window.location.href = `./community.html?id=${communityId}`;
 };
 
 // Setup Location Autocomplete with Nominatim
@@ -282,25 +325,30 @@ function setupLocationAutocomplete() {
     const user = auth.currentUser;
     const commRef = await addDoc(collection(db, "communities"), {
       name,
-      nameLower: name.toLowerCase(), // Store lowercase for case-insensitive search
+      nameLower: name.toLowerCase(),
       location: { latitude: lat, longitude: lon },
-      members: [user.uid],
       creatorId: user.uid,
       createdAt: new Date()
     });
 
+    const memberRef = doc(db, "communities", commRef.id, "members", user.uid);
     const userRef = doc(db, "users", user.uid);
     const userDoc = await getDoc(userRef);
     const communityIds = userDoc.data().communityIds || [];
+
+    const batch = writeBatch(db);
+    batch.set(memberRef, { joinedAt: new Date() }, { merge: true });
     communityIds.push(commRef.id);
-    await updateDoc(userRef, { communityIds });
+    batch.update(userRef, { communityIds });
+
+    await batch.commit();
 
     document.getElementById("communityModal").classList.add("hidden");
     goToCommunity(commRef.id);
   };
 }
 
-// Distance Calculation
+// Distance Calculation (unchanged)
 function calculateDistanceInMiles(lat1, lon1, lat2, lon2) {
   const R = 3958.8;
   const toRad = (val) => val * (Math.PI / 180);
@@ -313,7 +361,7 @@ function calculateDistanceInMiles(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
-// Debounce for Autocomplete
+// Debounce for Autocomplete (unchanged)
 function debounce(func, wait) {
   let timeout;
   return function (...args) {
