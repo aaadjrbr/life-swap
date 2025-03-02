@@ -388,12 +388,27 @@ details > div {
   min-width: 100%;
 }
 
+.pagination {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+  margin-top: 10px;
+}
+.pagination button {
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.pagination button.active {
+  font-weight: bold;
+  background-color: #ddd;
+}
+
 /* Posts */
 .post {
   border: 1px solid #ddd;
   padding: 10px;
   margin: 10px 0;
-  min-height: 200px;
+  min-height: 300px; /* Adjust as needed */
   border-radius: 4px;
   background: white;
 }

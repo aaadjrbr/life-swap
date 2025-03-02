@@ -608,7 +608,6 @@ document.addEventListener("DOMContentLoaded", () => {
     setupCommunitySelection();
     loadYourPosts(user.uid);
     loadPosts(communityId, false);
-    setupInfiniteScroll();
     loadCarouselPosts(communityId);
     updateNotificationBadge(user.uid);
     await updateChatBadge(user.uid);
@@ -2074,36 +2073,6 @@ function slideCarousel(direction) {
   loadCarouselPosts(communityId, direction);
 }
 
-//Helper for scrolldown
-// Update infinite scroll to respect the search state
-const sentinel = document.getElementById("sentinel");
-  const observer = new IntersectionObserver((entries) => {
-    if (entries[0].isIntersecting && !isLoading && loadedPostIds.size < totalPosts && !isSearching) {
-      isLoading = true;
-      loadPosts(communityId).then(() => {
-        isLoading = false;
-      });
-    }
-  }, { threshold: 1.0 });
-
-  observer.observe(sentinel);
-
-let lastY = 0;
-window.addEventListener("touchmove", debounce(() => {
-  const currentY = window.scrollY;
-  if (currentY > lastY && currentY + window.innerHeight >= document.body.scrollHeight - 50) {
-    if (!isLoading && loadedPostIds.size < totalPosts) {
-      isLoading = true;
-      loadPosts(communityId).then(() => {
-        isLoading = false;
-      });
-    }
-  }
-  lastY = currentY;
-}, 200));
-
-
-// Add delay helper
 // Add delay helper
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -2111,14 +2080,19 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 const POST_CACHE_KEY = `postCache_${communityId}`;
 const LIKED_PREFS_KEY = `likedPrefs_${communityId}`;
 const CACHE_TIMESTAMP_KEY = `cacheTimestamp_${communityId}`;
-const CACHE_EXPIRY_HOURS = 8; // Expires after 8 hours
+const CACHE_EXPIRY_HOURS = 8;
 
-// Helper to check/set cache expiration
+const PaginationState = {
+  POSTS_PER_PAGE: 5,
+  currentPage: 1,
+  displayedPostIds: new Set()
+};
+
 function isCacheExpired() {
   const timestamp = sessionStorage.getItem(CACHE_TIMESTAMP_KEY);
   if (!timestamp) return true;
   const ageMs = Date.now() - parseInt(timestamp);
-  return ageMs > (CACHE_EXPIRY_HOURS * 60 * 60 * 1000); // 8 hours in ms
+  return ageMs > (CACHE_EXPIRY_HOURS * 60 * 60 * 1000);
 }
 
 function resetCache() {
@@ -2127,15 +2101,14 @@ function resetCache() {
   sessionStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
 }
 
-// Helper to get/set liked preferences
 function getLikedPrefs() {
   if (isCacheExpired()) resetCache();
   const cached = sessionStorage.getItem(LIKED_PREFS_KEY);
   if (!cached) return { categories: new Set(), offerings: new Set() };
   const parsed = JSON.parse(cached);
   return {
-    categories: new Set(parsed.categories), // Convert array back to Set
-    offerings: new Set(parsed.offerings)    // Convert array back to Set
+    categories: new Set(parsed.categories),
+    offerings: new Set(parsed.offerings)
   };
 }
 
@@ -2149,63 +2122,65 @@ function addLikedPref(category, offering) {
   }));
 }
 
-// Helper to convert Timestamp to Date for caching
 function normalizePostData(postData) {
   return {
     ...postData,
     createdAt: postData.createdAt instanceof Object && 'toDate' in postData.createdAt 
       ? postData.createdAt.toDate() 
-      : new Date(postData.createdAt) // Handle plain dates or serialized objects
+      : new Date(postData.createdAt)
   };
 }
 
-// Helper to get/set cached posts
 function getCachedPosts() {
   if (isCacheExpired()) resetCache();
   const cached = sessionStorage.getItem(POST_CACHE_KEY);
   if (!cached) return new Map();
   const postArray = JSON.parse(cached);
   return new Map(postArray.map(([id, post]) => {
-    // Rehydrate createdAt as a Date
     post.data.createdAt = new Date(post.data.createdAt);
     return [id, post];
   }));
 }
 
 function setCachedPosts(postMap) {
+  const MAX_CACHED_POSTS = 1000; // Cap at 1000 posts (~1-2 MB)
   const serializableMap = new Map(Array.from(postMap.entries()).map(([id, post]) => {
     return [id, { ...post, data: { ...post.data, createdAt: post.data.createdAt.toISOString() } }];
   }));
+
+  if (serializableMap.size > MAX_CACHED_POSTS) {
+    const excess = serializableMap.size - MAX_CACHED_POSTS;
+    const oldestKeys = Array.from(serializableMap.keys()).slice(0, excess);
+    oldestKeys.forEach(key => serializableMap.delete(key));
+    console.log(`Trimmed ${excess} oldest posts from cache`);
+  }
+
   sessionStorage.setItem(POST_CACHE_KEY, JSON.stringify(Array.from(serializableMap.entries())));
   if (!sessionStorage.getItem(CACHE_TIMESTAMP_KEY)) {
     sessionStorage.setItem(CACHE_TIMESTAMP_KEY, Date.now().toString());
   }
 }
 
-// Post scoring with personalization and new post boost
 function getPostScore(postData, likedPrefs) {
   const now = Date.now();
-  const ageInHours = (now - postData.createdAt.getTime()) / (1000 * 60 * 60); // Hours old
-  const recencyScore = Math.max(0, 30 - (ageInHours / 24)) / 30; // Fade over 30 days
-  const likesScore = Math.min(postData.likes || 0, 50) / 50; // Cap at 50
-  const commentsScore = Math.min(postData.commentCount || 0, 20) / 20; // Cap at 20
+  const ageInHours = (now - postData.createdAt.getTime()) / (1000 * 60 * 60);
+  const recencyScore = Math.max(0, 30 - (ageInHours / 24)) / 30;
+  const likesScore = Math.min(postData.likes || 0, 50) / 50;
+  const commentsScore = Math.min(postData.commentCount || 0, 20) / 20;
 
   let score = (0.4 * likesScore) + (0.4 * commentsScore) + (0.2 * recencyScore);
   const userCategories = new Set(likedPrefs.categories);
   const userOfferings = new Set(likedPrefs.offerings);
   if (userCategories.has(postData.category) || userOfferings.has(postData.offering)) {
-    score += 0.3; // Boost for matching liked types
+    score += 0.3;
   }
-
-  // Boost new posts (<24 hours) by +0.5
   if (ageInHours < 24) {
     score += 0.5;
   }
-
-  return Math.min(1.5, score); // Cap at 1.5 to allow new post boost
+  return Math.min(1.5, score);
 }
 
-async function loadPosts(communityId, reset = false) {
+async function loadPosts(communityId, reset = false, page = PaginationState.currentPage) {
   if (isFetching || isSearching) return;
   isFetching = true;
 
@@ -2221,12 +2196,15 @@ async function loadPosts(communityId, reset = false) {
     postsDiv.innerHTML = "";
     caughtUpDiv.style.display = "none";
     loadedPostIds.clear();
+    PaginationState.displayedPostIds.clear();
     lastPostDoc = null;
     postCache.clear();
-    resetCache(); // Clear session storage cache on reset
+    PaginationState.currentPage = 1;
+    resetCache();
     console.log(`Reset post list and caches for community ${communityId}`);
   }
 
+  PaginationState.currentPage = page;
   const cachedPosts = getCachedPosts();
   const likedPrefs = getLikedPrefs();
   const batchSize = 50;
@@ -2234,7 +2212,7 @@ async function loadPosts(communityId, reset = false) {
   let lastCachedTime = null;
   if (cachedPosts.size > 0) {
     const times = Array.from(cachedPosts.values())
-      .filter(post => post.data.communityId === communityId) // Only this community’s posts
+      .filter(post => post.data.communityId === communityId)
       .map(post => post.data.createdAt.getTime());
     lastCachedTime = times.length > 0 ? Math.max(...times) : null;
     console.log(`Using ${times.length} cached posts for ${communityId}, last cached at: ${lastCachedTime ? new Date(lastCachedTime).toLocaleString() : 'N/A'}`);
@@ -2257,7 +2235,7 @@ async function loadPosts(communityId, reset = false) {
     const snapshot = await getDocs(q);
     const newPosts = snapshot.docs.map(doc => ({
       id: doc.id,
-      data: { ...normalizePostData(doc.data()), communityId }, // Tag with communityId
+      data: { ...normalizePostData(doc.data()), communityId },
       score: getPostScore(normalizePostData(doc.data()), likedPrefs)
     }));
 
@@ -2267,13 +2245,12 @@ async function loadPosts(communityId, reset = false) {
     setCachedPosts(cachedPosts);
 
     const allPosts = Array.from(cachedPosts.values())
-      .filter(post => post.data.communityId === communityId) // Filter to this community
+      .filter(post => post.data.communityId === communityId)
       .map(post => ({
         ...post,
         score: getPostScore(post.data, likedPrefs)
       }));
 
-    // Apply filters to cached posts
     const filteredPosts = allPosts.filter(post => {
       return (
         (!filters.category || post.data.category === filters.category) &&
@@ -2283,11 +2260,13 @@ async function loadPosts(communityId, reset = false) {
     });
 
     filteredPosts.sort((a, b) => b.score - a.score);
-    const postsToShow = filteredPosts
-      .filter(post => !loadedPostIds.has(post.id))
-      .slice(0, POSTS_PER_LOAD);
 
-    console.log(`Showing ${postsToShow.length} posts for ${communityId}: ${newPosts.length} new, ${postsToShow.length - newPosts.length} cached`);
+    const startIndex = (PaginationState.currentPage - 1) * PaginationState.POSTS_PER_PAGE;
+    const postsToShow = filteredPosts
+      .slice(startIndex, startIndex + PaginationState.POSTS_PER_PAGE)
+      .filter(post => !PaginationState.displayedPostIds.has(post.id));
+
+    console.log(`Showing ${postsToShow.length} posts for ${communityId} on page ${PaginationState.currentPage}`);
 
     if (postsToShow.length === 0 && !initialPostsLoaded) {
       postsDiv.innerHTML = "<p>No new posts to show!</p>";
@@ -2306,34 +2285,15 @@ async function loadPosts(communityId, reset = false) {
     const savedPostsSnapshot = await getDocs(savedPostsQ);
     const savedPostIds = new Set(savedPostsSnapshot.docs.map(doc => doc.data().postId));
 
+    postsDiv.innerHTML = "";
+    PaginationState.displayedPostIds.clear();
     await renderPosts({ docs: postsToShow.map(post => ({ id: post.id, data: () => post.data })) }, postsDiv, savedPostIds);
 
-    const MAX_CACHED_POSTS = 100;
-    if (loadedPostIds.size > MAX_CACHED_POSTS) {
-      const oldestIds = [...loadedPostIds].slice(0, loadedPostIds.size - MAX_CACHED_POSTS);
-      oldestIds.forEach(id => {
-        loadedPostIds.delete(id);
-        postCache.delete(id);
-        cachedPosts.delete(id);
-      });
-      setCachedPosts(cachedPosts);
-    }
-
-    if (loadedPostIds.size > POSTS_PER_LOAD) {
-      const hideBtn = document.createElement("button");
-      hideBtn.id = "hidePostsBtn";
-      hideBtn.textContent = "See less";
-      hideBtn.addEventListener("click", async () => {
-        postsDiv.innerHTML = '<div class="loading">Loading...</div>';
-        await loadPosts(communityId, true);
-      });
-      postsDiv.appendChild(hideBtn);
-    }
-
-    caughtUpDiv.style.display = loadedPostIds.size >= totalPosts ? "block" : "none";
+    addPaginationControls(postsDiv, filteredPosts.length, communityId);
+    caughtUpDiv.style.display = PaginationState.currentPage * PaginationState.POSTS_PER_PAGE >= totalPosts ? "block" : "none";
   } catch (error) {
     console.error(`Failed to load posts for ${communityId}:`, error);
-    postsDiv.innerHTML += "<p>Oops, something broke! Refresh, bro.</p>";
+    postsDiv.innerHTML = "<p>Oops, something broke! Refresh, bro.</p>";
   } finally {
     isFetching = false;
     await delay(200);
@@ -2349,18 +2309,20 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
 
   for (const postDoc of snapshot.docs) {
     const postId = postDoc.id;
-    if (loadedPostIds.has(postId)) continue;
-    loadedPostIds.add(postId);
+    if (PaginationState.displayedPostIds.has(postId)) continue;
+    if (PaginationState.displayedPostIds.size >= PaginationState.POSTS_PER_PAGE) break;
 
     const post = postCache.get(postId)?.data || postDoc.data();
 
-    // Ensure post belongs to this community
     if (post.communityId && post.communityId !== communityId) {
       console.log(`Skipping post ${postId}—belongs to ${post.communityId}, not ${communityId}`);
       continue;
     }
 
-    const userData = userDataCache[post.userId];
+    PaginationState.displayedPostIds.add(postId);
+    loadedPostIds.add(postId);
+
+    const userData = userDataCache[post.userId] || { profilePhoto: 'https://via.placeholder.com/40', name: 'Unknown', username: 'unknown' };
     const isPostAdmin = commData?.admins?.includes(post.userId) || commData?.creatorId === post.userId;
     const commentsQ = query(collection(db, "communities", communityId, "posts", postId, "comments"), orderBy("createdAt", "desc"));
     const commentsSnapshot = await getDocs(commentsQ);
@@ -2373,6 +2335,7 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
     const displayCategory = categoryDisplayMap[post.category] || post.category;
 
     if (reportStatus?.isHidden) {
+      PaginationState.displayedPostIds.delete(postId);
       loadedPostIds.delete(postId);
       continue;
     }
@@ -2382,7 +2345,7 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
     postDiv.id = `post-${postId}`;
     postDiv.innerHTML = `
       <div class="post-header">
-        <img src="${userData.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
+        <img src="${userData.profilePhoto}" class="profile-photo" alt="Profile">
         <h3><span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
       </div>
       <h3>${post.title || 'Untitled'}</h3>
@@ -2432,31 +2395,25 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
     likeBtn.addEventListener("click", async () => {
       const postRef = doc(db, "communities", communityId, "posts", postId);
       const postSnapshot = await getDoc(postRef);
-      
       if (!postSnapshot.exists()) {
         alert("Post not found—might’ve been deleted!");
         return;
       }
-
       const postData = normalizePostData(postSnapshot.data());
       const userId = auth.currentUser.uid;
       const likedBy = postData.likedBy || [];
       let newLikes = postData.likes || 0;
       let newLikedBy = [...likedBy];
-
       if (likedBy.includes(userId)) {
         newLikedBy = newLikedBy.filter(id => id !== userId);
         newLikes = Math.max(0, newLikes - 1);
-        await updateDoc(postRef, { likes: newLikes, likedBy: newLikedBy });
-        likeBtn.textContent = `Like (${newLikes})`;
       } else {
         newLikedBy.push(userId);
         newLikes += 1;
-        await updateDoc(postRef, { likes: newLikes, likedBy: newLikedBy });
-        likeBtn.textContent = `Unlike (${newLikes})`;
         addLikedPref(postData.category, postData.offering);
       }
-
+      await updateDoc(postRef, { likes: newLikes, likedBy: newLikedBy });
+      likeBtn.textContent = `${likedBy.includes(userId) ? 'Like' : 'Unlike'} (${newLikes})`;
       const cachedPosts = getCachedPosts();
       cachedPosts.set(postId, { id: postId, data: { ...postData, likes: newLikes, likedBy: newLikedBy, communityId } });
       setCachedPosts(cachedPosts);
@@ -2465,7 +2422,6 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
     const saveToggleBtn = postDiv.querySelector(`.save-toggle-btn[data-post-id="${postId}"]`);
     saveToggleBtn.replaceWith(saveToggleBtn.cloneNode(true));
     const newSaveToggleBtn = postDiv.querySelector(`.save-toggle-btn[data-post-id="${postId}"]`);
-    
     let isProcessing = false;
     newSaveToggleBtn.addEventListener("click", (e) => {
       e.preventDefault();
@@ -2475,7 +2431,7 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
         deleteSavedPostFromPost(postId, communityId, newSaveToggleBtn)
           .then(() => isProcessing = false)
           .catch(() => isProcessing = false);
-      } else if (newSaveToggleBtn.textContent === "Save") {
+      } else {
         savePost(postId, communityId, newSaveToggleBtn)
           .then(() => isProcessing = false)
           .catch(() => isProcessing = false);
@@ -2511,27 +2467,72 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
   }
 }
 
-// Infinite scroll listener
-function setupInfiniteScroll() {
-  const observer = new IntersectionObserver(async (entries) => {
-    if (entries[0].isIntersecting && loadedPostIds.size < totalPosts && !isSearching) {
-      await loadPosts(communityId);
-    }
-  }, { threshold: 1.0 });
-  observer.observe(document.getElementById("sentinel"));
+function addPaginationControls(postsDiv, totalPostsCount, communityId) {
+  const totalPages = Math.ceil(totalPostsCount / PaginationState.POSTS_PER_PAGE);
+  const paginationDiv = document.createElement("div");
+  paginationDiv.className = "pagination";
 
-  window.addEventListener("scroll", debounce(async () => {
-    const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-    const scrollPercent = (scrollTop + clientHeight) / scrollHeight;
-    if (scrollPercent > 0.7 && !isFetching && loadedPostIds.size < totalPosts && !isSearching) {
-      await loadPosts(communityId); // Pre-fetch at 70%
+  if (PaginationState.currentPage > 1) {
+    const prevBtn = document.createElement("button");
+    prevBtn.textContent = "<";
+    prevBtn.addEventListener("click", async () => {
+      if (PaginationState.currentPage > 1) {
+        postsDiv.innerHTML = '<div class="loading">Loading...</div>';
+        await loadPosts(communityId, false, PaginationState.currentPage - 1);
+      }
+    });
+    paginationDiv.appendChild(prevBtn);
+  }
+
+  const pagesToShow = [1];
+  if (totalPages <= 5) {
+    for (let i = 2; i <= totalPages; i++) pagesToShow.push(i);
+  } else {
+    const nearPages = [PaginationState.currentPage - 1, PaginationState.currentPage, PaginationState.currentPage + 1].filter(p => p > 1 && p < totalPages);
+    pagesToShow.push(...nearPages);
+    if (!pagesToShow.includes(totalPages)) pagesToShow.push(totalPages);
+    if (PaginationState.currentPage > 3 && !pagesToShow.includes(2)) pagesToShow.push(2);
+    if (PaginationState.currentPage < totalPages - 2 && !pagesToShow.includes(totalPages - 1)) pagesToShow.push(totalPages - 1);
+    pagesToShow.sort((a, b) => a - b);
+  }
+
+  pagesToShow.forEach((pageNum, index) => {
+    if (index > 0 && pageNum - pagesToShow[index - 1] > 1) {
+      const ellipsis = document.createElement("span");
+      ellipsis.textContent = "...";
+      paginationDiv.appendChild(ellipsis);
     }
-  }, 400));
+    const pageBtn = document.createElement("button");
+    pageBtn.textContent = pageNum;
+    pageBtn.className = pageNum === PaginationState.currentPage ? "active" : "";
+    if (pageNum === PaginationState.currentPage) {
+      pageBtn.disabled = true;
+    } else {
+      pageBtn.addEventListener("click", async () => {
+        postsDiv.innerHTML = '<div class="loading">Loading...</div>';
+        await loadPosts(communityId, false, pageNum);
+      });
+    }
+    paginationDiv.appendChild(pageBtn);
+  });
+
+  if (PaginationState.currentPage < totalPages) {
+    const nextBtn = document.createElement("button");
+    nextBtn.textContent = ">";
+    nextBtn.addEventListener("click", async () => {
+      if (PaginationState.currentPage < totalPages) {
+        postsDiv.innerHTML = '<div class="loading">Loading...</div>';
+        await loadPosts(communityId, false, PaginationState.currentPage + 1);
+      }
+    });
+    paginationDiv.appendChild(nextBtn);
+  }
+
+  postsDiv.appendChild(paginationDiv);
 }
 
-// Tie "Refresh Posts" button to fetch new only
 document.getElementById("refreshPostsBtn").addEventListener("click", async () => {
-  await loadPosts(communityId, true); // Reset to fetch new posts
+  await loadPosts(communityId, true);
 });
 
 let totalYourPosts = 0; // Global, cached total
@@ -3149,20 +3150,6 @@ async function searchPostsById(postId) {
     isSearching = false; // Reset flag
   }
 }
-
-// Define the scroll handler globally so we can remove it later
-const scrollHandler = debounce(async () => {
-    if (isLoading || loadedPostIds.size >= totalPosts || isSearching) return;
-
-    const { scrollTop, scrollHeight, clientHeight } = document.documentElement;
-    if (scrollTop + clientHeight >= scrollHeight - 50) {
-      isLoading = true;
-      await loadPosts(communityId);
-      isLoading = false;
-    }
-  }, 500);
-
-  window.addEventListener("scroll", scrollHandler);
 
 // Keep this helper as is—it’s solid for the carousel
 function setupSearchCarousel(postId) {
