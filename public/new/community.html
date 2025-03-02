@@ -337,6 +337,32 @@ enableIndexedDbPersistence(db)
 
     let communityId;
     let userDataCache = {};
+
+// Cache control settings for user data
+const USER_CACHE_TTL = 60 * 60 * 1000; // 1 hour in milliseconds
+const USER_CACHE_MAX_SIZE = 100; // Max 100 entries
+
+// Cache helper functions
+function getCachedUser(key) {
+  const entry = userDataCache[key];
+  if (!entry) return null;
+  if (Date.now() > entry.expiry) {
+    delete userDataCache[key];
+    console.log(`Cache expired for ${key}`);
+    return null;
+  }
+  return entry.value;
+}
+
+function setCachedUser(key, value) {
+  if (Object.keys(userDataCache).length >= USER_CACHE_MAX_SIZE) {
+    const oldestKey = Object.keys(userDataCache)[0]; // FIFO: first added
+    delete userDataCache[oldestKey];
+    console.log(`Cache size limit hit, removed ${oldestKey}`);
+  }
+  userDataCache[key] = { value, expiry: Date.now() + USER_CACHE_TTL };
+  console.log(`Cached ${key}, expires at ${new Date(Date.now() + USER_CACHE_TTL)}`);
+}
     let currentPage = 1;
     const postsPerPage = 10;
     const itemsPerPage = 10;
@@ -3227,63 +3253,74 @@ function setupSearchCarousel(postId) {
   });
 }
 
-    async function showTagSuggestions(textarea, postId) {
-      const text = textarea.value;
-      const match = text.match(/@(\w*)$/);
-      const suggestionsDiv = document.getElementById(`tagSuggestions-${postId}`);
+async function showTagSuggestions(textarea, postId) {
+  const text = textarea.value;
+  const match = text.match(/@(\w*)$/);
+  const suggestionsDiv = document.getElementById(`tagSuggestions-${postId}`);
 
-      suggestionsDiv.innerHTML = "";
-      suggestionsDiv.classList.add("hidden");
+  suggestionsDiv.innerHTML = "";
+  suggestionsDiv.classList.add("hidden");
 
-      if (match && match[1].length > 0) {
-        const prefix = match[1].toLowerCase();
-        const commData = await getCommData();
-        const members = commData.members || [];
-        const batches = [];
-        for (let i = 0; i < members.length; i += 10) {
-          batches.push(members.slice(i, i + 10));
-        }
+  if (match && match[1].length > 0) {
+    const prefix = match[1].toLowerCase();
 
-        const userPromises = batches.map(batch => {
-          const q = query(collection(db, "users"), where("__name__", "in", batch));
-          return getDocs(q);
-        });
-        const snapshots = await Promise.all(userPromises);
-        const allUsers = snapshots.flatMap(snapshot => snapshot.docs.map(doc => doc.data()));
-
-        const filteredUsers = allUsers
-          .filter(user => user.username.toLowerCase().startsWith(prefix))
-          .slice(0, 5);
-
-        if (filteredUsers.length > 0) {
-          suggestionsDiv.style.position = "absolute";
-          suggestionsDiv.style.left = `${textarea.offsetLeft}px`;
-          suggestionsDiv.style.top = `${textarea.offsetTop + textarea.offsetHeight}px`;
-          suggestionsDiv.classList.remove("hidden");
-
-          filteredUsers.forEach(user => {
-            const suggestion = document.createElement("div");
-            suggestion.classList.add("suggestion-item");
-            suggestion.textContent = `@${user.username}`;
-            suggestion.addEventListener("click", () => {
-              textarea.value = text.replace(/@\w*$/, `@${user.username} `);
-              suggestionsDiv.classList.add("hidden");
-            });
-            suggestionsDiv.appendChild(suggestion);
-          });
-        }
-      }
+    // Get current user
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      console.error("No current user found for tag suggestions!");
+      return;
     }
 
-    document.addEventListener("click", (e) => {
-  const allTagSuggestionDivs = document.querySelectorAll("[id^='tagSuggestions-']"); // Only target tag-related IDs
+    // Fetch users you follow from your 'following' subcollection
+    const followingRef = collection(db, "users", currentUser.uid, "following");
+    let followingSnapshot;
+    try {
+      followingSnapshot = await getDocs(followingRef);
+    } catch (error) {
+      console.error("Error fetching following list:", error);
+      return;
+    }
+
+    const followedUsers = followingSnapshot.docs.map(doc => ({
+      uid: doc.data().followingId,
+      username: doc.data().username || "Unknown"
+    }));
+    console.log("Fetched followed users:", followedUsers);
+
+    // Filter users you follow by username prefix
+    const filteredUsers = followedUsers
+      .filter(user => user.username.toLowerCase().startsWith(prefix))
+      .slice(0, 5);
+
+    if (filteredUsers.length > 0) {
+      suggestionsDiv.style.position = "absolute";
+      suggestionsDiv.style.left = `${textarea.offsetLeft}px`;
+      suggestionsDiv.style.top = `${textarea.offsetTop + textarea.offsetHeight}px`;
+      suggestionsDiv.classList.remove("hidden");
+
+      filteredUsers.forEach(user => {
+        const suggestion = document.createElement("div");
+        suggestion.classList.add("suggestion-item");
+        suggestion.textContent = `@${user.username}`;
+        suggestion.addEventListener("click", () => {
+          textarea.value = text.replace(/@\w*$/, `@${user.username} `);
+          suggestionsDiv.classList.add("hidden");
+        });
+        suggestionsDiv.appendChild(suggestion);
+      });
+    }
+  }
+}
+
+// Existing click listener stays unchanged
+document.addEventListener("click", (e) => {
+  const allTagSuggestionDivs = document.querySelectorAll("[id^='tagSuggestions-']");
   allTagSuggestionDivs.forEach(div => {
     const textarea = div.previousElementSibling;
     if (!div.contains(e.target) && (!textarea || !textarea.contains(e.target))) {
       div.classList.add("hidden");
     }
   });
-  // Explicitly prevent hiding postLocationSuggestions here
   const postLocationSuggestions = document.getElementById("postLocationSuggestions");
   if (postLocationSuggestions && !postLocationSuggestions.contains(e.target) && !document.getElementById("postLocation").contains(e.target)) {
     postLocationSuggestions.classList.add("hidden");
@@ -3291,17 +3328,29 @@ function setupSearchCarousel(postId) {
 });
 
 async function getUserByUsername(username) {
-  if (userDataCache[`username:${username}`]) {
-    return userDataCache[`username:${username}`];
+  const cacheKey = `username:${username}`;
+  const cachedUser = getCachedUser(cacheKey);
+  if (cachedUser) {
+    console.log(`Cache hit for @${username}`);
+    return cachedUser;
   }
 
-  // Fallback to Firestore query if not cached
-  const q = query(collection(db, "users"), where("username", "==", username), limit(1));
-  const snapshot = await getDocs(q);
-  if (snapshot.empty) return null;
-  const userData = snapshot.docs[0].data();
-  const uid = snapshot.docs[0].id;
-  return await fetchUserData(uid); // This caches it too
+  try {
+    const q = query(collection(db, "users"), where("username", "==", username), limit(1));
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) {
+      console.log(`No user found for @${username}`);
+      return null;
+    }
+    const userData = snapshot.docs[0].data();
+    const uid = snapshot.docs[0].id;
+    const fullUserData = await fetchUserData(uid); // Assuming this caches UID-based too
+    setCachedUser(cacheKey, fullUserData); // Store with 1-hour TTL
+    return fullUserData;
+  } catch (error) {
+    console.error(`Error fetching user @${username}:`, error);
+    return null;
+  }
 }
 
 async function processMentions(text) {
@@ -3309,9 +3358,57 @@ async function processMentions(text) {
   let processedText = text;
   const matches = [...text.matchAll(mentionRegex)];
 
+  if (matches.length === 0) return processedText;
+
+  const uniqueUsernames = [...new Set(matches.map(match => match[1]))];
+  console.log("Unique mentions found:", uniqueUsernames);
+
+  const cachedUsers = {};
+  const uncachedUsernames = [];
+  uniqueUsernames.forEach(username => {
+    const cacheKey = `username:${username}`;
+    const cachedUser = getCachedUser(cacheKey);
+    if (cachedUser) {
+      cachedUsers[username] = cachedUser;
+    } else {
+      uncachedUsernames.push(username);
+    }
+  });
+
+  const fetchedUsers = {};
+  if (uncachedUsernames.length > 0) {
+    try {
+      const q = query(collection(db, "users"), where("username", "in", uncachedUsernames.slice(0, 10)));
+      const snapshot = await getDocs(q);
+      snapshot.docs.forEach(doc => {
+        const userData = doc.data();
+        const uid = doc.id;
+        fetchedUsers[userData.username] = { uid, ...userData };
+        setCachedUser(`username:${userData.username}`, fetchedUsers[userData.username]);
+      });
+
+      const remainingUsernames = uncachedUsernames.filter(username => !fetchedUsers[username]).slice(0, 10);
+      if (remainingUsernames.length > 0) {
+        const q2 = query(collection(db, "users"), where("username", "in", remainingUsernames));
+        const snapshot2 = await getDocs(q2);
+        snapshot2.docs.forEach(doc => {
+          const userData = doc.data();
+          const uid = doc.id;
+          fetchedUsers[userData.username] = { uid, ...userData };
+          setCachedUser(`username:${userData.username}`, fetchedUsers[userData.username]);
+        });
+      }
+    } catch (error) {
+      console.error("Error batch fetching users:", error);
+    }
+  }
+
+  const allUsers = { ...cachedUsers, ...fetchedUsers };
+  console.log("All users for mentions:", allUsers);
+
   for (const match of matches) {
     const username = match[1];
-    const user = await getUserByUsername(username);
+    const user = allUsers[username];
     if (user) {
       processedText = processedText.replace(
         `@${username}`,
@@ -3319,6 +3416,7 @@ async function processMentions(text) {
       );
     }
   }
+
   return processedText;
 }
 
