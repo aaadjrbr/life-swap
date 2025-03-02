@@ -1636,3 +1636,38 @@ margin-bottom: 5px;
 border-radius: 8px;
 cursor: pointer;
 }
+
+.clickable-profile {
+  color: #1e90ff;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.clickable-profile:hover {
+  color: #ff4500;
+}
+
+.tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.tab-button {
+  padding: 5px 10px;
+  cursor: pointer;
+}
+.tab-button.active {
+  background-color: #007bff;
+  color: white;
+}
+.user-item2 {
+  display: flex;
+  align-items: center;
+  padding: 5px;
+}
+.action-buttons {
+  margin-left: 10px;
+}
+.copy-id-btn {
+  margin-left: 5px;
+  padding: 2px 5px;
+}

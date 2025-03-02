@@ -271,6 +271,28 @@
   </div>
 </div>
 
+<!-- Update viewFollowersModal -->
+<div id="viewFollowersModal" class="modal hidden">
+  <div class="modal-content">
+    <div class="tabs">
+      <button id="followersTab" class="tab-button active">Followers</button>
+      <button id="followingTab" class="tab-button">Following</button>
+    </div>
+    <input type="text" id="followerSearch" placeholder="Search...">
+    <div id="followersList"></div>
+    <button id="closeFollowersBtn">Close</button>
+  </div>
+</div>
+
+<!-- New User Activities Modal -->
+<div id="userActivitiesModal" class="modal hidden">
+  <div class="modal-content">
+    <h2>user communities</h2>
+    <div id="activitiesList"></div>
+    <button id="closeActivitiesBtn">Close</button>
+  </div>
+</div>
+
   <!-- Autocomplete Suggestions for @ Tagging -->
   <div id="tagSuggestions" class="suggestions hidden"></div>
 
@@ -280,7 +302,7 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-    import { getFirestore, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc, limitToLast, startAfter, endBefore, orderBy, enableIndexedDbPersistence, runTransaction, writeBatch, deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    import { getFirestore, setDoc, doc, getDoc, updateDoc, addDoc, collection, query, where, getDocs, limit, deleteDoc, limitToLast, startAfter, endBefore, orderBy, enableIndexedDbPersistence, runTransaction, writeBatch, deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
     const firebaseConfig = {
@@ -494,6 +516,7 @@ document.addEventListener("DOMContentLoaded", () => {
       ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="editNameBtn">Edit Name (Community)</button>` : ""}
       <button id="viewSavedPostsBtn">View Saved Posts</button>
       <button id="viewChatsBtn">View Chats</button>
+      <button id="viewMyFollowersBtn">View My Followers</button>
     `;
 
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -531,6 +554,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const postSearchInput = document.getElementById("postSearch");
     const pasteSearchBtn = document.getElementById("pasteSearchBtn");
     const clearSearchBtn = document.getElementById("clearSearchBtn");
+    const viewMyFollowersBtn = document.getElementById("viewMyFollowersBtn");
 
     if (postIdSearch) {
       postIdSearch.addEventListener("input", debounce((e) => {
@@ -597,6 +621,9 @@ document.addEventListener("DOMContentLoaded", () => {
       viewChatsBtn.removeEventListener("click", handleViewChatsClick);
       viewChatsBtn.addEventListener("click", handleViewChatsClick);
     }
+    if (viewMyFollowersBtn) {
+      viewMyFollowersBtn.addEventListener("click", () => viewFollowers(user.uid));
+    }   
 
     async function handleViewChatsClick() {
       await updateChatBadge(user.uid, true);
@@ -770,7 +797,7 @@ async function updateProfileRequestsUI(userId) {
       if (confirm("Are you sure you want to delete this community? This can’t be undone!")) {
         const commRef = doc(db, "communities", communityId);
         await updateDoc(commRef, { deleted: true });
-        window.location.href = "/.start.html";
+        window.location.href = "./start.html";
       }
     }
 
@@ -791,7 +818,7 @@ async function updateProfileRequestsUI(userId) {
     // No need to sync an old members array—onMemberChange handles memberCount
 
     await batch.commit();
-    window.location.href = "/.start.html";
+    window.location.href = "./start.html";
   }
 }
 
@@ -2083,7 +2110,7 @@ const CACHE_TIMESTAMP_KEY = `cacheTimestamp_${communityId}`;
 const CACHE_EXPIRY_HOURS = 8;
 
 const PaginationState = {
-  POSTS_PER_PAGE: 5,
+  POSTS_PER_PAGE: 10,
   currentPage: 1,
   displayedPostIds: new Set()
 };
@@ -3907,8 +3934,27 @@ async function viewProfile(uid) {
   modal.style.display = "flex";
   modal.classList.remove("hidden");
 
+  if (typeof auth === "undefined") {
+    console.error("Firebase auth is not defined. Ensure Firebase is initialized.");
+    actionsEl.innerHTML = "<p>Error: Authentication system not loaded.</p>";
+    return;
+  }
+
+  const currentUser = await new Promise((resolve) => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      unsubscribe();
+      resolve(user);
+    });
+  });
+
+  if (!currentUser) {
+    console.error("No authenticated user found. User must be signed in.");
+    actionsEl.innerHTML = "<p>Please sign in to view profiles.</p>";
+    return;
+  }
+
   const userData = await fetchUserData(uid);
-  const commData = await getCommData(); // Fresh community data
+  const commData = await getCommData();
   const isCreator = commData.creatorId === auth.currentUser.uid;
   const isAdmin = commData.admins?.includes(auth.currentUser.uid);
   const isSelf = uid === auth.currentUser.uid;
@@ -3916,8 +3962,44 @@ async function viewProfile(uid) {
 
   nameEl.textContent = `${userData.name} (${userData.swaps || 0} swaps)`;
   photoEl.src = userData.profilePhoto || "https://via.placeholder.com/40";
-  detailsEl.innerHTML = isProfileAdmin ? '<span class="admin-tag">Admin</span>' : '';
+
+  const userRef = doc(db, "users", uid);
+  const userDoc = await getDoc(userRef);
+  let followerCount = userDoc.data()?.followerCount || 0;
+  let followingCount = userDoc.data()?.followingCount || 0;
+  const joinedAt = userDoc.data()?.joinedAt ? new Date(userDoc.data().joinedAt.toDate()).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : "N/A";
+
+  const followersRef = collection(db, "users", uid, "followers");
+  const followingQuery = query(followersRef, where("followerId", "==", currentUser.uid));
+  let followingSnapshot;
+  try {
+    followingSnapshot = await getDocs(followingQuery);
+  } catch (error) {
+    console.error("Error fetching follow status:", error);
+    if (error.name === "BloomFilterError") {
+      console.warn("BloomFilter error, retrying with default:", error);
+      followingSnapshot = await getDocs(followingQuery);
+    } else {
+      throw error;
+    }
+  }
+  const isFollowing = !followingSnapshot.empty;
+  console.log(`Is following ${uid}? ${isFollowing}`);
+
+  detailsEl.innerHTML = `
+    <p id="followerCount">Followers: ${followerCount} / Following: ${followingCount}</p>
+    <p>Member since: ${joinedAt}</p>
+    ${isProfileAdmin ? '<span class="admin-tag">Admin</span>' : ''}
+  `;
   actionsEl.innerHTML = "";
+
+  if (!isSelf) {
+    actionsEl.innerHTML += `
+      <button id="followBtn" class="${isFollowing ? 'unfollow' : 'follow'}" data-uid="${uid}">
+        ${isFollowing ? 'Unfollow' : 'Follow'}
+      </button>
+    `;
+  }
 
   const requestsRef = collection(db, "users", uid, "profileRequests");
   const requestQ = query(requestsRef, where("requesterId", "==", auth.currentUser.uid));
@@ -3964,13 +4046,13 @@ async function viewProfile(uid) {
   if (document.getElementById("makeAdminBtn")) {
     document.getElementById("makeAdminBtn").addEventListener("click", async () => {
       await makeAdmin(communityId, uid);
-      await viewProfile(uid); // Refresh UI
+      await viewProfile(uid);
     });
   }
   if (document.getElementById("removeAdminBtn")) {
     document.getElementById("removeAdminBtn").addEventListener("click", async () => {
       await removeAdmin(communityId, uid);
-      await viewProfile(uid); // Refresh UI
+      await viewProfile(uid);
     });
   }
   if (document.getElementById("banUserBtn")) {
@@ -3990,6 +4072,132 @@ async function viewProfile(uid) {
         alert("Chat system isn’t ready. Try again in a sec.");
       }
     });
+  }
+  const followBtn = document.getElementById("followBtn");
+  if (followBtn) {
+    followBtn.addEventListener("click", async () => {
+      console.log("Follow button clicked for UID:", uid);
+      await toggleFollow(uid, followBtn);
+      // Refresh UI with updated counts
+      //await viewProfile(uid);
+    });
+  }
+}
+
+async function toggleFollow(targetUid, button) {
+  console.log("toggleFollow called with targetUid:", targetUid, "button:", button);
+
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    console.error("No current user found in toggleFollow!");
+    alert("You must be signed in to follow/unfollow.");
+    return;
+  }
+  console.log("Current user:", currentUser);
+
+  const followersRef = collection(db, "users", targetUid, "followers");
+  const followerDocRef = doc(followersRef, currentUser.uid);
+  const followingRef = collection(db, "users", currentUser.uid, "following");
+  const followingDocRef = doc(followingRef, targetUid);
+  const followerCountEl = document.getElementById("followerCount");
+
+  if (!followerCountEl) {
+    console.error("Follower count element not found in DOM!");
+    return;
+  }
+
+  const currentCountText = followerCountEl.textContent.match(/\d+/)?.[0] || "0";
+  let currentFollowerCount = parseInt(currentCountText, 10);
+  console.log("Current follower count from UI:", currentFollowerCount);
+
+  let followingSnapshot;
+  try {
+    followingSnapshot = await getDoc(followingDocRef);
+  } catch (error) {
+    console.error("Error fetching following snapshot:", error);
+    alert("Failed to check follow status. Try again.");
+    return;
+  }
+  const isFollowing = followingSnapshot.exists();
+  console.log("Is following?", isFollowing);
+
+  try {
+    if (isFollowing) {
+      console.log("Unfollowing...");
+      await Promise.all([
+        deleteDoc(followerDocRef),
+        deleteDoc(followingDocRef)
+      ]);
+      button.textContent = "Follow";
+      button.classList.remove("unfollow");
+      button.classList.add("follow");
+      currentFollowerCount = Math.max(0, currentFollowerCount - 1);
+      followerCountEl.textContent = `Followers: ${currentFollowerCount}`;
+      console.log("Unfollowed, UI updated");
+    } else if (button.textContent === "Unfollow") {
+      console.log("User already unfollowed, correcting UI...");
+      alert("You already unfollowed this user.");
+      button.textContent = "Follow";
+      button.classList.remove("unfollow");
+      button.classList.add("follow");
+    } else {
+      console.log("Following...");
+      let currentUserData;
+      try {
+        currentUserData = await fetchCurrentUserData();
+      } catch (error) {
+        console.error("Error fetching current user data:", error);
+        currentUserData = { name: "Someone", username: "Unknown" };
+      }
+      const followData = {
+        followerId: currentUser.uid,
+        username: currentUserData.username || currentUserData.name || "Unknown",
+        followedAt: new Date(),
+      };
+      await Promise.all([
+        setDoc(followerDocRef, followData),
+        setDoc(followingDocRef, {
+          followingId: targetUid,
+          username: (await fetchUserData(targetUid))?.username || "Unknown",
+          followedAt: new Date(),
+        })
+      ]);
+      button.textContent = "Unfollow";
+      button.classList.remove("follow");
+      button.classList.add("unfollow");
+      currentFollowerCount += 1;
+      followerCountEl.textContent = `Followers: ${currentFollowerCount}`;
+      console.log("Followed, UI updated");
+
+      console.log("Sending notification to:", targetUid);
+      try {
+        await addDoc(collection(db, "users", targetUid, "notifications"), {
+          type: "follow",
+          message: `${currentUserData.name || "Someone"} followed you!`,
+          followerId: currentUser.uid,
+          timestamp: new Date(),
+          seen: false,
+        });
+        const targetRef = doc(db, "users", targetUid);
+        await runTransaction(db, async (transaction) => {
+          const targetDoc = await transaction.get(targetRef);
+          const currentCount = targetDoc.exists() ? targetDoc.data().unseenCount || 0 : 0;
+          transaction.set(targetRef, { unseenCount: currentCount + 1, lastUpdated: new Date() }, { merge: true });
+        });
+        console.log("Notification sent and unseenCount incremented");
+        setTimeout(() => updateNotificationBadge(targetUid, true), 1000);
+      } catch (error) {
+        console.error("Error sending notification:", error);
+      }
+    }
+  } catch (error) {
+    console.error("Error in follow/unfollow operation:", error);
+    alert("Failed to update follow status. Please try again.");
+    button.textContent = isFollowing ? "Unfollow" : "Follow";
+    button.classList.toggle("follow", !isFollowing);
+    button.classList.toggle("unfollow", isFollowing);
+    followerCountEl.textContent = `Followers: ${currentCountText}`;
+    return;
   }
 }
 
@@ -4288,6 +4496,11 @@ async function viewMembers(communityId) {
   const membersList = document.getElementById("membersList");
   const memberSearch = document.getElementById("memberSearch");
 
+  if (!modal || !membersList || !memberSearch) {
+    console.error("Members modal elements missing!");
+    return;
+  }
+
   lastMemberDoc = null;
   membersList.innerHTML = '<div class="loading">Loading...</div>';
   modal.style.display = "flex";
@@ -4297,9 +4510,21 @@ async function viewMembers(communityId) {
   const totalMembers = commData.memberCount || 0; // Use precomputed count
   console.log("Total members from memberCount:", totalMembers);
 
+  // Update modal header with total members
+  const header = modal.querySelector("h2") || document.createElement("h2");
+  if (!modal.querySelector("h2")) modal.querySelector(".modal-content").prepend(header);
+  header.textContent = `Members (Total: ${totalMembers})`;
+
   const membersRef = collection(db, "communities", communityId, "members");
   const q = query(membersRef, limit(ITEMS_PER_PAGE));
-  const snapshot = await getDocs(q);
+  let snapshot;
+  try {
+    snapshot = await getDocs(q);
+  } catch (error) {
+    console.error("Error fetching initial members:", error);
+    membersList.innerHTML = "<p>Failed to load members. Try again.</p>";
+    return;
+  }
   currentMembers = snapshot.docs.map(doc => doc.id);
   console.log("Initial members loaded:", currentMembers.length);
 
@@ -4310,7 +4535,6 @@ async function viewMembers(communityId) {
 
 async function loadMembersBatch(snapshot, reset = false, totalMembers) {
   const membersList = document.getElementById("membersList");
-  const ITEMS_PER_PAGE = 10;
 
   if (reset) {
     membersList.innerHTML = "";
@@ -4327,8 +4551,15 @@ async function loadMembersBatch(snapshot, reset = false, totalMembers) {
   }
 
   const uids = snapshot.docs.map(doc => doc.id);
-  const q = query(collection(db, "users"), where("__name__", "in", uids));
-  const userSnapshot = await getDocs(q);
+  let userSnapshot;
+  try {
+    const q = query(collection(db, "users"), where("__name__", "in", uids));
+    userSnapshot = await getDocs(q);
+  } catch (error) {
+    console.error("Error fetching user data for members:", error);
+    membersList.innerHTML += "<p>Failed to load some member data.</p>";
+    return;
+  }
   console.log("Fetched users:", userSnapshot.docs.length);
 
   userSnapshot.docs.forEach(doc => {
@@ -4356,8 +4587,6 @@ async function loadMembersBatch(snapshot, reset = false, totalMembers) {
 
 function updateMembersButtons(totalMembers, loadedCount) {
   const membersList = document.getElementById("membersList");
-  const ITEMS_PER_PAGE = 10;
-
   const existingMoreBtn = membersList.querySelector("#seeMoreMembersBtn");
   const existingLessBtn = membersList.querySelector("#seeLessMembersBtn");
   if (existingMoreBtn) existingMoreBtn.remove();
@@ -4370,20 +4599,25 @@ function updateMembersButtons(totalMembers, loadedCount) {
     seeMore.id = "seeMoreMembersBtn";
     seeMore.textContent = "See More";
     seeMore.className = "see-more-btn";
-    seeMore.style.display = (totalMembers > loadedCount) ? "block" : "none";
+    seeMore.style.display = totalMembers > loadedCount ? "block" : "none";
     seeMore.onclick = async () => {
-      const membersRef = collection(db, "communities", communityId, "members");
-      const q = query(membersRef, startAfter(lastMemberDoc), limit(ITEMS_PER_PAGE));
-      const nextSnapshot = await getDocs(q);
-      currentMembers = currentMembers.concat(nextSnapshot.docs.map(doc => doc.id));
-      await loadMembersBatch(nextSnapshot, false, totalMembers);
+      const membersRef = collection(db, "communities", communityId, "members"); // Ensure communityId is in scope
+      try {
+        const q = query(membersRef, startAfter(lastMemberDoc), limit(ITEMS_PER_PAGE));
+        const nextSnapshot = await getDocs(q);
+        currentMembers = currentMembers.concat(nextSnapshot.docs.map(doc => doc.id));
+        await loadMembersBatch(nextSnapshot, false, totalMembers);
+      } catch (error) {
+        console.error("Error loading more members:", error);
+        membersList.innerHTML += "<p>Failed to load more members.</p>";
+      }
     };
 
     const seeLess = document.createElement("button");
     seeLess.id = "seeLessMembersBtn";
     seeLess.textContent = "See Less";
     seeLess.className = "see-less-btn";
-    seeLess.style.display = (loadedCount > ITEMS_PER_PAGE) ? "block" : "none";
+    seeLess.style.display = loadedCount > ITEMS_PER_PAGE ? "block" : "none";
     seeLess.onclick = () => loadMembersBatch([], true, totalMembers);
 
     membersList.appendChild(seeMore);
@@ -4395,19 +4629,24 @@ function updateMembersButtons(totalMembers, loadedCount) {
 
 async function searchMembers(communityId, searchTerm) {
   const membersList = document.getElementById("membersList");
-  const ITEMS_PER_PAGE = 10;
   let startIndex = 0;
 
   membersList.innerHTML = '<div class="loading">Searching...</div>';
 
   if (!searchTerm) {
     lastMemberDoc = null;
-    return viewMembers(communityId); // Reset to full list
+    return viewMembers(communityId);
   }
 
-  // Fetch all members for client-side filtering (not ideal, see scalability note)
   const membersRef = collection(db, "communities", communityId, "members");
-  const allMembersSnapshot = await getDocs(membersRef);
+  let allMembersSnapshot;
+  try {
+    allMembersSnapshot = await getDocs(membersRef);
+  } catch (error) {
+    console.error("Error fetching all members for search:", error);
+    membersList.innerHTML = "<p>Failed to search members.</p>";
+    return;
+  }
   const allMembers = allMembersSnapshot.docs.map(doc => doc.id);
 
   const filteredMembers = [];
@@ -4439,8 +4678,15 @@ async function searchMembers(communityId, searchTerm) {
       return;
     }
 
-    const q = query(collection(db, "users"), where("__name__", "in", batch));
-    const snapshot = await getDocs(q);
+    let snapshot;
+    try {
+      const q = query(collection(db, "users"), where("__name__", "in", batch));
+      snapshot = await getDocs(q);
+    } catch (error) {
+      console.error("Error fetching search batch:", error);
+      membersList.innerHTML += "<p>Failed to load some members.</p>";
+      return;
+    }
 
     if (startIndex === 0) membersList.innerHTML = "";
     snapshot.docs.forEach(doc => {
@@ -4476,7 +4722,7 @@ async function searchMembers(communityId, searchTerm) {
       seeMore.id = "seeMoreSearchMembersBtn";
       seeMore.textContent = "See More";
       seeMore.className = "see-more-btn";
-      seeMore.style.display = (totalFiltered > loadedCount) ? "block" : "none";
+      seeMore.style.display = totalFiltered > loadedCount ? "block" : "none";
       seeMore.onclick = () => {
         startIndex += ITEMS_PER_PAGE;
         loadSearchBatch();
@@ -4486,7 +4732,7 @@ async function searchMembers(communityId, searchTerm) {
       seeLess.id = "seeLessSearchMembersBtn";
       seeLess.textContent = "See Less";
       seeLess.className = "see-less-btn";
-      seeLess.style.display = (loadedCount > ITEMS_PER_PAGE) ? "block" : "none";
+      seeLess.style.display = loadedCount > ITEMS_PER_PAGE ? "block" : "none";
       seeLess.onclick = () => loadSearchBatch(true);
 
       membersList.appendChild(seeMore);
@@ -4496,8 +4742,394 @@ async function searchMembers(communityId, searchTerm) {
 
   await loadSearchBatch(true);
 
-  bannedSearch.oninput = debounce((e) => searchBanned(bannedUsers, e.target.value), 300);
-  modal.querySelector("#closeBannedBtn").addEventListener("click", () => closeModal("viewBannedModal"));
+}
+
+let followersArray = [];
+let followingArray = [];
+let lastFollowersCursor = null;
+let lastFollowingCursor = null;
+const FOLLOWERS_PAGE_SIZE = 10;
+
+async function viewFollowers(userId) {
+  const modal = document.getElementById("viewFollowersModal");
+  const followersContent = document.getElementById("followersList");
+  const followersSearchInput = document.getElementById("followerSearch");
+  const followersTabBtn = document.getElementById("followersTab");
+  const followingTabBtn = document.getElementById("followingTab");
+
+  if (!modal || !followersContent || !followersSearchInput || !followersTabBtn || !followingTabBtn) {
+    console.error("Followers modal elements missing!");
+    return;
+  }
+
+  lastFollowersCursor = null;
+  lastFollowingCursor = null;
+  followersContent.innerHTML = '<div class="loading">Loading...</div>';
+  modal.style.display = "flex";
+  modal.classList.remove("hidden");
+
+  const userRef = doc(db, "users", userId);
+  let userDoc;
+  try {
+    userDoc = await getDoc(userRef);
+  } catch (error) {
+    console.error("Error fetching user doc:", error);
+    followersContent.innerHTML = "<p>Failed to load data. Try again.</p>";
+    return;
+  }
+  const totalFollowersCount = userDoc.exists() ? (userDoc.data().followerCount || 0) : 0;
+  const totalFollowingCount = userDoc.exists() ? (userDoc.data().followingCount || 0) : 0; // New field
+  console.log("Total followers from followerCount:", totalFollowersCount);
+  console.log("Total following from followingCount:", totalFollowingCount);
+
+  // Update tab labels
+  followersTabBtn.textContent = `Followers: ${totalFollowersCount}`;
+  followingTabBtn.textContent = `Following: ${totalFollowingCount}`;
+
+  await loadFollowersTab(userId, totalFollowersCount);
+
+  followersTabBtn.onclick = () => {
+    followersTabBtn.classList.add("active");
+    followingTabBtn.classList.remove("active");
+    followersSearchInput.value = "";
+    loadFollowersTab(userId, totalFollowersCount);
+  };
+  followingTabBtn.onclick = () => {
+    followingTabBtn.classList.add("active");
+    followersTabBtn.classList.remove("active");
+    followersSearchInput.value = "";
+    loadFollowingTab(userId, totalFollowingCount); // Pass following count
+  };
+
+  followersSearchInput.oninput = debounce((e) => {
+    if (followersTabBtn.classList.contains("active")) {
+      searchFollowers(userId, e.target.value, totalFollowersCount);
+    } else {
+      searchFollowing(userId, e.target.value, totalFollowingCount);
+    }
+  }, 300);
+  document.getElementById("closeFollowersBtn").addEventListener("click", () => closeModal("viewFollowersModal"));
+}
+
+async function loadFollowersTab(userId, totalFollowersCount) {
+  const followersContent = document.getElementById("followersList");
+  const followersRef = collection(db, "users", userId, "followers");
+  const q = query(followersRef, limit(FOLLOWERS_PAGE_SIZE));
+  let snapshot;
+  try {
+    snapshot = await getDocs(q);
+  } catch (error) {
+    console.error("Error fetching followers:", error);
+    followersContent.innerHTML = "<p>Failed to load followers. Try again.</p>";
+    return;
+  }
+  followersArray = snapshot.docs.map(doc => ({
+    uid: doc.data().followerId,
+    username: doc.data().username || "Unknown"
+  }));
+  console.log("Initial followers loaded:", followersArray.length);
+  await loadFollowersBatch(userId, snapshot, true, totalFollowersCount);
+}
+
+async function loadFollowingTab(userId, totalFollowingCount) { // Added totalFollowingCount
+  const followersContent = document.getElementById("followersList");
+  const followingRef = collection(db, "users", userId, "following");
+  const q = query(followingRef, limit(FOLLOWERS_PAGE_SIZE));
+  let snapshot;
+  try {
+    snapshot = await getDocs(q);
+  } catch (error) {
+    console.error("Error fetching following:", error);
+    followersContent.innerHTML = "<p>Failed to load following. Try again.</p>";
+    return;
+  }
+  followingArray = snapshot.docs.map(doc => ({
+    uid: doc.data().followingId,
+    username: doc.data().username || "Unknown"
+  }));
+  console.log("Initial following loaded:", followingArray.length);
+  await loadFollowingBatch(userId, snapshot, true, totalFollowingCount);
+}
+
+async function loadFollowersBatch(userId, snapshot, reset = false, totalFollowersCount) {
+  const followersContent = document.getElementById("followersList");
+  const currentUser = auth.currentUser;
+
+  if (reset) {
+    followersContent.innerHTML = "";
+    lastFollowersCursor = null;
+  }
+
+  if (snapshot.empty && followersContent.querySelectorAll(".user-item").length === 0) {
+    followersContent.innerHTML = "<p>No followers yet!</p>";
+    updateFollowersPaginationButtons(0, 0);
+    return;
+  }
+
+  snapshot.docs.forEach(doc => {
+    const followerData = doc.data();
+    const followerId = followerData.followerId;
+    const username = followerData.username || "Unknown";
+    const itemId = `follower-${followerId}`;
+    if (!document.getElementById(itemId)) {
+      const isSelf = userId === currentUser.uid;
+      const followerDiv = document.createElement("div");
+      followerDiv.className = "user-item";
+      followerDiv.id = itemId;
+      followerDiv.innerHTML = `
+        <span class="username" data-uid="${followerId}">${username}</span>
+        <div class="action-buttons">
+          <!-- Removed Remove Follower button -->
+        </div>
+      `;
+      followersContent.appendChild(followerDiv);
+      followerDiv.style.opacity = 0;
+      setTimeout(() => {
+        followerDiv.style.transition = "opacity 0.3s ease";
+        followerDiv.style.opacity = 1;
+      }, 10);
+
+      followerDiv.querySelector(`.username[data-uid="${followerId}"]`).addEventListener("click", () => viewProfile(followerId));
+    }
+  });
+
+  lastFollowersCursor = snapshot.docs.length === FOLLOWERS_PAGE_SIZE ? snapshot.docs[snapshot.docs.length - 1] : null;
+  const loadedFollowerCount = followersContent.querySelectorAll(".user-item").length;
+  updateFollowersPaginationButtons(totalFollowersCount, loadedFollowerCount);
+}
+
+async function loadFollowingBatch(userId, snapshot, reset = false, totalFollowingCount) {
+  const followersContent = document.getElementById("followersList");
+  const currentUser = auth.currentUser;
+
+  if (reset) {
+    followersContent.innerHTML = "";
+    lastFollowingCursor = null;
+  }
+
+  if (snapshot.empty && followersContent.querySelectorAll(".user-item").length === 0) {
+    followersContent.innerHTML = "<p>You aren't following anyone yet!</p>";
+    updateFollowingPaginationButtons(0, 0);
+    return;
+  }
+
+  snapshot.docs.forEach(doc => {
+    const followingData = doc.data();
+    const followingId = followingData.followingId;
+    const username = followingData.username || "Unknown";
+    const itemId = `following-${followingId}`;
+    if (!document.getElementById(itemId)) {
+      const isSelf = userId === currentUser.uid;
+      const followingDiv = document.createElement("div");
+      followingDiv.className = "user-item";
+      followingDiv.id = itemId;
+      followingDiv.innerHTML = `
+        <span class="username" data-uid="${followingId}">${username}</span>
+        <div class="action-buttons">
+          <button class="action-btn activities-btn" data-uid="${followingId}">User Communities</button>
+          <!-- Removed Remove Follower button -->
+        </div>
+      `;
+      followersContent.appendChild(followingDiv);
+      followingDiv.style.opacity = 0;
+      setTimeout(() => {
+        followingDiv.style.transition = "opacity 0.3s ease";
+        followingDiv.style.opacity = 1;
+      }, 10);
+
+      followingDiv.querySelector(`.username[data-uid="${followingId}"]`).addEventListener("click", () => viewProfile(followingId));
+      const activitiesBtn = followingDiv.querySelector(".activities-btn");
+      if (activitiesBtn) {
+        activitiesBtn.addEventListener("click", () => viewUserActivities(followingId));
+      }
+    }
+  });
+
+  lastFollowingCursor = snapshot.docs.length === FOLLOWERS_PAGE_SIZE ? snapshot.docs[snapshot.docs.length - 1] : null;
+  const loadedFollowingCount = followersContent.querySelectorAll(".user-item").length;
+  updateFollowingPaginationButtons(totalFollowingCount, loadedFollowingCount);
+}
+
+function updateFollowersPaginationButtons(totalFollowersCount, loadedFollowerCount) {
+  const followersContent = document.getElementById("followersList");
+  const existingMoreBtn = followersContent.querySelector("#seeMoreFollowersBtn");
+  const existingLessBtn = followersContent.querySelector("#seeLessFollowersBtn");
+  if (existingMoreBtn) existingMoreBtn.remove();
+  if (existingLessBtn) existingLessBtn.remove();
+
+  if (totalFollowersCount > 0 && loadedFollowerCount > 0) {
+    const seeMore = document.createElement("button");
+    seeMore.id = "seeMoreFollowersBtn";
+    seeMore.textContent = "See More";
+    seeMore.className = "see-more-btn";
+    seeMore.style.display = totalFollowersCount > loadedFollowerCount ? "block" : "none";
+    seeMore.onclick = async () => {
+      const followersRef = collection(db, "users", userId, "followers");
+      const q = query(followersRef, startAfter(lastFollowersCursor), limit(FOLLOWERS_PAGE_SIZE));
+      const nextSnapshot = await getDocs(q);
+      followersArray = followersArray.concat(nextSnapshot.docs.map(doc => ({
+        uid: doc.data().followerId,
+        username: doc.data().username || "Unknown"
+      })));
+      await loadFollowersBatch(userId, nextSnapshot, false, totalFollowersCount);
+    };
+
+    const seeLess = document.createElement("button");
+    seeLess.id = "seeLessFollowersBtn";
+    seeLess.textContent = "See Less";
+    seeLess.className = "see-less-btn";
+    seeLess.style.display = loadedFollowerCount > FOLLOWERS_PAGE_SIZE ? "block" : "none";
+    seeLess.onclick = () => loadFollowersTab(userId, totalFollowersCount);
+
+    followersContent.appendChild(seeMore);
+    followersContent.appendChild(seeLess);
+  }
+}
+
+function updateFollowingPaginationButtons(totalFollowingCount, loadedFollowingCount) {
+  const followersContent = document.getElementById("followersList");
+  const existingMoreBtn = followersContent.querySelector("#seeMoreFollowingBtn");
+  const existingLessBtn = followersContent.querySelector("#seeLessFollowingBtn");
+  if (existingMoreBtn) existingMoreBtn.remove();
+  if (existingLessBtn) existingLessBtn.remove();
+
+  if (totalFollowingCount > 0 && loadedFollowingCount > 0) {
+    const seeMore = document.createElement("button");
+    seeMore.id = "seeMoreFollowingBtn";
+    seeMore.textContent = "See More";
+    seeMore.className = "see-more-btn";
+    seeMore.style.display = totalFollowingCount > loadedFollowingCount ? "block" : "none";
+    seeMore.onclick = async () => {
+      const followingRef = collection(db, "users", userId, "following");
+      const q = query(followingRef, startAfter(lastFollowingCursor), limit(FOLLOWERS_PAGE_SIZE));
+      const nextSnapshot = await getDocs(q);
+      followingArray = followingArray.concat(nextSnapshot.docs.map(doc => ({
+        uid: doc.data().followingId,
+        username: doc.data().username || "Unknown"
+      })));
+      await loadFollowingBatch(userId, nextSnapshot, false, totalFollowingCount);
+    };
+
+    const seeLess = document.createElement("button");
+    seeLess.id = "seeLessFollowingBtn";
+    seeLess.textContent = "See Less";
+    seeLess.className = "see-less-btn";
+    seeLess.style.display = loadedFollowingCount > FOLLOWERS_PAGE_SIZE ? "block" : "none";
+    seeLess.onclick = () => loadFollowingTab(userId, totalFollowingCount);
+
+    followersContent.appendChild(seeMore);
+    followersContent.appendChild(seeLess);
+  }
+}
+
+async function removeFollower(userId, followerId, profileUid) {
+  if (!confirm(`Remove ${followerId} as a follower?`)) return;
+
+  const followerDocRef = doc(db, "users", userId, "followers", followerId);
+  const followingDocRef = doc(db, "users", userId, "following", followerId);
+  const followerDiv = document.getElementById(`follower-${followerId}`) || document.getElementById(`following-${followerId}`);
+  try {
+    if (followerDiv) {
+      followerDiv.style.transition = "opacity 0.3s ease";
+      followerDiv.style.opacity = 0;
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+    await deleteDoc(followerDocRef);
+    await deleteDoc(followingDocRef);
+    console.log(`Removed follower ${followerId} from user ${userId}`);
+
+    if (followerDiv) followerDiv.remove();
+    const followersContent = document.getElementById("followersList");
+    const remainingItems = followersContent.querySelectorAll(".user-item").length;
+    if (remainingItems === 0) {
+      followersContent.innerHTML = document.getElementById("followersTab").classList.contains("active") 
+        ? "<p>No followers yet!</p>" 
+        : "<p>You aren't following anyone yet!</p>";
+      updateFollowersPaginationButtons(0, 0);
+    }
+
+    const followerCountEl = document.getElementById("followerCount");
+    if (followerCountEl) {
+      const currentCount = parseInt(followerCountEl.textContent.match(/\d+/)?.[0] || "0", 10);
+      followerCountEl.textContent = `Followers: ${Math.max(0, currentCount - 1)}`;
+      // Refresh viewProfile with followerId (the profile being unfollowed)
+      if (document.getElementById("viewProfileModal").style.display === "flex" && profileUid) {
+        await viewProfile(followerId); // Use followerId to refresh their profile
+      }
+    }
+  } catch (error) {
+    console.error("Error removing follower:", error);
+    alert("Failed to remove follower.");
+    if (followerDiv) followerDiv.style.opacity = 1;
+  }
+}
+
+async function viewUserActivities(userId) {
+  const modal = document.getElementById("userActivitiesModal");
+  const activitiesList = document.getElementById("activitiesList");
+
+  if (!modal || !activitiesList) {
+    console.error("User activities modal elements missing!");
+    return;
+  }
+
+  activitiesList.innerHTML = '<div class="loading">Loading...</div>';
+  modal.style.display = "flex";
+  modal.classList.remove("hidden");
+
+  // Fetch user data to get username
+  const userRef = doc(db, "users", userId);
+  let userDoc;
+  try {
+    userDoc = await getDoc(userRef);
+    if (!userDoc.exists()) {
+      throw new Error("User document not found");
+    }
+  } catch (error) {
+    console.error("Error fetching user data:", error);
+    activitiesList.innerHTML = "<p>Failed to load user data.</p>";
+    return;
+  }
+
+  const username = userDoc.data().username || "Unknown User"; // Fallback if username missing
+  console.log(`Fetched username for user ${userId}: ${username}`);
+
+  // Update modal header with username
+  const header = modal.querySelector("h2") || document.createElement("h2");
+  if (!modal.querySelector("h2")) modal.querySelector(".modal-content").prepend(header);
+  header.innerHTML = `${username} communities`;
+
+  // Fetch communities
+  if (!userDoc.data().communityIds || userDoc.data().communityIds.length === 0) {
+    activitiesList.innerHTML = "<p>User is not in any communities.</p>";
+  } else {
+    const communityIds = userDoc.data().communityIds;
+    const communities = [];
+    for (const commId of communityIds) {
+      const commRef = doc(db, "communities", commId);
+      const commDoc = await getDoc(commRef);
+      if (commDoc.exists()) {
+        communities.push({ id: commId, name: commDoc.data().name || "Unnamed Community" });
+      }
+    }
+
+    activitiesList.innerHTML = communities.map(comm => `
+      <div class="community-item">
+        <span>${comm.name}</span>
+        <button class="copy-id-btn" data-id="${comm.id}">Copy ID</button>
+      </div>
+    `).join("") || "<p>No valid communities found.</p>";
+
+    activitiesList.querySelectorAll(".copy-id-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        navigator.clipboard.writeText(btn.dataset.id)
+          .then(() => console.log(`Copied community ID: ${btn.dataset.id}`))
+          .catch(err => console.error("Failed to copy ID:", err));
+      });
+    });
+  }
+
+  document.getElementById("closeActivitiesBtn").addEventListener("click", () => closeModal("userActivitiesModal"));
 }
 
 async function viewBannedUsers(communityId) {
@@ -5020,29 +5652,48 @@ async function openNotificationsModal(userId) {
   }
 
   function renderNotification(doc, communities) {
-    const notif = doc.data();
-    const timestamp = new Date(notif.timestamp.toDate()).toLocaleString();
-    let displayMessage = notif.message || "No message";
-    if (notif.communityId && notif.type !== "ban_appeal") {
-      const communityName = communities.find(c => c.id === notif.communityId)?.name || "Unknown Community";
-      displayMessage += ` (${communityName})`;
-    }
+  const notif = doc.data();
+  const timestamp = new Date(notif.timestamp.toDate()).toLocaleString();
+  let displayMessage = notif.message || "No message";
+  if (notif.communityId && notif.type !== "ban_appeal") {
+    const communityName = communities.find(c => c.id === notif.communityId)?.name || "Unknown Community";
+    displayMessage += ` (${communityName})`;
+  }
 
-    return `
-      <div class="notification-item ${notif.seen ? 'seen' : ''}" data-id="${doc.id}" data-type="${notif.type}">
-        <span>${displayMessage}</span>
-        <span class="timestamp">${timestamp}</span>
-        ${notif.postId ? `<button class="copy-id-btn2" data-post-id="${notif.postId}">Copy ID</button>` : ""}
-        <button class="mark-seen-btn2" data-id="${doc.id}" ${notif.seen ? 'disabled' : ''}>${notif.seen ? 'Seen' : 'Mark as Seen'}</button>
-        ${notif.type === "ban_appeal" && !notif.appealSubmitted ? `
-          <form class="ban-appeal-form" data-id="${doc.id}">
-            <textarea placeholder="Explain why this ban might be an error..." required></textarea>
-            <button type="submit">Send Appeal</button>
-          </form>
-        ` : ""}
-      </div>
+  // Base HTML structure
+  let html = `
+    <div class="notification-item ${notif.seen ? 'seen' : ''}" data-id="${doc.id}" data-type="${notif.type}">
+  `;
+
+  // Special handling for "follow" type notifications
+  if (notif.type === "follow" && notif.followerId) {
+    html += `
+      <span class="clickable-profile" data-uid="${notif.followerId}">${displayMessage}</span>
+    `;
+  } else {
+    html += `<span>${displayMessage}</span>`;
+  }
+
+  // Add timestamp and buttons
+  html += `
+      <span class="timestamp">${timestamp}</span>
+      ${notif.postId ? `<button class="copy-id-btn2" data-post-id="${notif.postId}">Copy ID</button>` : ""}
+      <button class="mark-seen-btn2" data-id="${doc.id}" ${notif.seen ? 'disabled' : ''}>${notif.seen ? 'Seen' : 'Mark as Seen'}</button>
+  `;
+
+  // Ban appeal form if applicable
+  if (notif.type === "ban_appeal" && !notif.appealSubmitted) {
+    html += `
+      <form class="ban-appeal-form" data-id="${doc.id}">
+        <textarea placeholder="Explain why this ban might be an error..." required></textarea>
+        <button type="submit">Send Appeal</button>
+      </form>
     `;
   }
+
+  html += `</div>`;
+  return html;
+}
 
   function attachNotificationListeners() {
     notificationList.querySelectorAll(".copy-id-btn2").forEach(btn => {
@@ -5087,33 +5738,51 @@ async function openNotificationsModal(userId) {
       });
     });
     notificationList.querySelectorAll(".notification-item").forEach(item => {
-      item.addEventListener("click", async () => {
-        const notif = allNotifications.find(n => n.id === item.dataset.id).data;
-        const notifType = item.dataset.type;
+    item.addEventListener("click", async (e) => {
+      // Prevent triggering item click if a button/form was clicked
+      if (e.target.tagName === "BUTTON" || e.target.tagName === "TEXTAREA" || e.target.closest("form")) {
+        return;
+      }
 
-        if (notifType === "profile_request" || notifType === "profile_request_accepted" || notifType === "profile_request_declined") {
+      const notif = allNotifications.find(n => n.id === item.dataset.id).data;
+      const notifType = item.dataset.type;
+
+      if (notifType === "follow" && notif.followerId) {
+        closeModal("notificationsModal");
+        await viewProfile(notif.followerId);
+      } else if (notifType === "profile_request" || notifType === "profile_request_accepted" || notifType === "profile_request_declined") {
+        closeModal("notificationsModal");
+        await viewProfileViewRequests(userId);
+      } else if (notifType === "new_message" || notifType === "chat") {
+        console.log("Chat notification clicked, triggering handleViewChatsClick");
+        closeModal("notificationsModal");
+        await handleViewChatsClick();
+      } else if (notif.postId && notif.communityId) {
+        if (notif.communityId !== communityId) {
+          window.location.href = `/community.html?id=${notif.communityId}#post-${notif.postId}`;
+        } else {
           closeModal("notificationsModal");
-          await viewProfileViewRequests(userId);
-        } else if (notifType === "new_message" || notifType === "chat") {
-          console.log("Chat notification clicked, triggering handleViewChatsClick");
-          closeModal("notificationsModal");
-          await handleViewChatsClick(); // Reuse the working handler
-        } else if (notif.postId && notif.communityId) {
-          if (notif.communityId !== communityId) {
-            window.location.href = `/community.html?id=${notif.communityId}#post-${notif.postId}`;
+          await searchPostsById(notif.postId);
+          const scrollTarget = document.getElementById("search-scrolldown");
+          if (scrollTarget) {
+            scrollTarget.scrollIntoView({ behavior: "smooth" });
           } else {
-            closeModal("notificationsModal");
-            await searchPostsById(notif.postId);
-            const scrollTarget = document.getElementById("search-scrolldown");
-            if (scrollTarget) {
-              scrollTarget.scrollIntoView({ behavior: "smooth" });
-            } else {
-              console.warn("Scroll target #search-scrolldown not found!");
-            }
+            console.warn("Scroll target #search-scrolldown not found!");
           }
         }
-      });
+      }
     });
+  });
+
+  // Add listener for clickable profiles
+  notificationList.querySelectorAll(".clickable-profile").forEach(span => {
+    span.addEventListener("click", async (e) => {
+      e.stopPropagation(); // Prevent triggering the parent .notification-item click
+      const uid = span.dataset.uid;
+      closeModal("notificationsModal");
+      await viewProfile(uid);
+    });
+  });
   }
 
   function updateLoadButtons() {
