@@ -2220,6 +2220,7 @@ async function loadPosts(communityId, reset = false, page = PaginationState.curr
     console.log(`No cached posts found for ${communityId}—fetching fresh batch.`);
   }
 
+  // Always fetch with filters—keeps it tight
   let q = query(
     collection(db, "communities", communityId, "posts"),
     ...(filters.category ? [where("category", "==", filters.category)] : []),
@@ -2228,7 +2229,7 @@ async function loadPosts(communityId, reset = false, page = PaginationState.curr
     orderBy("createdAt", "desc"),
     limit(batchSize),
     ...(lastPostDoc && !reset ? [startAfter(lastPostDoc)] : []),
-    ...(lastCachedTime ? [where("createdAt", ">", new Date(lastCachedTime))] : [])
+    ...(lastCachedTime && !reset ? [where("createdAt", ">", new Date(lastCachedTime))] : [])
   );
 
   try {
@@ -2249,21 +2250,17 @@ async function loadPosts(communityId, reset = false, page = PaginationState.curr
       .map(post => ({
         ...post,
         score: getPostScore(post.data, likedPrefs)
-      }));
-
-    const filteredPosts = allPosts.filter(post => {
-      return (
+      }))
+      .filter(post => // Double-check filters on cache
         (!filters.category || post.data.category === filters.category) &&
         (!filters.lookingFor || post.data.lookingFor === filters.lookingFor) &&
         (!filters.offering || post.data.offering === filters.offering)
       );
-    });
 
-    filteredPosts.sort((a, b) => b.score - a.score);
+    allPosts.sort((a, b) => b.score - a.score);
 
     const startIndex = (PaginationState.currentPage - 1) * PaginationState.POSTS_PER_PAGE;
-    const postsToShow = filteredPosts
-      .slice(startIndex, startIndex + PaginationState.POSTS_PER_PAGE)
+    const postsToShow = allPosts.slice(startIndex, startIndex + PaginationState.POSTS_PER_PAGE)
       .filter(post => !PaginationState.displayedPostIds.has(post.id));
 
     console.log(`Showing ${postsToShow.length} posts for ${communityId} on page ${PaginationState.currentPage}`);
@@ -2289,7 +2286,7 @@ async function loadPosts(communityId, reset = false, page = PaginationState.curr
     PaginationState.displayedPostIds.clear();
     await renderPosts({ docs: postsToShow.map(post => ({ id: post.id, data: () => post.data })) }, postsDiv, savedPostIds);
 
-    addPaginationControls(postsDiv, filteredPosts.length, communityId);
+    addPaginationControls(postsDiv, allPosts.length, communityId);
     caughtUpDiv.style.display = PaginationState.currentPage * PaginationState.POSTS_PER_PAGE >= totalPosts ? "block" : "none";
   } catch (error) {
     console.error(`Failed to load posts for ${communityId}:`, error);
@@ -2299,6 +2296,11 @@ async function loadPosts(communityId, reset = false, page = PaginationState.curr
     await delay(200);
   }
 }
+
+// Add filter change listeners (from your community.html)
+document.getElementById("categoryFilter")?.addEventListener("change", () => loadPosts(communityId, true));
+document.getElementById("lookingForFilter")?.addEventListener("change", () => loadPosts(communityId, true));
+document.getElementById("offeringFilter")?.addEventListener("change", () => loadPosts(communityId, true));
 
 async function renderPosts(snapshot, postsDiv, savedPostIds) {
   const commData = await getCommData();
