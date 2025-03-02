@@ -3880,7 +3880,6 @@ async function viewProfile(uid) {
   const detailsEl = document.getElementById("profileDetails");
   const actionsEl = document.getElementById("profileActions");
 
-  // Loading state
   actionsEl.innerHTML = '<div class="loading">Loading...</div>';
   detailsEl.innerHTML = '';
   nameEl.textContent = '';
@@ -3890,29 +3889,23 @@ async function viewProfile(uid) {
   modal.classList.remove("hidden");
 
   const userData = await fetchUserData(uid);
-  const commData = await getCommData();
+  const commData = await getCommData(); // Fresh community data
   const isCreator = commData.creatorId === auth.currentUser.uid;
   const isAdmin = commData.admins?.includes(auth.currentUser.uid);
   const isSelf = uid === auth.currentUser.uid;
   const isProfileAdmin = commData.admins?.includes(uid) || commData.creatorId === uid;
 
-  // Always visible: name, photo, swaps
   nameEl.textContent = `${userData.name} (${userData.swaps || 0} swaps)`;
   photoEl.src = userData.profilePhoto || "https://via.placeholder.com/40";
   detailsEl.innerHTML = isProfileAdmin ? '<span class="admin-tag">Admin</span>' : '';
   actionsEl.innerHTML = "";
 
-  // Query the target user’s profileRequests subcollection for requests from the current user
   const requestsRef = collection(db, "users", uid, "profileRequests");
-  const requestQ = query(
-    requestsRef,
-    where("requesterId", "==", auth.currentUser.uid)
-  );
+  const requestQ = query(requestsRef, where("requesterId", "==", auth.currentUser.uid));
   const requestSnapshot = await getDocs(requestQ);
   const request = requestSnapshot.docs[0]?.data();
   const requestId = requestSnapshot.docs[0]?.id;
 
-  // Permission-blocked section
   if (isSelf || (request && request.status === "accepted") || isCreator || isAdmin) {
     detailsEl.innerHTML += `
       <p>Email: ${userData.email || "Not set"}</p>
@@ -3922,7 +3915,6 @@ async function viewProfile(uid) {
     if (request && request.status === "accepted" && !isSelf && !isAdmin && !isCreator) {
       actionsEl.innerHTML += `<button class="revoke-btn" id="revokeProfileBtn" data-request-id="${requestId}">Revoke Profile Access</button>`;
     }
-    // Add Chat button here (blocked section)
     actionsEl.innerHTML += `<button id="chatBtn" data-uid="${uid}">Chat</button>`;
   } else if (request && request.status === "pending") {
     actionsEl.innerHTML = `<button class="request-btn pending" id="requestProfileBtn" data-request-id="${requestId}" disabled>Pending...</button>`;
@@ -3951,10 +3943,16 @@ async function viewProfile(uid) {
     requestBtn.addEventListener("click", () => requestProfileAccess(uid));
   }
   if (document.getElementById("makeAdminBtn")) {
-    document.getElementById("makeAdminBtn").addEventListener("click", () => makeAdmin(communityId, uid));
+    document.getElementById("makeAdminBtn").addEventListener("click", async () => {
+      await makeAdmin(communityId, uid);
+      await viewProfile(uid); // Refresh UI
+    });
   }
   if (document.getElementById("removeAdminBtn")) {
-    document.getElementById("removeAdminBtn").addEventListener("click", () => removeAdmin(communityId, uid));
+    document.getElementById("removeAdminBtn").addEventListener("click", async () => {
+      await removeAdmin(communityId, uid);
+      await viewProfile(uid); // Refresh UI
+    });
   }
   if (document.getElementById("banUserBtn")) {
     document.getElementById("banUserBtn").addEventListener("click", () => banUser(communityId, uid));
@@ -3962,7 +3960,6 @@ async function viewProfile(uid) {
   if (document.getElementById("revokeProfileBtn")) {
     document.getElementById("revokeProfileBtn").addEventListener("click", () => revokeProfileAccess(uid, document.getElementById("revokeProfileBtn").dataset.requestId));
   }
-  // Chat button listener
   const chatBtn = document.getElementById("chatBtn");
   if (chatBtn) {
     chatBtn.addEventListener("click", () => {
@@ -3974,6 +3971,37 @@ async function viewProfile(uid) {
         alert("Chat system isn’t ready. Try again in a sec.");
       }
     });
+  }
+}
+
+async function makeAdmin(communityId, uid) {
+  const commData = await getCommData(true); // Force fresh fetch
+  const commRef = doc(db, "communities", communityId);
+  const admins = commData.admins || [];
+  const members = commData.members || []; // Ensure members is defined
+
+  if (!admins.includes(uid) && members.includes(uid) && uid !== commData.creatorId) {
+    admins.push(uid);
+    await updateDoc(commRef, { admins });
+    resetCommDataCache();
+    alert("User is now an admin!");
+  } else {
+    alert("User not found, already an admin, or is the creator!");
+  }
+}
+
+async function removeAdmin(communityId, uid) {
+  const commData = await getCommData(true); // Force fresh fetch
+  const commRef = doc(db, "communities", communityId);
+  const admins = commData.admins || [];
+
+  if (admins.includes(uid) && uid !== commData.creatorId) {
+    const updatedAdmins = admins.filter(a => a !== uid);
+    await updateDoc(commRef, { admins: updatedAdmins });
+    resetCommDataCache();
+    alert("User admin status removed!");
+  } else {
+    alert("User not an admin or is the creator!");
   }
 }
 
@@ -4156,40 +4184,6 @@ async function viewProfileViewRequests(userId) {
   grantedList.querySelectorAll(".revoke-btn").forEach(btn => {
     btn.addEventListener("click", () => revokeProfileAccessFromModal(btn.dataset.requestId, userId));
   });
-}
-
-async function makeAdmin(communityId, uid) {
-  const commRef = doc(db, "communities", communityId);
-  const memberRef = doc(db, "communities", communityId, "members", uid);
-
-  const commDoc = await getDoc(commRef);
-  const memberDoc = await getDoc(memberRef);
-  const admins = commDoc.data().admins || [];
-
-  if (!admins.includes(uid) && memberDoc.exists() && uid !== commDoc.data().creatorId) {
-    admins.push(uid);
-    await updateDoc(commRef, { admins });
-    alert("User is now an admin!");
-    closeModal("viewProfileModal");
-  } else {
-    alert("User not found, already an admin, or is the creator!");
-  }
-}
-
-async function removeAdmin(communityId, uid) {
-  const commRef = doc(db, "communities", communityId);
-
-  const commDoc = await getDoc(commRef);
-  const admins = commDoc.data().admins || [];
-
-  if (admins.includes(uid) && uid !== commDoc.data().creatorId) {
-    const updatedAdmins = admins.filter(a => a !== uid);
-    await updateDoc(commRef, { admins: updatedAdmins });
-    alert("User admin status removed!");
-    closeModal("viewProfileModal");
-  } else {
-    alert("User not an admin or is the creator!");
-  }
 }
 
     async function banUser(communityId, uid) {
