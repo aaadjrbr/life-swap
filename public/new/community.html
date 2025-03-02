@@ -2207,7 +2207,7 @@ async function loadPosts(communityId, reset = false, page = PaginationState.curr
   PaginationState.currentPage = page;
   const cachedPosts = getCachedPosts();
   const likedPrefs = getLikedPrefs();
-  const batchSize = 50;
+  const batchSize = 25;
 
   let lastCachedTime = null;
   if (cachedPosts.size > 0) {
@@ -2220,81 +2220,98 @@ async function loadPosts(communityId, reset = false, page = PaginationState.curr
     console.log(`No cached posts found for ${communityId}—fetching fresh batch.`);
   }
 
-  // Always fetch with filters—keeps it tight
-  let q = query(
-    collection(db, "communities", communityId, "posts"),
-    ...(filters.category ? [where("category", "==", filters.category)] : []),
-    ...(filters.lookingFor ? [where("lookingFor", "==", filters.lookingFor)] : []),
-    ...(filters.offering ? [where("offering", "==", filters.offering)] : []),
-    orderBy("createdAt", "desc"),
-    limit(batchSize),
-    ...(lastPostDoc && !reset ? [startAfter(lastPostDoc)] : []),
-    ...(lastCachedTime && !reset ? [where("createdAt", ">", new Date(lastCachedTime))] : [])
-  );
+  const startIndex = (PaginationState.currentPage - 1) * PaginationState.POSTS_PER_PAGE;
+  const endIndex = startIndex + PaginationState.POSTS_PER_PAGE;
 
-  try {
-    const snapshot = await getDocs(q);
-    const newPosts = snapshot.docs.map(doc => ({
-      id: doc.id,
-      data: { ...normalizePostData(doc.data()), communityId },
-      score: getPostScore(normalizePostData(doc.data()), likedPrefs)
-    }));
+  let allPosts = Array.from(cachedPosts.values())
+    .filter(post => post.data.communityId === communityId)
+    .map(post => ({
+      ...post,
+      score: getPostScore(post.data, likedPrefs)
+    }))
+    .filter(post => 
+      (!filters.category || post.data.category === filters.category) &&
+      (!filters.lookingFor || post.data.lookingFor === filters.lookingFor) &&
+      (!filters.offering || post.data.offering === filters.offering)
+    )
+    .sort((a, b) => b.score - a.score);
 
-    console.log(`Fetched ${newPosts.length} new posts for ${communityId}`);
+  const postsToShow = allPosts.slice(startIndex, endIndex)
+    .filter(post => !PaginationState.displayedPostIds.has(post.id));
+  const cacheHasEnough = postsToShow.length === PaginationState.POSTS_PER_PAGE || 
+                        (startIndex + postsToShow.length >= allPosts.length);
 
-    newPosts.forEach(post => cachedPosts.set(post.id, post));
-    setCachedPosts(cachedPosts);
+  if (!cacheHasEnough || reset || cachedPosts.size === 0) {
+    let q = query(
+      collection(db, "communities", communityId, "posts"),
+      ...(filters.category ? [where("category", "==", filters.category)] : []),
+      ...(filters.lookingFor ? [where("lookingFor", "==", filters.lookingFor)] : []),
+      ...(filters.offering ? [where("offering", "==", filters.offering)] : []),
+      orderBy("createdAt", "desc"),
+      limit(batchSize),
+      ...(lastPostDoc && !reset ? [startAfter(lastPostDoc)] : []),
+      ...(lastCachedTime && !reset ? [where("createdAt", ">", new Date(lastCachedTime))] : [])
+    );
 
-    const allPosts = Array.from(cachedPosts.values())
-      .filter(post => post.data.communityId === communityId)
-      .map(post => ({
-        ...post,
-        score: getPostScore(post.data, likedPrefs)
-      }))
-      .filter(post => // Double-check filters on cache
-        (!filters.category || post.data.category === filters.category) &&
-        (!filters.lookingFor || post.data.lookingFor === filters.lookingFor) &&
-        (!filters.offering || post.data.offering === filters.offering)
-      );
+    try {
+      const snapshot = await getDocs(q);
+      const newPosts = snapshot.docs.map(doc => ({
+        id: doc.id,
+        data: { ...normalizePostData(doc.data()), communityId },
+        score: getPostScore(normalizePostData(doc.data()), likedPrefs)
+      }));
 
-    allPosts.sort((a, b) => b.score - a.score);
+      console.log(`Fetched ${newPosts.length} new posts for ${communityId} (${batchSize} reads)`);
 
-    const startIndex = (PaginationState.currentPage - 1) * PaginationState.POSTS_PER_PAGE;
-    const postsToShow = allPosts.slice(startIndex, startIndex + PaginationState.POSTS_PER_PAGE)
-      .filter(post => !PaginationState.displayedPostIds.has(post.id));
+      newPosts.forEach(post => cachedPosts.set(post.id, post));
+      setCachedPosts(cachedPosts);
 
-    console.log(`Showing ${postsToShow.length} posts for ${communityId} on page ${PaginationState.currentPage}`);
-
-    if (postsToShow.length === 0 && !initialPostsLoaded) {
-      postsDiv.innerHTML = "<p>No new posts to show!</p>";
-      caughtUpDiv.style.display = "none";
+      allPosts = Array.from(cachedPosts.values())
+        .filter(post => post.data.communityId === communityId)
+        .map(post => ({
+          ...post,
+          score: getPostScore(post.data, likedPrefs)
+        }))
+        .filter(post => 
+          (!filters.category || post.data.category === filters.category) &&
+          (!filters.lookingFor || post.data.lookingFor === filters.lookingFor) &&
+          (!filters.offering || post.data.offering === filters.offering)
+        )
+        .sort((a, b) => b.score - a.score);
+    } catch (error) {
+      console.error(`Failed to load posts for ${communityId}:`, error);
+      postsDiv.innerHTML = "<p>Oops, something broke! Refresh, bro.</p>";
       isFetching = false;
       return;
     }
+  }
 
-    lastPostDoc = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : lastPostDoc;
+  const finalPostsToShow = allPosts.slice(startIndex, endIndex)
+    .filter(post => !PaginationState.displayedPostIds.has(post.id));
+  console.log(`Showing ${finalPostsToShow.length} posts for ${communityId} on page ${PaginationState.currentPage}`);
+
+  if (finalPostsToShow.length === 0 && !initialPostsLoaded) {
+    postsDiv.innerHTML = "<p>No new posts to show!</p>";
+    caughtUpDiv.style.display = "none";
+  } else {
     totalPosts = totalPosts || parseInt(sessionStorage.getItem(`totalPosts_${communityId}`)) || (await getTotalPosts(communityId));
     sessionStorage.setItem(`totalPosts_${communityId}`, totalPosts);
     initialPostsLoaded = true;
 
-    postsToShow.forEach(post => postCache.set(post.id, { id: post.id, data: post.data }));
+    finalPostsToShow.forEach(post => postCache.set(post.id, { id: post.id, data: post.data }));
     const savedPostsQ = query(collection(doc(db, "users", auth.currentUser.uid), "savedPosts"), where("communityId", "==", communityId));
     const savedPostsSnapshot = await getDocs(savedPostsQ);
     const savedPostIds = new Set(savedPostsSnapshot.docs.map(doc => doc.data().postId));
 
     postsDiv.innerHTML = "";
     PaginationState.displayedPostIds.clear();
-    await renderPosts({ docs: postsToShow.map(post => ({ id: post.id, data: () => post.data })) }, postsDiv, savedPostIds);
+    await renderPosts({ docs: finalPostsToShow.map(post => ({ id: post.id, data: () => post.data })) }, postsDiv, savedPostIds);
 
     addPaginationControls(postsDiv, allPosts.length, communityId);
     caughtUpDiv.style.display = PaginationState.currentPage * PaginationState.POSTS_PER_PAGE >= totalPosts ? "block" : "none";
-  } catch (error) {
-    console.error(`Failed to load posts for ${communityId}:`, error);
-    postsDiv.innerHTML = "<p>Oops, something broke! Refresh, bro.</p>";
-  } finally {
-    isFetching = false;
-    await delay(200);
   }
+
+  isFetching = false;
 }
 
 // Add filter change listeners (from your community.html)
