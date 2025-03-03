@@ -154,7 +154,7 @@
   <div id="viewProfileModal" class="modal hidden">
     <div class="modal-content">
       <h2 id="profileName"></h2>
-      <img id="profilePhoto" src="" class="profile-photo" alt="Profile">
+      <img loading="lazy" id="profilePhoto" src="" class="profile-photo" alt="Profile">
       <div id="profileDetails"></div>
       <div id="profileActions"></div>
       <button id="closeProfileBtn">Close</button>
@@ -2417,14 +2417,14 @@ async function renderPosts(snapshot, postsDiv, savedPostIds) {
     postDiv.id = `post-${postId}`;
     postDiv.innerHTML = `
       <div class="post-header">
-        <img src="${userData.profilePhoto}" class="profile-photo" alt="Profile">
+        <img loading="lazy" src="${userData.profilePhoto}" class="profile-photo" alt="Profile">
         <h3><span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
       </div>
       <h3>${post.title || 'Untitled'}</h3>
       <p>${post.description || ''}</p>
       <div class="photo-carousel" id="carousel-${postId}-community" data-photos='${JSON.stringify(photoUrls)}'>
         ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${postId}-community"><</button>` : ''}
-        <img src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image" data-index="0">
+        <img loading="lazy" src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image" data-index="0">
         ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${postId}-community">></button>` : ''}
       </div>
       <p>Location: ${post.location?.name || 'N/A'}</p>
@@ -2683,14 +2683,14 @@ async function loadYourPosts(userId) {
         postDiv.id = `post-${doc.id}`;
         postDiv.innerHTML = `
           <div class="post-header">
-            <img src="${userData.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
+            <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
             <h3><span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
           </div>
           <h3>${post.title}</h3>
           <p>${post.description}</p>
           <div class="photo-carousel" id="carousel-${doc.id}-your" data-photos='${JSON.stringify(photoUrls)}'>
             ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${doc.id}-your"><</button>` : ''}
-            <img src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image" data-index="0">
+            <img loading="lazy" src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image" data-index="0">
             ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${doc.id}-your">></button>` : ''}
           </div>
           <p>Location: ${post.location.name}</p>
@@ -3097,7 +3097,7 @@ async function searchPostsById(postId) {
         <p>${post.description || "No Description"}</p>
         <div class="photo-carousel" id="carousel-${actualPostId}-search" data-photos='${JSON.stringify(photoUrls)}'>
           ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${actualPostId}-search"><</button>` : ""}
-          <img src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image">
+          <img loading="lazy" src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image">
           ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${actualPostId}-search">></button>` : ""}
         </div>
         <p>By: <span class="username" data-uid="${post.userId || 'unknown'}">${userData.name || "Unknown"} (${userData.username || "unknown"})</span></p>
@@ -3534,7 +3534,7 @@ async function renderComment(doc, commentsDiv, postId, isAdmin) {
   commentDiv.className = "comment-bubble";
   commentDiv.innerHTML = `
     <div class="comment-content">
-      <img src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" class="profile-photo" alt="Profile">
+      <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" class="profile-photo" alt="Profile">
       <div class="comment-text">
         <span class="username" data-uid="${comment.userId}">${userData.name}</span> ${isCommentAdmin ? '<span class="admin-tag">Admin</span>' : ''}
         <p>${commentText}</p>
@@ -3710,7 +3710,7 @@ async function loadMoreReplies(event) {
   const replyDiv = document.createElement("div");
   replyDiv.className = "reply-bubble";
   replyDiv.innerHTML = `
-    <img src="${userData.profilePhoto || 'https://via.placeholder.com/25'}" class="profile-photo" alt="Profile">
+    <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/25'}" class="profile-photo" alt="Profile">
     <div class="reply-text">
       <span class="username" data-uid="${reply.userId}">${userData.name}</span> ${isReplyAdmin ? '<span class="admin-tag">Admin</span>' : ''}
       <p>${replyText}</p>
@@ -3822,7 +3822,7 @@ async function addComment(postId, postOwnerId) {
     newCommentDiv.className = "comment-bubble";
     newCommentDiv.innerHTML = `
       <div class="comment-content">
-        <img src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" class="profile-photo" alt="Profile">
+        <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" class="profile-photo" alt="Profile">
         <div class="comment-text">
           <span class="username" data-uid="${user.uid}">${userData.name}</span> ${isCommentAdmin ? '<span class="admin-tag">Admin</span>' : ''}
           <p>${commentText}</p>
@@ -3942,7 +3942,7 @@ async function addReply(postId, commentId, commentOwnerId) {
     const newReplyDiv = document.createElement("div");
     newReplyDiv.className = "reply-bubble";
     newReplyDiv.innerHTML = `
-      <img src="${userData.profilePhoto || 'https://via.placeholder.com/25'}" class="profile-photo" alt="Profile">
+      <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/25'}" class="profile-photo" alt="Profile">
       <div class="reply-text">
         <span class="username" data-uid="${user.uid}">${userData.name}</span> ${isReplyAdmin ? '<span class="admin-tag">Admin</span>' : ''}
         <p>${replyText}</p>
@@ -4668,7 +4668,7 @@ async function loadMembersBatch(snapshot, reset = false, totalMembers) {
       memberDiv.className = "user-item";
       memberDiv.id = itemId;
       memberDiv.innerHTML = `
-        <img src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" alt="Profile">
+        <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" alt="Profile">
         <span class="username" data-uid="${doc.id}">${userData.name}</span>
       `;
       membersList.appendChild(memberDiv);
@@ -4795,7 +4795,7 @@ async function searchMembers(communityId, searchTerm) {
         memberDiv.className = "user-item";
         memberDiv.id = itemId;
         memberDiv.innerHTML = `
-          <img src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" alt="Profile">
+          <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" alt="Profile">
           <span class="username" data-uid="${doc.id}">${userData.name}</span>
         `;
         membersList.appendChild(memberDiv);
@@ -4846,6 +4846,9 @@ let followersArray = [];
 let followingArray = [];
 let lastFollowersCursor = null;
 let lastFollowingCursor = null;
+let lastSearchFollowersCursor = null;
+let lastSearchFollowingCursor = null;
+let searchTerm = "";
 const FOLLOWERS_PAGE_SIZE = 10;
 
 async function viewFollowers(userId) {
@@ -4862,6 +4865,8 @@ async function viewFollowers(userId) {
 
   lastFollowersCursor = null;
   lastFollowingCursor = null;
+  lastSearchFollowersCursor = null;
+  lastSearchFollowingCursor = null;
   followersContent.innerHTML = '<div class="loading">Loading...</div>';
   modal.style.display = "flex";
   modal.classList.remove("hidden");
@@ -4876,11 +4881,10 @@ async function viewFollowers(userId) {
     return;
   }
   const totalFollowersCount = userDoc.exists() ? (userDoc.data().followerCount || 0) : 0;
-  const totalFollowingCount = userDoc.exists() ? (userDoc.data().followingCount || 0) : 0; // New field
+  const totalFollowingCount = userDoc.exists() ? (userDoc.data().followingCount || 0) : 0;
   console.log("Total followers from followerCount:", totalFollowersCount);
   console.log("Total following from followingCount:", totalFollowingCount);
 
-  // Update tab labels
   followersTabBtn.textContent = `Followers: ${totalFollowersCount}`;
   followingTabBtn.textContent = `Following: ${totalFollowingCount}`;
 
@@ -4890,25 +4894,29 @@ async function viewFollowers(userId) {
     followersTabBtn.classList.add("active");
     followingTabBtn.classList.remove("active");
     followersSearchInput.value = "";
+    searchTerm = "";
     loadFollowersTab(userId, totalFollowersCount);
   };
   followingTabBtn.onclick = () => {
     followingTabBtn.classList.add("active");
     followersTabBtn.classList.remove("active");
     followersSearchInput.value = "";
-    loadFollowingTab(userId, totalFollowingCount); // Pass following count
+    searchTerm = "";
+    loadFollowingTab(userId, totalFollowingCount);
   };
 
   followersSearchInput.oninput = debounce((e) => {
+    searchTerm = e.target.value;
     if (followersTabBtn.classList.contains("active")) {
-      searchFollowers(userId, e.target.value, totalFollowersCount);
+      searchFollowers(userId, searchTerm, totalFollowersCount);
     } else {
-      searchFollowing(userId, e.target.value, totalFollowingCount);
+      searchFollowing(userId, searchTerm, totalFollowingCount);
     }
   }, 300);
   document.getElementById("closeFollowersBtn").addEventListener("click", () => closeModal("viewFollowersModal"));
 }
 
+// Load Followers Tab
 async function loadFollowersTab(userId, totalFollowersCount) {
   const followersContent = document.getElementById("followersList");
   const followersRef = collection(db, "users", userId, "followers");
@@ -4929,7 +4937,8 @@ async function loadFollowersTab(userId, totalFollowersCount) {
   await loadFollowersBatch(userId, snapshot, true, totalFollowersCount);
 }
 
-async function loadFollowingTab(userId, totalFollowingCount) { // Added totalFollowingCount
+// Load Following Tab
+async function loadFollowingTab(userId, totalFollowingCount) {
   const followersContent = document.getElementById("followersList");
   const followingRef = collection(db, "users", userId, "following");
   const q = query(followingRef, limit(FOLLOWERS_PAGE_SIZE));
@@ -4949,6 +4958,7 @@ async function loadFollowingTab(userId, totalFollowingCount) { // Added totalFol
   await loadFollowingBatch(userId, snapshot, true, totalFollowingCount);
 }
 
+// Load Followers Batch
 async function loadFollowersBatch(userId, snapshot, reset = false, totalFollowersCount) {
   const followersContent = document.getElementById("followersList");
   const currentUser = auth.currentUser;
@@ -4960,7 +4970,7 @@ async function loadFollowersBatch(userId, snapshot, reset = false, totalFollower
 
   if (snapshot.empty && followersContent.querySelectorAll(".user-item").length === 0) {
     followersContent.innerHTML = "<p>No followers yet!</p>";
-    updateFollowersPaginationButtons(0, 0);
+    updateFollowersPaginationButtons(userId, totalFollowersCount, 0);
     return;
   }
 
@@ -4977,7 +4987,6 @@ async function loadFollowersBatch(userId, snapshot, reset = false, totalFollower
       followerDiv.innerHTML = `
         <span class="username" data-uid="${followerId}">${username}</span>
         <div class="action-buttons">
-          <!-- Removed Remove Follower button -->
         </div>
       `;
       followersContent.appendChild(followerDiv);
@@ -4993,9 +5002,10 @@ async function loadFollowersBatch(userId, snapshot, reset = false, totalFollower
 
   lastFollowersCursor = snapshot.docs.length === FOLLOWERS_PAGE_SIZE ? snapshot.docs[snapshot.docs.length - 1] : null;
   const loadedFollowerCount = followersContent.querySelectorAll(".user-item").length;
-  updateFollowersPaginationButtons(totalFollowersCount, loadedFollowerCount);
+  updateFollowersPaginationButtons(userId, totalFollowersCount, loadedFollowerCount);
 }
 
+// Load Following Batch
 async function loadFollowingBatch(userId, snapshot, reset = false, totalFollowingCount) {
   const followersContent = document.getElementById("followersList");
   const currentUser = auth.currentUser;
@@ -5007,7 +5017,7 @@ async function loadFollowingBatch(userId, snapshot, reset = false, totalFollowin
 
   if (snapshot.empty && followersContent.querySelectorAll(".user-item").length === 0) {
     followersContent.innerHTML = "<p>You aren't following anyone yet!</p>";
-    updateFollowingPaginationButtons(0, 0);
+    updateFollowingPaginationButtons(userId, totalFollowingCount, 0);
     return;
   }
 
@@ -5025,7 +5035,6 @@ async function loadFollowingBatch(userId, snapshot, reset = false, totalFollowin
         <span class="username" data-uid="${followingId}">${username}</span>
         <div class="action-buttons">
           <button class="action-btn activities-btn" data-uid="${followingId}">User Communities</button>
-          <!-- Removed Remove Follower button -->
         </div>
       `;
       followersContent.appendChild(followingDiv);
@@ -5045,22 +5054,99 @@ async function loadFollowingBatch(userId, snapshot, reset = false, totalFollowin
 
   lastFollowingCursor = snapshot.docs.length === FOLLOWERS_PAGE_SIZE ? snapshot.docs[snapshot.docs.length - 1] : null;
   const loadedFollowingCount = followersContent.querySelectorAll(".user-item").length;
-  updateFollowingPaginationButtons(totalFollowingCount, loadedFollowingCount);
+  updateFollowingPaginationButtons(userId, totalFollowingCount, loadedFollowingCount);
 }
 
-function updateFollowersPaginationButtons(totalFollowersCount, loadedFollowerCount) {
+// Search Followers
+async function searchFollowers(userId, searchTerm, totalFollowersCount) {
+  const followersContent = document.getElementById("followersList");
+
+  followersContent.innerHTML = '<div class="loading">Searching...</div>';
+
+  if (!searchTerm) {
+    lastFollowersCursor = null;
+    lastSearchFollowersCursor = null;
+    return loadFollowersTab(userId, totalFollowersCount);
+  }
+
+  const followersRef = collection(db, "users", userId, "followers");
+  const q = query(
+    followersRef,
+    orderBy("username"), // Required for startAfter
+    where("username", ">=", searchTerm.toLowerCase()),
+    where("username", "<=", searchTerm.toLowerCase() + '\uf8ff'),
+    limit(FOLLOWERS_PAGE_SIZE)
+  );
+  let snapshot;
+  try {
+    snapshot = await getDocs(q);
+  } catch (error) {
+    console.error("Error searching followers:", error);
+    followersContent.innerHTML = "<p>Failed to search followers.</p>";
+    return;
+  }
+
+  followersArray = snapshot.docs.map(doc => ({
+    uid: doc.data().followerId,
+    username: doc.data().username || "Unknown"
+  }));
+  console.log(`Search filtered followers: ${followersArray.length} matches for "${searchTerm}"`);
+
+  await loadSearchFollowersBatch(userId, snapshot, true, totalFollowersCount);
+}
+
+// Search Following
+async function searchFollowing(userId, searchTerm, totalFollowingCount) {
+  const followersContent = document.getElementById("followersList");
+
+  followersContent.innerHTML = '<div class="loading">Searching...</div>';
+
+  if (!searchTerm) {
+    lastFollowingCursor = null;
+    lastSearchFollowingCursor = null;
+    return loadFollowingTab(userId, totalFollowingCount);
+  }
+
+  const followingRef = collection(db, "users", userId, "following");
+  const q = query(
+    followingRef,
+    orderBy("username"), // Required for startAfter
+    where("username", ">=", searchTerm.toLowerCase()),
+    where("username", "<=", searchTerm.toLowerCase() + '\uf8ff'),
+    limit(FOLLOWERS_PAGE_SIZE)
+  );
+  let snapshot;
+  try {
+    snapshot = await getDocs(q);
+  } catch (error) {
+    console.error("Error searching following:", error);
+    followersContent.innerHTML = "<p>Failed to search following.</p>";
+    return;
+  }
+
+  followingArray = snapshot.docs.map(doc => ({
+    uid: doc.data().followingId,
+    username: doc.data().username || "Unknown"
+  }));
+  console.log(`Search filtered following: ${followingArray.length} matches for "${searchTerm}"`);
+
+  await loadSearchFollowingBatch(userId, snapshot, true, totalFollowingCount);
+}
+
+// Pagination Buttons
+function updateFollowersPaginationButtons(userId, totalCount, loadedCount) {
   const followersContent = document.getElementById("followersList");
   const existingMoreBtn = followersContent.querySelector("#seeMoreFollowersBtn");
   const existingLessBtn = followersContent.querySelector("#seeLessFollowersBtn");
   if (existingMoreBtn) existingMoreBtn.remove();
   if (existingLessBtn) existingLessBtn.remove();
 
-  if (totalFollowersCount > 0 && loadedFollowerCount > 0) {
+  if (totalCount > 0 && loadedCount > 0) {
     const seeMore = document.createElement("button");
     seeMore.id = "seeMoreFollowersBtn";
     seeMore.textContent = "See More";
     seeMore.className = "see-more-btn";
-    seeMore.style.display = totalFollowersCount > loadedFollowerCount ? "block" : "none";
+    seeMore.style.display = totalCount > loadedCount ? "block" : "none";
     seeMore.onclick = async () => {
       const followersRef = collection(db, "users", userId, "followers");
       const q = query(followersRef, startAfter(lastFollowersCursor), limit(FOLLOWERS_PAGE_SIZE));
@@ -5069,34 +5155,34 @@ function updateFollowersPaginationButtons(totalFollowersCount, loadedFollowerCou
         uid: doc.data().followerId,
         username: doc.data().username || "Unknown"
       })));
-      await loadFollowersBatch(userId, nextSnapshot, false, totalFollowersCount);
+      await loadFollowersBatch(userId, nextSnapshot, false, totalCount);
     };
 
     const seeLess = document.createElement("button");
     seeLess.id = "seeLessFollowersBtn";
     seeLess.textContent = "See Less";
     seeLess.className = "see-less-btn";
-    seeLess.style.display = loadedFollowerCount > FOLLOWERS_PAGE_SIZE ? "block" : "none";
-    seeLess.onclick = () => loadFollowersTab(userId, totalFollowersCount);
+    seeLess.style.display = loadedCount > FOLLOWERS_PAGE_SIZE ? "block" : "none";
+    seeLess.onclick = () => loadFollowersTab(userId, totalCount);
 
     followersContent.appendChild(seeMore);
     followersContent.appendChild(seeLess);
   }
 }
 
-function updateFollowingPaginationButtons(totalFollowingCount, loadedFollowingCount) {
+function updateFollowingPaginationButtons(userId, totalCount, loadedCount) {
   const followersContent = document.getElementById("followersList");
   const existingMoreBtn = followersContent.querySelector("#seeMoreFollowingBtn");
   const existingLessBtn = followersContent.querySelector("#seeLessFollowingBtn");
   if (existingMoreBtn) existingMoreBtn.remove();
   if (existingLessBtn) existingLessBtn.remove();
 
-  if (totalFollowingCount > 0 && loadedFollowingCount > 0) {
+  if (totalCount > 0 && loadedCount > 0) {
     const seeMore = document.createElement("button");
     seeMore.id = "seeMoreFollowingBtn";
     seeMore.textContent = "See More";
     seeMore.className = "see-more-btn";
-    seeMore.style.display = totalFollowingCount > loadedFollowingCount ? "block" : "none";
+    seeMore.style.display = totalCount > loadedCount ? "block" : "none";
     seeMore.onclick = async () => {
       const followingRef = collection(db, "users", userId, "following");
       const q = query(followingRef, startAfter(lastFollowingCursor), limit(FOLLOWERS_PAGE_SIZE));
@@ -5105,19 +5191,171 @@ function updateFollowingPaginationButtons(totalFollowingCount, loadedFollowingCo
         uid: doc.data().followingId,
         username: doc.data().username || "Unknown"
       })));
-      await loadFollowingBatch(userId, nextSnapshot, false, totalFollowingCount);
+      await loadFollowingBatch(userId, nextSnapshot, false, totalCount);
     };
 
     const seeLess = document.createElement("button");
     seeLess.id = "seeLessFollowingBtn";
     seeLess.textContent = "See Less";
     seeLess.className = "see-less-btn";
-    seeLess.style.display = loadedFollowingCount > FOLLOWERS_PAGE_SIZE ? "block" : "none";
-    seeLess.onclick = () => loadFollowingTab(userId, totalFollowingCount);
+    seeLess.style.display = loadedCount > FOLLOWERS_PAGE_SIZE ? "block" : "none";
+    seeLess.onclick = () => loadFollowingTab(userId, totalCount);
 
     followersContent.appendChild(seeMore);
     followersContent.appendChild(seeLess);
   }
+}
+
+// Search Pagination Buttons
+function updateSearchFollowerButtons(userId, totalCount, loadedCount, type) {
+  const followersContent = document.getElementById("followersList");
+  const prefix = type === "followers" ? "Followers" : "Following";
+  const existingMoreBtn = followersContent.querySelector(`#seeMore${prefix}Btn`);
+  const existingLessBtn = followersContent.querySelector(`#seeLess${prefix}Btn`);
+  if (existingMoreBtn) existingMoreBtn.remove();
+  if (existingLessBtn) existingLessBtn.remove();
+
+  if (loadedCount > 0) { // Only show buttons if there’s something loaded
+    const seeMore = document.createElement("button");
+    seeMore.id = `seeMore${prefix}Btn`;
+    seeMore.textContent = "See More";
+    seeMore.className = "see-more-btn";
+    const hasMore = lastSearchFollowersCursor || lastSearchFollowingCursor; // Check if there’s a cursor for more
+    seeMore.style.display = hasMore ? "block" : "none"; // Only show if more to fetch
+    seeMore.onclick = async () => {
+      const ref = type === "followers" ? collection(db, "users", userId, "followers") : collection(db, "users", userId, "following");
+      const cursor = type === "followers" ? lastSearchFollowersCursor : lastSearchFollowingCursor;
+      const q = query(
+        ref,
+        orderBy("username"), // Match orderBy with initial query
+        where("username", ">=", searchTerm.toLowerCase()),
+        where("username", "<=", searchTerm.toLowerCase() + '\uf8ff'),
+        startAfter(cursor),
+        limit(FOLLOWERS_PAGE_SIZE)
+      );
+      const nextSnapshot = await getDocs(q);
+      const nextBatch = nextSnapshot.docs.map(doc => ({
+        uid: doc.data()[type === "followers" ? "followerId" : "followingId"],
+        username: doc.data().username || "Unknown"
+      }));
+      if (type === "followers") {
+        followersArray = followersArray.concat(nextBatch);
+        await loadSearchFollowersBatch(userId, nextSnapshot, false, totalCount);
+      } else {
+        followingArray = followingArray.concat(nextBatch);
+        await loadSearchFollowingBatch(userId, nextSnapshot, false, totalCount);
+      }
+    };
+
+    const seeLess = document.createElement("button");
+    seeLess.id = `seeLess${prefix}Btn`;
+    seeLess.textContent = "See Less";
+    seeLess.className = "see-less-btn";
+    seeLess.style.display = loadedCount > FOLLOWERS_PAGE_SIZE ? "block" : "none";
+    seeLess.onclick = () => type === "followers" ? loadFollowersTab(userId, totalFollowersCount) : loadFollowingTab(userId, totalFollowingCount);
+
+    followersContent.appendChild(seeMore);
+    followersContent.appendChild(seeLess);
+  }
+}
+
+// Helper: Load Search Followers Batch
+async function loadSearchFollowersBatch(userId, snapshot, reset = false, totalFollowersCount) {
+  const followersContent = document.getElementById("followersList");
+  const currentUser = auth.currentUser;
+
+  if (reset) {
+    followersContent.innerHTML = "";
+  }
+
+  if (snapshot.empty && followersContent.querySelectorAll(".user-item").length === 0) {
+    followersContent.innerHTML = "<p>No matching followers found.</p>";
+    updateSearchFollowerButtons(userId, totalFollowersCount, 0, "followers");
+    return;
+  }
+
+  followersContent.innerHTML = reset ? "" : followersContent.innerHTML;
+  snapshot.docs.forEach(doc => {
+    const followerData = doc.data();
+    const followerId = followerData.followerId;
+    const username = followerData.username || "Unknown";
+    const itemId = `follower-${followerId}`;
+    if (!document.getElementById(itemId)) {
+      const isSelf = userId === currentUser.uid;
+      const followerDiv = document.createElement("div");
+      followerDiv.className = "user-item";
+      followerDiv.id = itemId;
+      followerDiv.innerHTML = `
+        <span class="username" data-uid="${followerId}">${username}</span>
+        <div class="action-buttons">
+        </div>
+      `;
+      followersContent.appendChild(followerDiv);
+      followerDiv.style.opacity = 0;
+      setTimeout(() => {
+        followerDiv.style.transition = "opacity 0.3s ease";
+        followerDiv.style.opacity = 1;
+      }, 10);
+
+      followerDiv.querySelector(`.username[data-uid="${followerId}"]`).addEventListener("click", () => viewProfile(followerId));
+    }
+  });
+
+  lastSearchFollowersCursor = snapshot.docs.length === FOLLOWERS_PAGE_SIZE ? snapshot.docs[snapshot.docs.length - 1] : null;
+  const loadedFollowerCount = followersContent.querySelectorAll(".user-item").length;
+  updateSearchFollowerButtons(userId, totalFollowersCount, loadedFollowerCount, "followers");
+}
+
+// Helper: Load Search Following Batch
+async function loadSearchFollowingBatch(userId, snapshot, reset = false, totalFollowingCount) {
+  const followersContent = document.getElementById("followersList");
+  const currentUser = auth.currentUser;
+
+  if (reset) {
+    followersContent.innerHTML = "";
+  }
+
+  if (snapshot.empty && followersContent.querySelectorAll(".user-item").length === 0) {
+    followersContent.innerHTML = "<p>No matching following found.</p>";
+    updateSearchFollowerButtons(userId, totalFollowingCount, 0, "following");
+    return;
+  }
+
+  followersContent.innerHTML = reset ? "" : followersContent.innerHTML;
+  snapshot.docs.forEach(doc => {
+    const followingData = doc.data();
+    const followingId = followingData.followingId;
+    const username = followingData.username || "Unknown";
+    const itemId = `following-${followingId}`;
+    if (!document.getElementById(itemId)) {
+      const isSelf = userId === currentUser.uid;
+      const followingDiv = document.createElement("div");
+      followingDiv.className = "user-item";
+      followingDiv.id = itemId;
+      followingDiv.innerHTML = `
+        <span class="username" data-uid="${followingId}">${username}</span>
+        <div class="action-buttons">
+          <button class="action-btn activities-btn" data-uid="${followingId}">User Communities</button>
+        </div>
+      `;
+      followersContent.appendChild(followingDiv);
+      followingDiv.style.opacity = 0;
+      setTimeout(() => {
+        followingDiv.style.transition = "opacity 0.3s ease";
+        followingDiv.style.opacity = 1;
+      }, 10);
+
+      followingDiv.querySelector(`.username[data-uid="${followingId}"]`).addEventListener("click", () => viewProfile(followingId));
+      const activitiesBtn = followingDiv.querySelector(".activities-btn");
+      if (activitiesBtn) {
+        activitiesBtn.addEventListener("click", () => viewUserActivities(followingId));
+      }
+    }
+  });
+
+  lastSearchFollowingCursor = snapshot.docs.length === FOLLOWERS_PAGE_SIZE ? snapshot.docs[snapshot.docs.length - 1] : null;
+  const loadedFollowingCount = followersContent.querySelectorAll(".user-item").length;
+  updateSearchFollowerButtons(userId, totalFollowingCount, loadedFollowingCount, "following");
 }
 
 async function removeFollower(userId, followerId, profileUid) {
@@ -5321,7 +5559,7 @@ async function loadBannedBatch(bannedUsers, reset = false) {
       bannedDiv.className = "user-item";
       bannedDiv.id = itemId;
       bannedDiv.innerHTML = `
-        <img src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" alt="Profile">
+        <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" alt="Profile">
         <span class="username" data-uid="${doc.id}">${userData.name}</span>
         <button class="remove-member-btn" data-uid="${doc.id}">Remove as Member</button>
         <button class="unban-btn" data-uid="${doc.id}">Unban</button>
@@ -5427,7 +5665,7 @@ async function searchBanned(bannedUsers, searchTerm) {
         bannedDiv.className = "user-item";
         bannedDiv.id = itemId;
         bannedDiv.innerHTML = `
-          <img src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" alt="Profile">
+          <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" alt="Profile">
           <span class="username" data-uid="${doc.id}">${userData.name}</span>
           <button class="unban-btn" id="unban-${doc.id}">Unban</button>
         `;
