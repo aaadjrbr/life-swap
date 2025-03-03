@@ -7,6 +7,21 @@ body {
   overflow-y: auto;
 }
 
+body.deleting::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+}
+
+#delete-status::before {
+  content: "⏳ "; /* Or use a CSS animation for a spinner */
+}
+
 .community-page {
   padding: 10px;
   max-width: 800px;
@@ -138,6 +153,10 @@ input, textarea {
   box-sizing: border-box;
 }
 
+button.like-btn {
+  padding: 5px 10px;
+}
+
 /* Buttons */
 button {
   padding: 10px 20px;
@@ -158,6 +177,62 @@ button:disabled {
   cursor: not-allowed;
 }
 
+#delete-status {
+  display: none;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: #333;
+  color: #fff;
+  padding: 20px 30px;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  font-family: Arial, sans-serif;
+  font-size: 18px;
+  text-align: center;
+  z-index: 1000;
+  max-width: 80%;
+  word-wrap: break-word;
+  opacity: 0.9;
+  transition: all 0.3s ease;
+}
+
+@keyframes pulse {
+  0% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.05); }
+  100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+#delete-status.deleting {
+  display: block;
+  animation: pulse 1.5s infinite;
+}
+
+#delete-status.success {
+  display: block;
+  background-color: #28a745;
+  animation: none;
+}
+
+#delete-status.error {
+  display: block;
+  background-color: #dc3545;
+  animation: none;
+}
+
+/* Optional: Success state */
+#delete-status.success {
+  background-color: #28a745; /* Green for success */
+  animation: none; /* Stop pulsing */
+}
+
+/* Optional: Error state */
+#delete-status.error {
+  background-color: #dc3545; /* Red for error */
+  animation: none; /* Stop pulsing */
+}
+
 .copy-btn {
   background: #28a745;
   padding: 5px 10px;
@@ -170,6 +245,7 @@ button:disabled {
 
 .delete-btn {
   background: #dc3545;
+  padding: 5px 10px;
 }
 
 .delete-btn:hover {
