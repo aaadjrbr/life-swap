@@ -528,6 +528,15 @@ button#viewRequestsBtn {
   border-radius: 15px;
   padding: 10px;
   max-width: 80%;
+  opacity: 1;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.comments-div { /* Add this class to your comments div via JS or HTML */
+  opacity: 1;
+}
+.comments-div.fade {
+  opacity: 0;
 }
 
 .comment-content {
@@ -1670,4 +1679,33 @@ cursor: pointer;
 .copy-id-btn {
   margin-left: 5px;
   padding: 2px 5px;
+}
+
+.skeleton {
+  background: #e0e0e0;
+  border-radius: 8px;
+  animation: pulse 1.5s infinite;
+}
+.skeleton-photo {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #d0d0d0;
+}
+.skeleton-line {
+  height: 10px;
+  background: #d0d0d0;
+  margin: 5px 0;
+  border-radius: 4px;
+}
+.skeleton-line.username {
+  width: 100px;
+}
+.skeleton-line.short {
+  width: 60px;
+}
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
 }

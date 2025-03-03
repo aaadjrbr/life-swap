@@ -79,6 +79,9 @@ let isSearching = false; // Flag to track if we're in search mode
 let postCache = new Map(); // Add this near your other globals (e.g., after userDataCache)
 const POSTS_PER_LOAD = 20; // Bigger batch size
 let isFetching = false; 
+let allNotifications = [];
+let lastDoc = null;
+let displayedCount = 0;
 
 const categoryDisplayMap = {
 "clothing_accessories": "Clothing & Accessories",
@@ -4203,9 +4206,6 @@ communityFilter.appendChild(option);
 });
 
 const ITEMS_PER_PAGE = 10;
-let allNotifications = [];
-let lastDoc = null;
-let displayedCount = 0;
 
 const initialCount = await updateNotificationBadge(userId, false);
 modalCount.textContent = initialCount;

@@ -178,45 +178,71 @@ async function showTagSuggestions(textarea, postId) {
     const commData = await getCommData();
     const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
   
-    if (!commentsDiv.dataset.loaded) {
-      commentsDiv.style.display = "block";
-      toggleLink.textContent = "Hide comments";
-      commentsDiv.innerHTML = '<div class="loading">Loading...</div>';
+    const totalCommentsCount = await totalComments(postId);
   
+    if (!commentsDiv.dataset.loaded) {
+      // Show the div with skeletons immediately
+      commentsDiv.style.display = "block"; // Visible from the start
+      toggleLink.textContent = "Hide comments";
+  
+      // Add skeleton placeholders right away
+      commentsDiv.innerHTML = "";
+      for (let i = 0; i < Math.min(itemsPerPage, totalCommentsCount); i++) {
+        const skeleton = document.createElement("div");
+        skeleton.className = "comment-bubble skeleton";
+        skeleton.innerHTML = `
+          <div class="comment-content">
+            <div class="profile-photo skeleton-photo"></div>
+            <div class="comment-text">
+              <div class="skeleton-line username"></div>
+              <div class="skeleton-line"></div>
+              <div class="skeleton-line short"></div>
+            </div>
+          </div>
+        `;
+        commentsDiv.appendChild(skeleton);
+      }
+  
+      // Fetch and prepare real comments in the background
       const q = query(
         collection(db, "communities", communityId, "posts", postId, "comments"),
         orderBy("createdAt", "desc"),
         limit(itemsPerPage)
       );
       const snapshot = await getDocs(q);
-      commentsDiv.innerHTML = "";
   
+      // Use a fragment to batch the real comments
+      const fragment = document.createDocumentFragment();
       let lastCommentDoc = snapshot.docs[snapshot.docs.length - 1];
-      const totalCommentsCount = await totalComments(postId);
-  
       for (const doc of snapshot.docs) {
-        await renderComment(doc, commentsDiv, postId, isAdmin);
+        const commentEl = await renderComment(doc, null, postId, isAdmin, true); // Return element only
+        fragment.appendChild(commentEl);
       }
   
+      // Replace skeletons with real comments all at once
+      commentsDiv.innerHTML = ""; // Clear skeletons
+      commentsDiv.appendChild(fragment); // Add real comments
+  
+      // Add "See more" button if needed
       if (commentsDiv.children.length < totalCommentsCount) {
         const seeMoreBtn = document.createElement("button");
         seeMoreBtn.textContent = "See more comments";
         seeMoreBtn.className = "see-more-btn";
         seeMoreBtn.dataset.postId = postId;
-        seeMoreBtn.dataset.lastDocId = lastCommentDoc ? lastCommentDoc.id : "";
+        seeMoreBtn.dataset.lastDocId = lastCommentDoc?.id || "";
         seeMoreBtn.addEventListener("click", loadMoreComments);
         commentsDiv.appendChild(seeMoreBtn);
       }
   
       commentsDiv.dataset.loaded = "true";
       commentsDiv.dataset.totalComments = totalCommentsCount;
-      toggleLink.textContent = `${totalCommentsCount} comments`;
+      // No need to toggle display here—it’s already visible
     } else if (commentsDiv.style.display === "none") {
       commentsDiv.style.display = "block";
       toggleLink.textContent = "Hide comments";
     } else {
       commentsDiv.style.display = "none";
-      toggleLink.textContent = `${commentsDiv.dataset.totalComments || await totalComments(postId)} comments`;
+      toggleLink.textContent = `${totalCommentsCount} comments`;
     }
   }
   
@@ -228,10 +254,28 @@ async function showTagSuggestions(textarea, postId) {
     const commData = await getCommData();
     const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
   
-    seeMoreBtn.textContent = "Loading...";
-    seeMoreBtn.disabled = true;
+    // Replace button with skeletons immediately
+    seeMoreBtn.remove(); // Remove button first
+    const skeletonContainer = document.createElement("div");
+    skeletonContainer.className = "skeleton-container";
+    for (let i = 0; i < itemsPerPage; i++) {
+      const skeleton = document.createElement("div");
+      skeleton.className = "comment-bubble skeleton";
+      skeleton.innerHTML = `
+        <div class="comment-content">
+          <div class="profile-photo skeleton-photo"></div>
+          <div class="comment-text">
+            <div class="skeleton-line username"></div>
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line short"></div>
+          </div>
+        </div>
+      `;
+      skeletonContainer.appendChild(skeleton);
+    }
+    commentsDiv.appendChild(skeletonContainer);
   
-    // Fetch the last doc we loaded
+    // Fetch next batch
     let lastDoc = null;
     if (lastDocId) {
       lastDoc = await getDoc(doc(db, "communities", communityId, "posts", postId, "comments", lastDocId));
@@ -245,16 +289,19 @@ async function showTagSuggestions(textarea, postId) {
     );
     const snapshot = await getDocs(q);
   
-    // Remove the old button
-    seeMoreBtn.remove();
-  
-    // Append new comments
+    // Prepare real comments in a fragment
+    const fragment = document.createDocumentFragment();
+    let lastCommentDoc = snapshot.docs[snapshot.docs.length - 1];
     for (const doc of snapshot.docs) {
-      await renderComment(doc, commentsDiv, postId, isAdmin);
+      const commentEl = await renderComment(doc, null, postId, isAdmin, true); // Return element only
+      fragment.appendChild(commentEl);
     }
   
-    // Update last doc and check if more remain
-    const lastCommentDoc = snapshot.docs[snapshot.docs.length - 1];
+    // Swap skeletons with real comments
+    skeletonContainer.remove();
+    commentsDiv.appendChild(fragment);
+  
+    // Add new "See more" button if needed
     const totalCommentsCount = parseInt(commentsDiv.dataset.totalComments, 10);
     if (commentsDiv.children.length < totalCommentsCount) {
       const newSeeMoreBtn = document.createElement("button");
@@ -266,11 +313,11 @@ async function showTagSuggestions(textarea, postId) {
       commentsDiv.appendChild(newSeeMoreBtn);
     }
   
-    // Update toggle link count (just in case)
+    // Update toggle link
     document.getElementById(`toggleComments-${postId}`).textContent = `${totalCommentsCount} comments`;
   }
   
-  async function renderComment(doc, commentsDiv, postId, isAdmin) {
+  async function renderComment(doc, container, postId, isAdmin, returnOnly = false) {
     const comment = doc.data();
     const userData = await fetchUserData(comment.userId);
     const commData = await getCommData();
@@ -278,9 +325,7 @@ async function showTagSuggestions(textarea, postId) {
   
     const commentText = await processMentions(comment.text);
     const timestamp = new Date(comment.createdAt.toDate()).toLocaleString();
-    const repliesQ = query(collection(db, "communities", communityId, "posts", postId, "comments", doc.id, "replies"), orderBy("createdAt", "desc"));
-    const repliesSnapshot = await getDocs(repliesQ);
-    const replyCount = repliesSnapshot.size;
+    const replyCount = await totalReplies(postId, doc.id); // Use totalReplies instead of separate query
   
     const commentDiv = document.createElement("div");
     commentDiv.className = "comment-bubble";
@@ -306,21 +351,19 @@ async function showTagSuggestions(textarea, postId) {
         <button type="submit">Reply</button>
       </form>
     `;
-    commentsDiv.appendChild(commentDiv);
   
-    // Add click listeners to all username elements (including mentions)
-    commentDiv.querySelectorAll(`.username`).forEach(el => {
+    // Event listeners unchanged
+    commentDiv.querySelectorAll(".username").forEach(el => {
       const uid = el.dataset.uid;
       el.addEventListener("click", () => viewProfile(uid));
     });
-    commentDiv.querySelectorAll(`.mention`).forEach(el => {
+    commentDiv.querySelectorAll(".mention").forEach(el => {
       const uid = el.dataset.uid;
       el.addEventListener("click", (e) => {
         e.preventDefault();
         viewProfile(uid);
       });
     });
-  
     const replyBtn = commentDiv.querySelector(`#replyBtn-${doc.id}`);
     replyBtn.addEventListener("click", () => {
       const replyForm = commentDiv.querySelector(`#replyForm-${doc.id}`);
@@ -331,11 +374,11 @@ async function showTagSuggestions(textarea, postId) {
       e.preventDefault();
       addReply(postId, doc.id, comment.userId);
     });
-    commentDiv.querySelector(`.cancel-reply`).addEventListener("click", () => {
+    commentDiv.querySelector(".cancel-reply").addEventListener("click", () => {
       commentDiv.querySelector(`#replyForm-${doc.id}`).classList.add("hidden");
     });
     const toggleReplies = commentDiv.querySelector(`#toggleReplies-${doc.id}`);
-    if (toggleReplies) { // This will always be true now
+    if (toggleReplies) {
       toggleReplies.addEventListener("click", (e) => {
         e.preventDefault();
         toggleRepliesFn(postId, doc.id);
@@ -345,6 +388,9 @@ async function showTagSuggestions(textarea, postId) {
     if (deleteBtn) {
       deleteBtn.addEventListener("click", () => deleteComment(postId, doc.id));
     }
+  
+    if (!returnOnly && container) container.appendChild(commentDiv);
+    return commentDiv;
   }
   
   async function toggleRepliesFn(postId, commentId) {
@@ -354,9 +400,23 @@ async function showTagSuggestions(textarea, postId) {
     const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
   
     if (!repliesDiv.dataset.loaded) {
+      // Show skeletons immediately
       repliesDiv.style.display = "block";
       toggleLink.textContent = "Hide replies";
-      repliesDiv.innerHTML = '<div class="loading">Loading...</div>';
+  
+      repliesDiv.innerHTML = "";
+      for (let i = 0; i < Math.min(itemsPerPage, await totalReplies(postId, commentId)); i++) {
+        const skeleton = document.createElement("div");
+        skeleton.className = "reply-bubble skeleton";
+        skeleton.innerHTML = `
+          <div class="profile-photo skeleton-photo"></div>
+          <div class="reply-text">
+            <div class="skeleton-line username"></div>
+            <div class="skeleton-line"></div>
+          </div>
+        `;
+        repliesDiv.appendChild(skeleton);
+      }
   
       const q = query(
         collection(db, "communities", communityId, "posts", postId, "comments", commentId, "replies"),
@@ -364,26 +424,29 @@ async function showTagSuggestions(textarea, postId) {
         limit(itemsPerPage)
       );
       const snapshot = await getDocs(q);
-      repliesDiv.innerHTML = "";
   
+      const fragment = document.createDocumentFragment();
       let lastReplyDoc = snapshot.docs[snapshot.docs.length - 1];
-      const totalRepliesCount = await totalReplies(postId, commentId);
-  
       for (const doc of snapshot.docs) {
-        await renderReply(doc, repliesDiv, postId, commentId, isAdmin);
+        const replyEl = await renderReply(doc, null, postId, commentId, isAdmin, true);
+        fragment.appendChild(replyEl);
       }
   
-      if (repliesDiv.children.length < totalRepliesCount) {
+      repliesDiv.innerHTML = "";
+      repliesDiv.appendChild(fragment);
+  
+      if (repliesDiv.children.length < await totalReplies(postId, commentId)) {
         const seeMoreBtn = document.createElement("button");
         seeMoreBtn.textContent = "See more replies";
         seeMoreBtn.className = "see-more-btn";
         seeMoreBtn.dataset.postId = postId;
         seeMoreBtn.dataset.commentId = commentId;
-        seeMoreBtn.dataset.lastDocId = lastReplyDoc ? lastReplyDoc.id : "";
+        seeMoreBtn.dataset.lastDocId = lastReplyDoc?.id || "";
         seeMoreBtn.addEventListener("click", loadMoreReplies);
         repliesDiv.appendChild(seeMoreBtn);
       }
   
+      const totalRepliesCount = await totalReplies(postId, commentId); // Fetch fresh count
       repliesDiv.dataset.loaded = "true";
       repliesDiv.dataset.totalReplies = totalRepliesCount;
     } else if (repliesDiv.style.display === "none") {
@@ -391,7 +454,9 @@ async function showTagSuggestions(textarea, postId) {
       toggleLink.textContent = "Hide replies";
     } else {
       repliesDiv.style.display = "none";
-      toggleLink.textContent = `View ${repliesDiv.dataset.totalReplies} replies`;
+      const totalRepliesCount = await totalReplies(postId, commentId); // Fetch fresh count on hide
+      repliesDiv.dataset.totalReplies = totalRepliesCount;
+      toggleLink.textContent = `View ${totalRepliesCount} replies`;
     }
   }
   
@@ -404,10 +469,25 @@ async function showTagSuggestions(textarea, postId) {
     const commData = await getCommData();
     const isAdmin = commData.admins?.includes(auth.currentUser.uid) || commData.creatorId === auth.currentUser.uid;
   
-    seeMoreBtn.textContent = "Loading...";
-    seeMoreBtn.disabled = true;
+    // Replace button with skeletons
+    seeMoreBtn.remove();
+    const skeletonContainer = document.createElement("div");
+    skeletonContainer.className = "skeleton-container";
+    for (let i = 0; i < itemsPerPage; i++) {
+      const skeleton = document.createElement("div");
+      skeleton.className = "reply-bubble skeleton";
+      skeleton.innerHTML = `
+        <div class="profile-photo skeleton-photo"></div>
+        <div class="reply-text">
+          <div class="skeleton-line username"></div>
+          <div class="skeleton-line"></div>
+        </div>
+      `;
+      skeletonContainer.appendChild(skeleton);
+    }
+    repliesDiv.appendChild(skeletonContainer);
   
-    // Fetch the last doc we loaded
+    // Fetch next batch
     let lastDoc = null;
     if (lastDocId) {
       lastDoc = await getDoc(doc(db, "communities", communityId, "posts", postId, "comments", commentId, "replies", lastDocId));
@@ -421,16 +501,19 @@ async function showTagSuggestions(textarea, postId) {
     );
     const snapshot = await getDocs(q);
   
-    // Remove the old button
-    seeMoreBtn.remove();
-  
-    // Append new replies
+    // Prepare replies in a fragment
+    const fragment = document.createDocumentFragment();
+    let lastReplyDoc = snapshot.docs[snapshot.docs.length - 1];
     for (const doc of snapshot.docs) {
-      await renderReply(doc, repliesDiv, postId, commentId, isAdmin);
+      const replyEl = await renderReply(doc, null, postId, commentId, isAdmin, true); // Return element only
+      fragment.appendChild(replyEl);
     }
   
-    // Update last doc and check if more remain
-    const lastReplyDoc = snapshot.docs[snapshot.docs.length - 1];
+    // Swap skeletons with real replies
+    skeletonContainer.remove();
+    repliesDiv.appendChild(fragment);
+  
+    // Add new "See more" button if needed
     const totalRepliesCount = parseInt(repliesDiv.dataset.totalReplies, 10);
     if (repliesDiv.children.length < totalRepliesCount) {
       const newSeeMoreBtn = document.createElement("button");
@@ -443,20 +526,18 @@ async function showTagSuggestions(textarea, postId) {
       repliesDiv.appendChild(newSeeMoreBtn);
     }
   
-    // Update toggle link count (just in case)
+    // Update toggle link
     const toggleLink = document.getElementById(`toggleReplies-${commentId}`);
     if (toggleLink) toggleLink.textContent = `View ${totalRepliesCount} replies`;
   }
   
-      async function renderReply(doc, repliesDiv, postId, commentId, isAdmin) {
+  async function renderReply(doc, repliesDiv, postId, commentId, isAdmin, returnOnly = false) {
     const reply = doc.data();
     const userData = await fetchUserData(reply.userId);
     const commData = await getCommData();
     const isReplyAdmin = commData.admins?.includes(reply.userId) || commData.creatorId === reply.userId;
   
-    // Process @mentions into clickable links
     const replyText = await processMentions(reply.text);
-  
     const timestamp = new Date(reply.createdAt.toDate()).toLocaleString();
   
     const replyDiv = document.createElement("div");
@@ -470,17 +551,15 @@ async function showTagSuggestions(textarea, postId) {
         ${isAdmin || reply.userId === auth.currentUser.uid ? `<button class="delete-reply-btn" id="deleteReply-${doc.id}">Delete</button>` : ""}
       </div>
     `;
-    repliesDiv.appendChild(replyDiv);
   
-    // Add click listeners to all username elements (including mentions)
-    replyDiv.querySelectorAll(`.username`).forEach(el => {
+    replyDiv.querySelectorAll(".username").forEach(el => {
       const uid = el.dataset.uid;
       el.addEventListener("click", () => viewProfile(uid));
     });
-    replyDiv.querySelectorAll(`.mention`).forEach(el => {
+    replyDiv.querySelectorAll(".mention").forEach(el => {
       const uid = el.dataset.uid;
       el.addEventListener("click", (e) => {
-        e.preventDefault(); // Prevent the default <a> behavior
+        e.preventDefault();
         viewProfile(uid);
       });
     });
@@ -489,6 +568,9 @@ async function showTagSuggestions(textarea, postId) {
     if (deleteBtn) {
       deleteBtn.addEventListener("click", () => deleteReply(postId, commentId, doc.id));
     }
+  
+    if (!returnOnly && repliesDiv) repliesDiv.appendChild(replyDiv);
+    return replyDiv;
   }
   
       async function deleteComment(postId, commentId) {
