@@ -206,7 +206,13 @@ document.addEventListener("visibilitychange", () => {
 });
 
 document.getElementById("communityName").textContent = commData.name;
-const createdAt = commData.createdAt ? new Date(commData.createdAt.toDate()).toLocaleString() : "N/A";
+const createdAt = commData.createdAt 
+    ? new Date(commData.createdAt.toDate()).toLocaleString('en-US', { 
+        month: 'long', 
+        day: 'numeric', 
+        year: 'numeric' 
+    }) 
+    : "N/A";
 document.getElementById("createdAt").textContent = createdAt;
 const creatorData = await fetchUserData(commData.creatorId);
 document.getElementById("creatorName").textContent = creatorData.name || "Unknown";
