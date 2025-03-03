@@ -105,20 +105,32 @@
 }
 
 .chat-message.received {
-  background: #e9ecef;
+  background: #918d8d;
   color: #333;
   margin-right: auto;
 }
 
 .chat-message.received p {
-  color: #333 !important;
+  color: #ffffff !important;
+}
+
+#chatModal span.username {
+  color: #fff;
+  text-decoration: none;
 }
 
 .chat-message.auto {
-  background: #ffd700;
-  color: #333;
+  background: #99e79e;
   text-align: center;
   margin: 10px auto;
+}
+
+.chat-message.auto p {
+  color: #333 !important;
+}
+
+.chat-message.auto .timestamp {
+  color: rgba(255, 0, 0, 0.787);
 }
 
 .chat-message .timestamp {
@@ -196,7 +208,7 @@
 }
 
 .view-chats-modal {
-  z-index: 2000;
+  z-index: 1000;
   position: fixed;
   top: 0;
   left: 0;
@@ -287,4 +299,90 @@
 
 .chat-message a:hover {
   background-color: #005a8e; /* Darker blue on hover */
+}
+
+.chat-list-item.dummy {
+  opacity: 0.6;
+  animation: pulse 1.5s infinite; /* Optional loading animation */
+}
+
+.dummy-text {
+  background: #e0e0e0;
+  width: 150px;
+  height: 20px;
+  border-radius: 4px;
+}
+
+.unread-count.dummy-count {
+  background: #d0d0d0;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.chat-action-btn.dummy-btn {
+  background: #e0e0e0;
+  width: 60px;
+  height: 30px;
+  border: none;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 0.8; }
+  100% { opacity: 0.6; }
+}
+
+.loading-overlay2 {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.loading-text2 {
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  font-size: 16px;
+}
+
+#deleteProgress {
+  font-weight: bold;
+  color: #007bff; /* Blue for emphasis */
+}
+
+.chat-message.dummy {
+  opacity: 0.6;
+  animation: pulse 1.5s infinite;
+}
+
+.dummy-text {
+  background: #e0e0e0;
+  width: 70%;
+  height: 20px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.dummy-timestamp {
+  background: #d0d0d0;
+  width: 100px;
+  height: 12px;
+  border-radius: 2px;
+  display: block;
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 0.8; }
+  100% { opacity: 0.6; }
 }
