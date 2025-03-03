@@ -37,11 +37,11 @@
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  max-height: 400px; /* Adjust as needed */
+  max-height: 400px;
   padding: 10px;
   background: #f9f9f9;
   border-radius: 4px;
-  position: relative; /* Anchor suggestions inside */
+  position: relative; /* This is key for absolute kids like .chat-suggestions */
 }
 
 .message-container {
@@ -57,18 +57,19 @@
 
 .chat-suggestions {
   position: absolute;
-  top: 10px; /* Fixed at top of chat-messages */
+  bottom: 100%; /* Places the bottom of suggestions at the top of .chat-form */
   left: 50%;
-  transform: translateX(-50%); /* Center horizontally */
+  transform: translateX(-50%);
   background: #fff;
   border: 1px solid #ddd;
   border-radius: 4px;
   max-height: 200px;
   overflow-y: auto;
-  z-index: 3600 !important; /* Above messages */
-  width: 90%; /* Slightly narrower than chat-messages */
-  max-width: 400px; /* Cap width for big screens */
+  z-index: 3600 !important; /* Ensures it’s above other elements */
+  width: 90%;
+  max-width: 400px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  margin-bottom: 5px; /* Adds a small gap between suggestions and form */
 }
 
 .chat-suggestions.hidden {
@@ -158,6 +159,7 @@
 }
 
 .chat-form {
+  position: relative; /* Establishes a positioning context for its children */
   display: flex;
   margin-top: 10px;
 }
@@ -262,4 +264,27 @@
   background: #ff1b1b;
   padding: 5px;
   border-radius: 8px;
+}
+
+.post-id-chat {
+  color: orange; /* Blue for clickable vibe */
+  cursor: pointer;
+  text-decoration: underline;
+}
+.post-id-chat:hover {
+  color: rgba(255, 166, 0, 0.847); /* Darker on hover */
+}
+
+.chat-message a {
+  background-color: #0070ba; /* PayPal blue */
+  color: white;
+  padding: 5px 10px;
+  text-decoration: none;
+  border-radius: 5px;
+  display: inline-block;
+  margin-top: 5px;
+}
+
+.chat-message a:hover {
+  background-color: #005a8e; /* Darker blue on hover */
 }

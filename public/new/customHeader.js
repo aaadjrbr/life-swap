@@ -1,5 +1,4 @@
-import { getFirestore, doc, getDoc, updateDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getAuth, getFirestore, doc, getDoc, updateDoc } from './firebaseConfig.js';
 
 // Load cool Google Fonts
 const googleFonts = [

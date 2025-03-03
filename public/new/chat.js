@@ -1,20 +1,4 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getAuth } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-import { getFirestore, collection, query, limit, where, orderBy, limitToLast, startAfter, getDocs, addDoc, doc, setDoc, getDoc, updateDoc, deleteDoc, writeBatch, collectionGroup, arrayUnion, arrayRemove, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyB5Q0kHoViWJl-t-pWCKj_AT-ClAMadfrU",
-  authDomain: "life-swap-6065e.firebaseapp.com",
-  projectId: "life-swap-6065e",
-  storageBucket: "life-swap-6065e.firebasestorage.app",
-  messagingSenderId: "475311181000",
-  appId: "1:475311181000:web:32d03d80f70081bfb629fd",
-  measurementId: "G-CHJY2ZEYYF"
-};
-
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
+import { auth, db, collection, query, limit, where, orderBy, limitToLast, startAfter, getDocs, addDoc, doc, setDoc, getDoc, updateDoc, deleteDoc, writeBatch, collectionGroup, arrayUnion, arrayRemove, onSnapshot, runTransaction } from './firebaseConfig.js';
 
 const MESSAGES_PER_PAGE = 10;
 const MAX_MESSAGE_LENGTH = 500;
@@ -53,14 +37,32 @@ async function getUserData(uid) {
   }
 }
 
-function renderMessageText(text, fromUser = null) {
+function renderMessageText(text, fromUser = null, senderId = null) {
+  if (senderId === "system") {
+    return `<strong>Life Swap</strong>: ${text}`;
+  }
+
   const urlPattern = /(https?:\/\/[^\s]+)/g;
   const phonePattern = /(\b\d{3}[-.]?\d{3}[-.]?\d{4}\b)/g;
+  const postIdPattern = /\(Post ID: (\w+)\)/g;
+
   let rendered = text
     .replace(urlPattern, '<a href="$1" class="chat-link" target="_blank">$1</a><span class="warning">x <span class="tooltip">Be careful! Links can be unsafe—Life Swap recommends caution.</span></span>')
-    .replace(phonePattern, '$1<span class="warning">x <span class="tooltip">Be careful! Sharing phone numbers can be risky—Life Swap recommends caution.</span></span>');
-  if (fromUser) rendered = `<strong>${fromUser}</strong>: ${rendered}`;
+    .replace(phonePattern, '$1<span class="warning">x <span class="tooltip">Be careful! Sharing phone numbers can be risky—Life Swap recommends caution.</span></span>')
+    .replace(postIdPattern, '(Post ID: <span class="post-id-chat" onclick="copyToClipboard(\'$1\')">$1</span>)');
+
+  if (fromUser) {
+    rendered = `<strong>${fromUser}</strong>: ${rendered}`;
+  }
   return rendered;
+}
+
+function copyToClipboard(text) {
+  navigator.clipboard.writeText(text).then(() => {
+    alert('Post ID copied to clipboard!');
+  }).catch(err => {
+    console.error('Failed to copy: ', err);
+  });
 }
 
 async function openChat(targetUid, communityId = null) {
@@ -94,9 +96,10 @@ async function openChat(targetUid, communityId = null) {
         <div id="chatMessages" class="chat-messages">
           <div id="loadMorePrompt" class="load-more-prompt" style="display: none;">Scroll up to load older messages</div>
           <div id="messageContainer"></div>
-          <div id="chatPostSuggestions" class="chat-suggestions hidden"></div>
+          
         </div>
         <form id="chatForm" class="chat-form">
+          <div id="chatPostSuggestions" class="chat-suggestions hidden"></div>
           <textarea id="chatInput" maxlength="${MAX_MESSAGE_LENGTH}" placeholder="Type a message..." required></textarea>
           <button type="submit">Send</button>
         </form>
@@ -189,10 +192,13 @@ async function openChat(targetUid, communityId = null) {
           const msgDiv = document.createElement("div");
           msgDiv.className = `chat-message ${msg.senderId === currentUser.uid ? "sent" : "received"} ${msg.senderId === "system" ? "auto" : ""}`;
           msgDiv.id = `msg-${doc.id}`;
-          msgDiv.innerHTML = `
-            <p>${renderMessageText(msg.text, msg.senderId === currentUser.uid ? currentUserData.name : targetUserData.name)}</p>
-            <span class="timestamp">${new Date(msg.timestamp.toDate()).toLocaleString()}</span>
-          `;
+          const p = document.createElement("p");
+          p.innerHTML = renderMessageText(msg.text, msg.senderId === currentUser.uid ? currentUserData.name : targetUserData.name, msg.senderId);
+          const timestampSpan = document.createElement("span");
+          timestampSpan.className = "timestamp";
+          timestampSpan.textContent = new Date(msg.timestamp.toDate()).toLocaleString();
+          msgDiv.appendChild(p);
+          msgDiv.appendChild(timestampSpan);
           messageContainer.insertBefore(msgDiv, messageContainer.firstChild);
           loadedMessageIds.add(doc.id);
           console.log("Added older message ID:", doc.id);
@@ -228,10 +234,13 @@ async function openChat(targetUid, communityId = null) {
         const msgDiv = document.createElement("div");
         msgDiv.className = `chat-message ${msg.senderId === currentUser.uid ? "sent" : "received"} ${msg.senderId === "system" ? "auto" : ""}`;
         msgDiv.id = `msg-${doc.id}`;
-        msgDiv.innerHTML = `
-          <p>${renderMessageText(msg.text, msg.senderId === currentUser.uid ? currentUserData.name : targetUserData.name)}</p>
-          <span class="timestamp">${new Date(msg.timestamp.toDate()).toLocaleString()}</span>
-        `;
+        const p = document.createElement("p");
+        p.innerHTML = renderMessageText(msg.text, msg.senderId === currentUser.uid ? currentUserData.name : targetUserData.name, msg.senderId);
+        const timestampSpan = document.createElement("span");
+        timestampSpan.className = "timestamp";
+        timestampSpan.textContent = new Date(msg.timestamp.toDate()).toLocaleString();
+        msgDiv.appendChild(p);
+        msgDiv.appendChild(timestampSpan);
         messageContainer.appendChild(msgDiv);
         loadedMessageIds.add(doc.id);
         console.log("Added initial message ID:", doc.id);
@@ -257,7 +266,7 @@ async function openChat(targetUid, communityId = null) {
           msgDiv.className = `chat-message ${msg.senderId === currentUser.uid ? "sent" : "received"} ${msg.senderId === "system" ? "auto" : ""}`;
           msgDiv.id = `msg-${change.doc.id}`;
           msgDiv.innerHTML = `
-            <p>${renderMessageText(msg.text, msg.senderId === currentUser.uid ? currentUserData.name : targetUserData.name)}</p>
+            <p>${renderMessageText(msg.text, msg.senderId === currentUser.uid ? currentUserData.name : targetUserData.name, msg.senderId)}</p>
             <span class="timestamp">${new Date(msg.timestamp.toDate()).toLocaleString()}</span>
           `;
           if (messageContainer.innerHTML.includes("No messages yet")) {
@@ -297,7 +306,7 @@ async function openChat(targetUid, communityId = null) {
         postSuggestions.classList.add("hidden");
         return;
       }
-
+  
       snapshot.forEach(doc => {
         const post = doc.data();
         const suggestion = document.createElement("div");
@@ -314,7 +323,7 @@ async function openChat(targetUid, communityId = null) {
       });
       postSuggestions.style.display = "block";
       postSuggestions.classList.remove("hidden");
-      messagesDiv.scrollTop = 0;
+      messagesDiv.scrollTop = messagesDiv.scrollHeight; // Scroll to bottom, not top
     } else {
       postSuggestions.classList.add("hidden");
     }
@@ -322,7 +331,9 @@ async function openChat(targetUid, communityId = null) {
 
   document.getElementById("confirmSendPost").onclick = async (e) => {
     e.preventDefault();
-    if (selectedPost) {
+    if (!selectedPost) return;
+  
+    try {
       const messageData = {
         senderId: currentUser.uid,
         receiverId: targetUid,
@@ -335,9 +346,14 @@ async function openChat(targetUid, communityId = null) {
       await sendChatNotification(targetUid, currentUser.uid, chatId);
       chatInput.value = "";
       selectedPost = null;
+    } catch (error) {
+      console.error("Error sending post:", error);
+      alert("Failed to send post: " + error.message);
+    } finally {
+      // Always close the modal, even if there’s an error
+      postConfirmPopup.style.display = "none";
+      postConfirmPopup.classList.add("hidden");
     }
-    postConfirmPopup.style.display = "none";
-    postConfirmPopup.classList.add("hidden");
   };
 
   document.getElementById("cancelSendPost").onclick = () => {
@@ -349,23 +365,23 @@ async function openChat(targetUid, communityId = null) {
   chatForm.onsubmit = async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isTargetBlockedByCurrent || isTargetBlockedByCurrent) return;
+    if (isTargetBlockedByCurrent || isBlockedByTarget) return; // Fixed typo from original code
     const text = chatInput.value.trim();
     if (!text) return;
-
+  
     const now = Date.now();
     if (now - lastSendTime < RATE_LIMIT_MS) {
       console.log("Rate limit hit");
       alert("Slow down! One message per second.");
       return;
     }
-
+  
     if (text === lastSentMessage) {
       console.log("Duplicate message prevented");
       alert("You just sent that! Try something new.");
       return;
     }
-
+  
     chatInput.value = "";
     const messageData = {
       senderId: currentUser.uid,
@@ -374,30 +390,30 @@ async function openChat(targetUid, communityId = null) {
       timestamp: new Date(),
       seen: false
     };
-
+  
     try {
       console.log("Sending message:", text);
       await addDoc(collection(db, "chats", chatId, "messages"), messageData);
       lastSendTime = now;
       lastSentMessage = text;
       userMessageCount++;
+      console.log("User message count:", userMessageCount);
       await updateChatIds(chatId, currentUser.uid, targetUid, messageData.timestamp, communityId);
-
+  
       if (userMessageCount === 4) {
         const tipMsg = {
           senderId: "system",
           receiverId: targetUid,
-          text: 'Help us keep Life Swap free! <form action="https://www.paypal.com/donate" method="post" target="_blank"><input type="hidden" name="business" value="YOUR_PAYPAL_EMAIL_OR_ID"><input type="hidden" name="currency_code" value="USD"><button type="submit">Tip Us</button></form>',
+          text: 'Hey there! Sorry to interrupt, but if you’re enjoying Life Swap, consider helping us stay free with a small donation. Every bit helps! <a href="https://www.paypal.com/donate?business=YOUR_PAYPAL_EMAIL_OR_ID&currency_code=USD" target="_blank">Donate via PayPal</a>',
           timestamp: new Date(),
           seen: false
         };
         await addDoc(collection(db, "chats", chatId, "messages"), tipMsg);
+        console.log("System message sent:", tipMsg);
+        userMessageCount = 0;
       }
-
-      await sendChatNotification(targetUid, currentUser.uid, chatId);
-      console.log("Message sent successfully");
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.error("Error:", error);
       alert("Failed to send message: " + error.message);
       chatInput.value = text;
     }
@@ -604,3 +620,4 @@ async function deleteChat(chatId, modal, contentDiv, fromViewChats = false) {
 
 window.openChat = openChat;
 window.viewChats = viewChats;
+window.copyToClipboard = copyToClipboard;
