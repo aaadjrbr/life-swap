@@ -108,6 +108,7 @@ button:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-direction: column;
 }
 
 #yourCommunities {
@@ -208,4 +209,8 @@ button:hover {
 
 #shareModal #cancelOption:hover {
   background: #999;
+}
+
+footer {
+  text-align: center;
 }

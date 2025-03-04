@@ -13,7 +13,7 @@
   <div class="community-picker">
     <h1>Welcome to Life Swap</h1>
     <p><a href="../index.html">Home</a> | <a href="#">Contact</a></p>
-    <p>Pick or create a community to start swapping!</p>
+    <p>Pick or <a href="#createCommunityBtn">create a community</a> to start swapping!</p>
 
     <div id="yourCommunities">
       <h3>Your Communities</h3>
@@ -21,9 +21,11 @@
     </div>
 
     <div id="pickCommunity">
+      <h3>Search Communities (ID/Name or Map)</h3>
       <input type="text" id="communitySearch" placeholder="Search by name or ID...">
       <button id="exploreCommunitiesBtn">Explore on Map</button>
       <br/><br/>
+      <h3>Nearby Communities</h3>
       <div id="communityList" class="scrollable"></div>
     </div>
 
@@ -36,6 +38,7 @@
     </div>
 
     <br/><br/>
+    <h2>Create Community</h2>
     <button id="createCommunityBtn">Create a New Community</button>
     <div id="createCommunityModal" class="modal hidden">
       <div class="modal-content">
@@ -49,6 +52,12 @@
       </div>
     </div>
   </div>
+
+  <br/><br/>
+  <footer>
+    &copy; Life Swap 2025
+  </footer>
+  <br/>
 
   <script type="module" src="start.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

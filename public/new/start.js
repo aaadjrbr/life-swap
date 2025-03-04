@@ -372,24 +372,48 @@ async function loadCommunities(searchQuery = "", startAfterDoc = null) {
   }
 
   function renderCommunities(communities, lastDoc) {
-    communityList.innerHTML = communities.length === 0
-      ? "<p>No nearby communities found.</p>"
-      : communities.slice(0, 10).map(comm => {
-          const distanceText = comm.distance !== undefined ? ` (${comm.distance.toFixed(1)} miles away)` : "";
-          return `<div><span>${comm.name}${distanceText}</span><button class="join-btn" data-community-id="${comm.id}">Join</button></div>`;
-        }).join("");
-
-    if (communities.length > 10 && lastDoc) {
-      const loadMoreBtn = document.createElement("button");
-      loadMoreBtn.textContent = "Load More";
-      loadMoreBtn.onclick = () => loadCommunities(searchQuery, lastDoc);
-      communityList.appendChild(loadMoreBtn);
+    const user = auth.currentUser;
+    if (!user) {
+      communityList.innerHTML = "<p>Log in to see communities!</p>";
+      return;
     }
 
-    communityList.addEventListener("click", (e) => {
-      const btn = e.target.closest(".join-btn");
-      if (btn) joinCommunity(btn.dataset.communityId);
-    }, { once: true });
+    // Fetch user's communityIds once (we'll use a Promise to handle this efficiently)
+    const userRef = doc(db, "users", user.uid);
+    getDoc(userRef).then(userDoc => {
+      const userCommunityIds = userDoc.exists() ? userDoc.data().communityIds || [] : [];
+
+      communityList.innerHTML = communities.length === 0
+        ? "<p>No nearby communities found.</p>"
+        : communities.slice(0, 10).map(comm => {
+            const distanceText = comm.distance !== undefined ? ` (${comm.distance.toFixed(1)} miles away)` : "";
+            const isMember = userCommunityIds.includes(comm.id);
+            const buttonText = isMember ? "Already Member (Go)" : "Join";
+            const buttonClass = isMember ? "go-btn" : "join-btn";
+            return `<div><span>${comm.name}${distanceText}</span><button class="${buttonClass}" data-community-id="${comm.id}">${buttonText}</button></div>`;
+          }).join("");
+
+      if (communities.length > 10 && lastDoc) {
+        const loadMoreBtn = document.createElement("button");
+        loadMoreBtn.textContent = "Load More";
+        loadMoreBtn.onclick = () => loadCommunities(searchQuery, lastDoc);
+        communityList.appendChild(loadMoreBtn);
+      }
+
+      // Event delegation for buttons
+      communityList.addEventListener("click", (e) => {
+        const joinBtn = e.target.closest(".join-btn");
+        const goBtn = e.target.closest(".go-btn");
+        if (joinBtn) {
+          joinCommunity(joinBtn.dataset.communityId);
+        } else if (goBtn) {
+          goToCommunity(goBtn.dataset.communityId);
+        }
+      }, { once: true });
+    }).catch(error => {
+      console.error("Failed to fetch user data:", error);
+      communityList.innerHTML = "<p>Failed to load communities!</p>";
+    });
   }
 
   const searchInput = document.getElementById("communitySearch");
@@ -399,7 +423,7 @@ async function loadCommunities(searchQuery = "", startAfterDoc = null) {
 window.joinCommunity = async function(communityId) {
   const user = auth.currentUser;
   if (!user) {
-    alert("Bro, log in first!");
+    alert("Log in first!");
     return;
   }
 
@@ -408,12 +432,26 @@ window.joinCommunity = async function(communityId) {
     const commRef = doc(db, "communities", communityId);
     const memberRef = doc(db, "communities", communityId, "members", user.uid);
 
-    const [commDoc, userDoc] = await Promise.all([getDoc(commRef), getDoc(userRef)]);
+    const [commDoc, userDoc, memberDoc] = await Promise.all([
+      getDoc(commRef),
+      getDoc(userRef),
+      getDoc(memberRef)
+    ]);
+
     if (!commDoc.exists()) {
       alert("This community is not real!");
       return;
     }
-    if (!userDoc.exists()) return;
+    if (!userDoc.exists()) {
+      alert("User data missing!");
+      return;
+    }
+
+    // If already a member, skip joining and go straight to community
+    if (memberDoc.exists() && userDoc.data().communityIds?.includes(communityId)) {
+      goToCommunity(communityId);
+      return;
+    }
 
     const communityIds = userDoc.data().communityIds || [];
     const batch = writeBatch(db);
@@ -426,11 +464,12 @@ window.joinCommunity = async function(communityId) {
     batch.set(memberRef, { joinedAt: new Date(), userId: user.uid }, { merge: true });
     await batch.commit();
 
-    const memberDoc = await getDoc(memberRef);
-    if (!memberDoc.exists()) {
+    const updatedMemberDoc = await getDoc(memberRef);
+    if (!updatedMemberDoc.exists()) {
       alert("Joined, but membership didn’t stick!");
     } else {
       sessionCache.delete(`yourCommunities_${user.uid}`); // Invalidate cache
+      sessionCache.delete("nearby"); // Invalidate nearby cache too since membership changed
       goToCommunity(communityId);
     }
   } catch (error) {
