@@ -28,7 +28,7 @@ window.goToCommunity = function(communityId) {
 document.addEventListener("DOMContentLoaded", () => {
   onAuthStateChanged(auth, async (user) => {
     if (!user) {
-      alert("Log in to start swapping, bro!");
+      alert("Log in to start swapping!");
       window.location.href = "/login.html";
       return;
     }
@@ -51,12 +51,12 @@ document.addEventListener("DOMContentLoaded", () => {
       setupCommunityPicker(userData);
     } catch (error) {
       console.error("Auth setup failed:", error);
-      alert("Something broke, bro! Check console.");
+      alert("Something broke! Check console.");
     }
   });
 });
 
-// Efficient checker for communityIds
+// Efficient checker for communityIds - ⚠️ IMPORTANT: This checks for communities ids that doesn't exist in cases ownwer delete communities wihtout user having a chance to leave, so the ID of the community might remains, so this function deletes it.
 async function checkAndCleanCommunityIds(userId, userData) {
   const communityIds = userData.communityIds || [];
   if (communityIds.length === 0) return userData;
@@ -133,7 +133,7 @@ async function loadYourCommunities(userData) {
     renderYourCommunities(validCommunities);
   } catch (error) {
     console.error("Loading your communities failed:", error);
-    yourCommunityList.innerHTML = "<p>Failed to load communities, bro!</p>";
+    yourCommunityList.innerHTML = "<p>Failed to load communities!</p>";
   }
 
   function renderYourCommunities(communities) {
@@ -365,7 +365,7 @@ async function loadCommunities(searchQuery = "", startAfterDoc = null) {
     renderCommunities(updatedCommunities, communities.length ? snapshot.docs[snapshot.docs.length - 1] : null);
   } catch (error) {
     console.error("Loading communities failed:", error);
-    communityList.innerHTML = "<p>Failed to load communities, bro!</p>";
+    communityList.innerHTML = "<p>Failed to load communities!</p>";
   }
 
   function renderCommunities(communities, lastDoc) {
@@ -407,7 +407,7 @@ window.joinCommunity = async function(communityId) {
 
     const [commDoc, userDoc] = await Promise.all([getDoc(commRef), getDoc(userRef)]);
     if (!commDoc.exists()) {
-      alert("This community ain’t real, bro!");
+      alert("This community is not real!");
       return;
     }
     if (!userDoc.exists()) return;
@@ -425,14 +425,14 @@ window.joinCommunity = async function(communityId) {
 
     const memberDoc = await getDoc(memberRef);
     if (!memberDoc.exists()) {
-      alert("Joined, but membership didn’t stick, bro!");
+      alert("Joined, but membership didn’t stick!");
     } else {
       sessionCache.delete(`yourCommunities_${user.uid}`); // Invalidate cache
       goToCommunity(communityId);
     }
   } catch (error) {
     console.error("Join failed:", error);
-    alert("Join crashed, bro!");
+    alert("Join crashed!");
   }
 };
 
@@ -462,7 +462,7 @@ function setupLocationAutocomplete() {
       renderSuggestions(data);
     } catch (error) {
       console.error("Autocomplete failed:", error);
-      suggestionsDiv.innerHTML = "<p>Location search failed, bro!</p>";
+      suggestionsDiv.innerHTML = "<p>Location search failed!</p>";
     }
   }, 500);
 
@@ -470,7 +470,7 @@ function setupLocationAutocomplete() {
 
   function renderSuggestions(data) {
     suggestionsDiv.innerHTML = !Array.isArray(data) || data.length === 0
-      ? "<p>No locations found, bro!</p>"
+      ? "<p>No locations found!</p>"
       : data.map(place => {
           const city = place.address?.city || place.address?.town || place.address?.village || "";
           const region = place.address?.state || place.address?.country || "";
@@ -500,7 +500,7 @@ function setupLocationAutocomplete() {
       const lon = parseFloat(locationInput.dataset.lon);
 
       if (!name || !location || isNaN(lat) || isNaN(lon)) {
-        alert("Fill out the name and pick a valid location, bro!");
+        alert("Fill out the name and pick a valid location!");
         return;
       }
 
@@ -531,7 +531,7 @@ function setupLocationAutocomplete() {
         goToCommunity(commRef.id);
       } catch (error) {
         console.error("Create community failed:", error);
-        alert("Creation crashed, bro!");
+        alert("Creation crashed!");
       }
     };
   }
@@ -579,7 +579,7 @@ async function showMapModal() {
     };
   } catch (error) {
     console.error("Map modal failed:", error);
-    mapModal.innerHTML = "<p>Map crashed, bro!</p>";
+    mapModal.innerHTML = "<p>Map crashed!</p>";
   }
 }
 
@@ -628,7 +628,7 @@ function centerMapOnUserLocation(map, communityMarkers) {
         { enableHighAccuracy: true, timeout: 10000 }
       );
     } else {
-      alert("No geolocation support, bro!");
+      alert("No geolocation support!");
     }
   };
 
