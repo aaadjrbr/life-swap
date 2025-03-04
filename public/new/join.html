@@ -99,12 +99,13 @@
     .login-msg a {
       background: none;
       color: #0288d1;
+      padding: 5px;
       padding: 0;
       font-weight: 400;
     }
 
     .login-msg a:hover {
-      color: #0277bd;
+      color: #0278bd2b;
       text-decoration: underline;
       transform: none;
     }
@@ -138,6 +139,26 @@
       background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="none" stroke="%230277bd" stroke-width="3" opacity="0.3"/></svg>') no-repeat;
       z-index: -1;
     }
+
+    .login-msg a.signup-link {
+      background: #0278bd2b;
+      padding: 5px;
+      color: white;
+      padding: 5px 15px;
+      border-radius: 20px;
+    }
+
+    .login-msg a.signup-link:hover {
+      background: #0278bd2b;
+      color: #fff;
+      text-decoration: none;
+    }
+
+    .login-msg a:hover {
+      color: #0278bd;
+      background: none !important;
+      text-decoration: underline;
+    }
   </style>
 </head>
 <body>
@@ -159,8 +180,8 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-
-    // Firebase Config
+  
+    // Firebase Config (unchanged)
     const firebaseConfig = {
       apiKey: "AIzaSyB5Q0kHoViWJl-t-pWCKj_AT-ClAMadfrU",
       authDomain: "life-swap-6065e.firebaseapp.com",
@@ -170,33 +191,33 @@
       appId: "1:475311181000:web:32d03d80f70081bfb629fd",
       measurementId: "G-CHJY2ZEYYF"
     };
-
+  
     // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const auth = getAuth(app);
-
-    // Smart cache with expiration (24 hours)
+  
+    // Smart cache with expiration (24 hours) - unchanged
     const locationCache = new Map();
-    const CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
-
+    const CACHE_EXPIRY = 24 * 60 * 60 * 1000;
+  
     async function getLocationName(lat, lon) {
       const cacheKey = `loc_${lat}_${lon}`;
       const cached = locationCache.get(cacheKey);
-
+  
       if (cached && (Date.now() - cached.timestamp < CACHE_EXPIRY)) {
         return cached.value;
       }
-
+  
       try {
         const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, {
-          headers: { "User-Agent": "LifeSwap/1.0 (your-email@example.com)" }
+          headers: { "User-Agent": "LifeSwap/1.0 (aadjrbr@gmail.com)" }
         });
         const data = await response.json();
         const city = data.address?.city || data.address?.town || data.address?.village || "";
         const region = data.address?.state || data.address?.county || data.address?.country || "";
         const locationName = city && region ? `${city}, ${region}` : data.display_name || "Unknown Location";
-
+  
         locationCache.set(cacheKey, { value: locationName, timestamp: Date.now() });
         return locationName;
       } catch (error) {
@@ -204,42 +225,49 @@
         return "Unknown Location";
       }
     }
-
+  
     // Get community ID from URL
     const params = new URLSearchParams(window.location.search);
     const id = params.get("id");
-
+  
     const joinLink = document.getElementById("joinLink");
     const authMsg = document.getElementById("authMsg");
-
+    const errorMsg = document.getElementById("errorMsg");
+  
     if (!id) {
-      document.getElementById("errorMsg").textContent = "No community ID provided.";
+      errorMsg.textContent = "No community ID provided.";
     } else {
       onAuthStateChanged(auth, async (user) => {
-        const commRef = doc(db, "communities", id);
-        try {
-          const docSnap = await getDoc(commRef);
-          if (!docSnap.exists()) {
-            throw new Error("Community not found!");
-          }
-          const data = docSnap.data();
-          const locationName = await getLocationName(data.location.latitude, data.location.longitude);
-
-          document.getElementById("communityName").textContent = `Join ${data.name}`;
-          document.getElementById("communityLocation").textContent = locationName;
-
-          if (user) {
+        // Clear previous messages
+        errorMsg.textContent = "";
+        authMsg.textContent = "";
+  
+        if (!user) {
+          // User is not authenticated - show the friendly message
+          authMsg.innerHTML = 'Welcome! To participate in our communities, we kindly ask that you create an account. This helps ensure a safe and secure experience for all members while protecting against fraudulent activity. Please click <a href="../login.html">here</a> to get started (Then try again the QR code).';
+          joinLink.classList.add("disabled");
+          joinLink.href = "#";
+          document.getElementById("communityName").textContent = "Life Swap";
+          document.getElementById("communityLocation").textContent = "Sign up/Login and try again.";
+        } else {
+          // User is authenticated - fetch community data
+          const commRef = doc(db, "communities", id);
+          try {
+            const docSnap = await getDoc(commRef);
+            if (!docSnap.exists()) {
+              throw new Error("Community not found!");
+            }
+            const data = docSnap.data();
+            const locationName = await getLocationName(data.location.latitude, data.location.longitude);
+  
+            document.getElementById("communityName").textContent = `Join ${data.name}`;
+            document.getElementById("communityLocation").textContent = locationName;
             joinLink.classList.remove("disabled");
             joinLink.href = `./community.html?id=${id}`;
-            authMsg.textContent = "";
-          } else {
-            joinLink.classList.add("disabled");
-            joinLink.href = "#";
-            authMsg.innerHTML = 'To join communities, please create an account here: <a href="/login.html">Login</a>';
+          } catch (error) {
+            console.error("Fetch failed:", error);
+            errorMsg.textContent = "An error occurred while loading the community. Please try again later.";
           }
-        } catch (error) {
-          console.error("Fetch failed:", error);
-          document.getElementById("errorMsg").textContent = "An error occurred. Please check the console.";
         }
       });
     }
