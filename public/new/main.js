@@ -1393,94 +1393,127 @@ loadAdminReportSummary(userId);
 const debouncedLoadAdminReportSummary = debounce((userId) => loadAdminReportSummary(userId), 500);
 
 async function createPost() {
-const user = auth.currentUser;
-const title = document.getElementById("postTitle").value.trim();
-const description = document.getElementById("postDescription").value.trim();
-const photos = document.getElementById("postPhotos").files;
-const location = document.getElementById("postLocation").value.trim();
-const lat = document.getElementById("postLocation").dataset.lat;
-const lon = document.getElementById("postLocation").dataset.lon;
-const communityCheckboxes = document.querySelectorAll("#communityCheckboxes input[name='communities']:checked");
-const category = document.getElementById("category").value; // e.g., "clothing_accessories"
-const lookingFor = document.getElementById("lookingFor").value;
-const offering = document.getElementById("offering").value;
-
-if (!title || !description || !location || !lat || !lon || !category || !lookingFor || !offering) {
-alert("Fill out all fields, pick a category, and select what you're looking for and offering!");
-return;
-}
-
-if (communityCheckboxes.length === 0) {
-alert("Pick at least one community to post!");
-return;
-}
-
-let selectedCommunities = Array.from(communityCheckboxes).map(cb => cb.value);
-
-if (selectedCommunities.length === 1 && selectedCommunities[0] === "all") {
-const userRef = doc(db, "users", user.uid);
-const userDoc = await getDoc(userRef);
-selectedCommunities = userDoc.data().communityIds || [];
-const validCommunities = [];
-for (const commId of selectedCommunities) {
-  const commRef = doc(db, "communities", commId);
-  const commDoc = await getDoc(commRef);
-  const commData = commDoc.data();
-  if (commData.members.includes(user.uid) && !(commData.bannedUsers || []).includes(user.uid)) {
-    validCommunities.push(commId);
+  const createPostBtn = document.getElementById("createPostBtn");
+  if (!createPostBtn) {
+    console.error("Create Post button not found!");
+    return;
   }
-}
-selectedCommunities = validCommunities;
-} else {
-selectedCommunities = selectedCommunities.map(comm => comm === "current" ? communityId : comm);
-}
 
-if (selectedCommunities.length === 0) {
-alert("No valid communities selected!");
-return;
-}
+  // Block if already in progress
+  if (createPostBtn.disabled) {
+    console.log("Post creation in progress, ignoring extra click.");
+    return;
+  }
 
-const photoUrlsByCommunity = {};
-for (const commId of selectedCommunities) {
-photoUrlsByCommunity[commId] = [];
-for (let i = 0; i < Math.min(photos.length, 5); i++) {
-  const compressedBlob = await compressImage(photos[i]);
-  const photoRef = ref(storage, `posts/${commId}/${user.uid}/${Date.now()}_${i}`);
-  await uploadBytes(photoRef, compressedBlob);
-  const url = await getDownloadURL(photoRef);
-  photoUrlsByCommunity[commId].push(url);
-}
-}
+  // Disable button and show loading
+  createPostBtn.disabled = true;
+  const originalText = createPostBtn.textContent;
+  createPostBtn.textContent = "Creating...";
+  createPostBtn.classList.add("loading"); // Optional CSS for flair
 
-const postPromises = selectedCommunities.map(commId => {
-const postData = {
-  title,
-  description,
-  photoUrls: photoUrlsByCommunity[commId],
-  location: { latitude: parseFloat(lat), longitude: parseFloat(lon), name: location },
-  userId: user.uid,
-  createdAt: new Date(),
-  category, // Stores as "clothing_accessories", etc.
-  lookingFor,
-  offering,
-  communityId: commId,
-  likes: 0,
-  likedBy: [],
-  commentCount: 0
-};
+  try {
+    const user = auth.currentUser;
+    const title = document.getElementById("postTitle").value.trim();
+    const description = document.getElementById("postDescription").value.trim();
+    const photos = document.getElementById("postPhotos").files;
+    const location = document.getElementById("postLocation").value.trim();
+    const lat = document.getElementById("postLocation").dataset.lat;
+    const lon = document.getElementById("postLocation").dataset.lon;
+    const communityCheckboxes = document.querySelectorAll("#communityCheckboxes input[name='communities']:checked");
+    const category = document.getElementById("category").value; // e.g., "clothing_accessories"
+    const lookingFor = document.getElementById("lookingFor").value;
+    const offering = document.getElementById("offering").value;
 
-return addDoc(collection(db, "communities", commId, "posts"), postData);
-});
-const postRefs = await Promise.all(postPromises);
+    if (!title || !description || !location || !lat || !lon || !category || !lookingFor || !offering) {
+      alert("Fill out all fields, pick a category, and select what you're looking for and offering!");
+      throw new Error("Missing required fields"); // Throw to hit the finally block
+    }
 
-alert(`Post created in ${selectedCommunities.length} communit${selectedCommunities.length > 1 ? 'ies' : 'y'}! IDs: ${postRefs.map(ref => ref.id).join(", ")}`);
-document.getElementById("newPostForm").reset();
-totalYourPosts = 0;
-loadYourPosts(user.uid);
-loadPosts(communityId, true);
-totalCarouselPosts = 0;
-carouselIndex = 0;
-loadCarouselPosts(communityId);
+    if (communityCheckboxes.length === 0) {
+      alert("Pick at least one community to post!");
+      throw new Error("No communities selected");
+    }
+
+    let selectedCommunities = Array.from(communityCheckboxes).map(cb => cb.value);
+
+    if (selectedCommunities.length === 1 && selectedCommunities[0] === "all") {
+      const userRef = doc(db, "users", user.uid);
+      const userDoc = await getDoc(userRef);
+      selectedCommunities = userDoc.data().communityIds || [];
+      const validCommunities = [];
+      for (const commId of selectedCommunities) {
+        const commRef = doc(db, "communities", commId);
+        const commDoc = await getDoc(commRef);
+        const commData = commDoc.data();
+        if (commData.members.includes(user.uid) && !(commData.bannedUsers || []).includes(user.uid)) {
+          validCommunities.push(commId);
+        }
+      }
+      selectedCommunities = validCommunities;
+    } else {
+      selectedCommunities = selectedCommunities.map(comm => comm === "current" ? communityId : comm);
+    }
+
+    if (selectedCommunities.length === 0) {
+      alert("No valid communities selected!");
+      throw new Error("No valid communities");
+    }
+
+    const photoUrlsByCommunity = {};
+    for (const commId of selectedCommunities) {
+      photoUrlsByCommunity[commId] = [];
+      for (let i = 0; i < Math.min(photos.length, 5); i++) {
+        const compressedBlob = await compressImage(photos[i]);
+        const photoRef = ref(storage, `posts/${commId}/${user.uid}/${Date.now()}_${i}`);
+        await uploadBytes(photoRef, compressedBlob);
+        const url = await getDownloadURL(photoRef);
+        photoUrlsByCommunity[commId].push(url);
+      }
+    }
+
+    const postPromises = selectedCommunities.map(commId => {
+      const postData = {
+        title,
+        description,
+        photoUrls: photoUrlsByCommunity[commId],
+        location: { latitude: parseFloat(lat), longitude: parseFloat(lon), name: location },
+        userId: user.uid,
+        createdAt: new Date(),
+        category, // Stores as "clothing_accessories", etc.
+        lookingFor,
+        offering,
+        communityId: commId,
+        likes: 0,
+        likedBy: [],
+        commentCount: 0
+      };
+
+      return addDoc(collection(db, "communities", commId, "posts"), postData);
+    });
+    const postRefs = await Promise.all(postPromises);
+
+    alert(`Post created in ${selectedCommunities.length} communit${selectedCommunities.length > 1 ? 'ies' : 'y'}! IDs: ${postRefs.map(ref => ref.id).join(", ")}`);
+    document.getElementById("newPostForm").reset();
+    totalYourPosts = 0;
+    loadYourPosts(user.uid);
+    loadPosts(communityId, true);
+    totalCarouselPosts = 0;
+    carouselIndex = 0;
+    loadCarouselPosts(communityId);
+
+  } catch (error) {
+    console.error("Error creating post:", error);
+    // Only show alert if it’s not already triggered by validation
+    if (!error.message.includes("Missing") && !error.message.includes("communities")) {
+      alert(`Failed to create post: ${error.message}`);
+    }
+
+  } finally {
+    // Always reset the button, no matter what
+    createPostBtn.disabled = false;
+    createPostBtn.textContent = originalText;
+    createPostBtn.classList.remove("loading");
+  }
 }
 
 async function setupCommunitySelection() {
@@ -1560,214 +1593,250 @@ cb.addEventListener("change", () => {
 }
 
 async function deletePost(postId) {
-const user = auth.currentUser;
-const commData = await getCommData();
-const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
-const postRef = doc(db, "communities", communityId, "posts", postId);
-const postDoc = await getDoc(postRef);
-if (!postDoc.exists()) {
-alert("Post not found!");
-return;
-}
-const postData = postDoc.data();
-
-if (!isAdmin && postData.userId !== user.uid) {
-alert("You can’t delete this post!");
-return;
-}
-
-const modal = document.getElementById("deletePostModal");
-const swappedBtn = document.getElementById("swappedBtn");
-const justDeleteBtn = document.getElementById("justDeleteBtn");
-const swapDetails = document.getElementById("swapDetails");
-const swapUsername = document.getElementById("swapUsername");
-const validateSwapBtn = document.getElementById("validateSwapBtn");
-const swapValidationResult = document.getElementById("swapValidationResult");
-const swapConfirmed = document.getElementById("swapConfirmed");
-const swapPartner = document.getElementById("swapPartner");
-const editSwapBtn = document.getElementById("editSwapBtn");
-const proceedSwapBtn = document.getElementById("proceedSwapBtn");
-const swapSuccess = document.getElementById("swapSuccess");
-const swapSuccessMessage = document.getElementById("swapSuccessMessage");
-const closeDeleteModalBtn = document.getElementById("closeDeleteModalBtn");
-const loadingOverlay = document.getElementById("loadingOverlay");
-
-if (!modal || !loadingOverlay || !swappedBtn || !justDeleteBtn || !swapDetails || !swapUsername || 
-  !validateSwapBtn || !swapValidationResult || !swapConfirmed || !swapPartner || 
-  !editSwapBtn || !proceedSwapBtn || !swapSuccess || !swapSuccessMessage || !closeDeleteModalBtn) {
-console.error("Missing modal or loading elements:", { modal, loadingOverlay, swappedBtn, justDeleteBtn, swapDetails, swapUsername, validateSwapBtn, swapValidationResult, swapConfirmed, swapPartner, editSwapBtn, proceedSwapBtn, swapSuccess, swapSuccessMessage, closeDeleteModalBtn });
-alert("Error: Modal setup incomplete. Please refresh the page.");
-return;
-}
-
-let swapPartnerUid = null;
-
-// Show the modal
-modal.style.display = "flex";
-modal.classList.remove("hidden");
-swapDetails.classList.add("hidden");
-swapSuccess.classList.add("hidden");
-swapValidationResult.textContent = "";
-swapConfirmed.classList.add("hidden");
-proceedSwapBtn.classList.add("hidden");
-
-// Handle "Just delete it"
-justDeleteBtn.onclick = async () => {
-if (confirm("Delete this post from this community? It may still exist in other communities you posted to.")) {
-  loadingOverlay.classList.remove("hidden");
-  try {
-    await deletePostAndCleanup(postId, postData.photoUrls, false, null);
-    closeModal("deletePostModal");
-    refreshReportSummary(user.uid); // Live-update the summary UI
-  } catch (error) {
-    console.error("Deletion failed:", error);
-    alert("Something went wrong. Please try again.");
-  } finally {
-    loadingOverlay.classList.add("hidden");
+  const user = auth.currentUser;
+  const commData = await getCommData();
+  const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
+  const postRef = doc(db, "communities", communityId, "posts", postId);
+  const postDoc = await getDoc(postRef);
+  if (!postDoc.exists()) {
+    alert("Post not found!");
+    return;
   }
-}
-};
+  const postData = postDoc.data();
 
-// Handle "I swapped it"
-swappedBtn.onclick = () => {
-swapDetails.classList.remove("hidden");
-justDeleteBtn.style.display = "none";
-swappedBtn.style.display = "none";
-swapUsername.focus();
-};
+  if (!isAdmin && postData.userId !== user.uid) {
+    alert("You can’t delete this post!");
+    return;
+  }
 
-// Validate username
-validateSwapBtn.onclick = async () => {
-const username = swapUsername.value.trim();
-if (!username) {
-  swapValidationResult.textContent = "Please enter a username.";
-  return;
-}
+  const modal = document.getElementById("deletePostModal");
+  const swappedBtn = document.getElementById("swappedBtn");
+  const justDeleteBtn = document.getElementById("justDeleteBtn");
+  const swapDetails = document.getElementById("swapDetails");
+  const swapUsername = document.getElementById("swapUsername");
+  const validateSwapBtn = document.getElementById("validateSwapBtn");
+  const swapValidationResult = document.getElementById("swapValidationResult");
+  const swapConfirmed = document.getElementById("swapConfirmed");
+  const swapPartner = document.getElementById("swapPartner");
+  const editSwapBtn = document.getElementById("editSwapBtn");
+  const proceedSwapBtn = document.getElementById("proceedSwapBtn");
+  const swapSuccess = document.getElementById("swapSuccess");
+  const swapSuccessMessage = document.getElementById("swapSuccessMessage");
+  const closeDeleteModalBtn = document.getElementById("closeDeleteModalBtn");
+  const loadingOverlay = document.getElementById("loadingOverlay");
 
-swapValidationResult.textContent = "Checking...";
-const userData = await getUserByUsername(username);
-if (userData) {
-  swapPartnerUid = userData.uid;
-  swapPartner.textContent = username;
+  if (!modal || !loadingOverlay || !swappedBtn || !justDeleteBtn || !swapDetails || !swapUsername || 
+      !validateSwapBtn || !swapValidationResult || !swapConfirmed || !swapPartner || 
+      !editSwapBtn || !proceedSwapBtn || !swapSuccess || !swapSuccessMessage || !closeDeleteModalBtn) {
+    console.error("Missing modal or loading elements:", { modal, loadingOverlay, swappedBtn, justDeleteBtn, swapDetails, swapUsername, validateSwapBtn, swapValidationResult, swapConfirmed, swapPartner, editSwapBtn, proceedSwapBtn, swapSuccess, swapSuccessMessage, closeDeleteModalBtn });
+    alert("Error: Modal setup incomplete. Please refresh the page.");
+    return;
+  }
+
+  let swapPartnerUid = null;
+
+  // Show the modal
+  modal.style.display = "flex";
+  modal.classList.remove("hidden");
+  swapDetails.classList.add("hidden");
+  swapSuccess.classList.add("hidden");
   swapValidationResult.textContent = "";
-  swapConfirmed.classList.remove("hidden");
-  proceedSwapBtn.classList.remove("hidden");
-  swapUsername.disabled = true;
-  validateSwapBtn.disabled = true;
-} else {
-  swapValidationResult.textContent = "User not found.";
-  swapPartnerUid = null;
+  swapConfirmed.classList.add("hidden");
+  proceedSwapBtn.classList.add("hidden");
+
+  // Handle "Just delete it"
+  justDeleteBtn.onclick = async () => {
+    if (justDeleteBtn.disabled) {
+      console.log("Deletion already in progress, ignoring click.");
+      return;
+    }
+
+    if (confirm("Delete this post from this community? It may still exist in other communities you posted to.")) {
+      justDeleteBtn.disabled = true;
+      const originalText = justDeleteBtn.textContent;
+      justDeleteBtn.textContent = "Deleting...";
+      justDeleteBtn.classList.add("loading");
+      
+      loadingOverlay.classList.remove("hidden");
+      try {
+        await deletePostAndCleanup(postId, postData.photoUrls, false, null);
+        closeModal("deletePostModal");
+        refreshReportSummary(user.uid);
+      } catch (error) {
+        console.error("Deletion failed:", error);
+        alert("Something went wrong. Please try again.");
+      } finally {
+        loadingOverlay.classList.add("hidden");
+        justDeleteBtn.disabled = false;
+        justDeleteBtn.textContent = originalText;
+        justDeleteBtn.classList.remove("loading");
+      }
+    }
+  };
+
+  // Handle "I swapped it"
+  swappedBtn.onclick = () => {
+    swapDetails.classList.remove("hidden");
+    justDeleteBtn.style.display = "none";
+    swappedBtn.style.display = "none";
+    swapUsername.focus();
+  };
+
+  // Validate username
+  validateSwapBtn.onclick = async () => {
+    const username = swapUsername.value.trim();
+    if (!username) {
+      swapValidationResult.textContent = "Please enter a username.";
+      return;
+    }
+
+    swapValidationResult.textContent = "Checking...";
+    const userData = await getUserByUsername(username);
+    if (userData) {
+      swapPartnerUid = userData.uid;
+      swapPartner.textContent = username;
+      swapValidationResult.textContent = "";
+      swapConfirmed.classList.remove("hidden");
+      proceedSwapBtn.classList.remove("hidden");
+      swapUsername.disabled = true;
+      validateSwapBtn.disabled = true;
+    } else {
+      swapValidationResult.textContent = "User not found.";
+      swapPartnerUid = null;
+    }
+  };
+
+  // Edit swap partner
+  editSwapBtn.onclick = () => {
+    swapConfirmed.classList.add("hidden");
+    proceedSwapBtn.classList.add("hidden");
+    swapUsername.disabled = false;
+    validateSwapBtn.disabled = false;
+    swapUsername.value = "";
+    swapValidationResult.textContent = "";
+    swapUsername.focus();
+  };
+
+  // Proceed with swap
+  proceedSwapBtn.onclick = async () => {
+    if (proceedSwapBtn.disabled) {
+      console.log("Swap deletion already in progress, ignoring click.");
+      return;
+    }
+
+    if (!swapPartnerUid) {
+      swapValidationResult.textContent = "No valid user selected.";
+      return;
+    }
+
+    const partnerUsername = swapPartner.textContent;
+    if (confirm(`Mark this post as swapped with ${partnerUsername} in this community? It may still exist in other communities.`)) {
+      proceedSwapBtn.disabled = true;
+      const originalText = proceedSwapBtn.textContent;
+      proceedSwapBtn.textContent = "Deleting...";
+      proceedSwapBtn.classList.add("loading");
+      
+      loadingOverlay.classList.remove("hidden");
+      try {
+        await deletePostAndCleanup(postId, postData.photoUrls, true, swapPartnerUid);
+        swapDetails.classList.add("hidden");
+        swapSuccess.classList.remove("hidden");
+        swapSuccessMessage.textContent = `Thanks! You and ${partnerUsername} swapped this item. Help us continue our service free. Tip us!`;
+        closeDeleteModalBtn.textContent = "Close";
+        refreshReportSummary(user.uid);
+      } catch (error) {
+        console.error("Swap and deletion failed:", error);
+        alert("Something went wrong during the swap. Please try again.");
+      } finally {
+        loadingOverlay.classList.add("hidden");
+        proceedSwapBtn.disabled = false;
+        proceedSwapBtn.textContent = originalText;
+        proceedSwapBtn.classList.remove("loading");
+      }
+    }
+  };
+
+  // Close modal
+  closeDeleteModalBtn.onclick = () => closeModal("deletePostModal");
 }
-};
 
-// Edit swap partner
-editSwapBtn.onclick = () => {
-swapConfirmed.classList.add("hidden");
-proceedSwapBtn.classList.add("hidden");
-swapUsername.disabled = false;
-validateSwapBtn.disabled = false;
-swapUsername.value = "";
-swapValidationResult.textContent = "";
-swapUsername.focus();
-};
-
-// Proceed with swap
-proceedSwapBtn.onclick = async () => {
-if (!swapPartnerUid) {
-  swapValidationResult.textContent = "No valid user selected.";
-  return;
-}
-
-const partnerUsername = swapPartner.textContent;
-if (confirm(`Mark this post as swapped with ${partnerUsername} in this community? It may still exist in other communities.`)) {
-  loadingOverlay.classList.remove("hidden");
-  try {
-    await deletePostAndCleanup(postId, postData.photoUrls, true, swapPartnerUid);
-    swapDetails.classList.add("hidden");
-    swapSuccess.classList.remove("hidden");
-    swapSuccessMessage.textContent = `Thanks! You and ${partnerUsername} swapped this item. Help us continue our service free. Tip us!`;
-    closeDeleteModalBtn.textContent = "Close";
-    refreshReportSummary(user.uid); // Live-update the summary UI
-  } catch (error) {
-    console.error("Swap and deletion failed:", error);
-    alert("Something went wrong during the swap. Please try again.");
-  } finally {
-    loadingOverlay.classList.add("hidden");
-  }
-}
-};
-
-// Close modal
-closeDeleteModalBtn.onclick = () => closeModal("deletePostModal");
-}
-
-// Helper: Delete post and cleanup efficiently (unchanged but included for context)
+// Helper: Delete post and cleanup efficiently (straight from your old code)
 async function deletePostAndCleanup(postId, photoUrls, isSwap, swapPartnerUid) {
-const postRef = doc(db, "communities", communityId, "posts", postId);
-const commentsCollection = collection(db, "communities", communityId, "posts", postId, "comments");
+  const postRef = doc(db, "communities", communityId, "posts", postId);
+  const commentsCollection = collection(db, "communities", communityId, "posts", postId, "comments");
 
-// Step 1: Transaction for post deletion and swaps (if applicable)
-await runTransaction(db, async (transaction) => {
-if (isSwap && swapPartnerUid) {
-  const userRef = doc(db, "users", auth.currentUser.uid);
-  const partnerRef = doc(db, "users", swapPartnerUid);
+  // Step 1: Transaction for post deletion and swaps (if applicable)
+  await runTransaction(db, async (transaction) => {
+    if (isSwap && swapPartnerUid) {
+      const userRef = doc(db, "users", auth.currentUser.uid);
+      const partnerRef = doc(db, "users", swapPartnerUid);
 
-  const userDoc = await transaction.get(userRef);
-  const partnerDoc = await transaction.get(partnerRef);
+      const userDoc = await transaction.get(userRef);
+      const partnerDoc = await transaction.get(partnerRef);
 
-  if (!userDoc.exists() || !partnerDoc.exists()) {
-    throw new Error("User or partner not found.");
+      if (!userDoc.exists() || !partnerDoc.exists()) {
+        throw new Error("User or partner not found.");
+      }
+
+      const userSwaps = (userDoc.data().swaps || 0) + 1;
+      const partnerSwaps = (partnerDoc.data().swaps || 0) + 1;
+
+      transaction.update(userRef, { swaps: userSwaps });
+      transaction.update(partnerRef, { swaps: partnerSwaps });
+    }
+
+    transaction.delete(postRef);
+  });
+
+  // Step 2: Cleanup comments and replies recursively
+  await deleteCollection(commentsCollection);
+
+  // Step 3: Delete photos from Storage
+  const deletePhotoPromises = photoUrls.map(url => {
+    const photoRef = ref(storage, url);
+    return deleteObject(photoRef).catch(err => console.error("Failed to delete photo:", err));
+  });
+  await Promise.all(deletePhotoPromises);
+
+  // Step 4: Refresh UI with immediate DOM removal
+  const postElement = document.getElementById(`post-${postId}`);
+  if (postElement) {
+    postElement.remove(); // Zap it from the DOM right away
+    console.log(`Removed post-${postId} from DOM`);
+  } else {
+    console.log(`Post-${postId} not found in DOM—already gone or never rendered`);
   }
 
-  const userSwaps = (userDoc.data().swaps || 0) + 1;
-  const partnerSwaps = (partnerDoc.data().swaps || 0) + 1;
-
-  transaction.update(userRef, { swaps: userSwaps });
-  transaction.update(partnerRef, { swaps: partnerSwaps });
+  // Clear caches and reload
+  postCache.delete(postId);
+  loadedPostIds.delete(postId);
+  PaginationState.displayedPostIds.delete(postId); // Clear from displayed set
+  totalYourPosts = 0;
+  await loadYourPosts(auth.currentUser.uid); // Refresh "Your Posts"
+  await loadPosts(communityId, true); // Full reset of community posts
+  totalCarouselPosts = 0;
+  carouselIndex = 0;
+  await loadCarouselPosts(communityId); // Refresh carousel
 }
 
-transaction.delete(postRef);
-});
-
-// Step 2: Cleanup comments and replies recursively
-await deleteCollection(commentsCollection);
-
-// Step 3: Delete photos from Storage
-const deletePhotoPromises = photoUrls.map(url => {
-const photoRef = ref(storage, url);
-return deleteObject(photoRef).catch(err => console.error("Failed to delete photo:", err));
-});
-await Promise.all(deletePhotoPromises);
-
-// Step 4: Refresh UI
-postCache.delete(postId);
-loadedPostIds.delete(postId);
-totalYourPosts = 0;
-loadYourPosts(auth.currentUser.uid);
-loadPosts(communityId, true);
-totalCarouselPosts = 0;
-carouselIndex = 0;
-loadCarouselPosts(communityId);
-}
-
-// Helper: Recursively delete a collection and its subcollections (unchanged)
+// Helper: Recursively delete a collection and its subcollections (also from your old code)
 async function deleteCollection(collectionRef, batchSize = 500) {
-const q = query(collectionRef, limit(batchSize));
-const snapshot = await getDocs(q);
+  const q = query(collectionRef, limit(batchSize));
+  const snapshot = await getDocs(q);
 
-if (snapshot.empty) return;
+  if (snapshot.empty) return;
 
-const batch = writeBatch(db);
-for (const doc of snapshot.docs) {
-const repliesCollection = collection(db, doc.ref.path, "replies");
-await deleteCollection(repliesCollection, batchSize); // Recursively delete replies
-batch.delete(doc.ref);
-}
-await batch.commit();
+  const batch = writeBatch(db);
+  for (const doc of snapshot.docs) {
+    const repliesCollection = collection(db, doc.ref.path, "replies");
+    await deleteCollection(repliesCollection, batchSize); // Recursively delete replies
+    batch.delete(doc.ref);
+  }
+  await batch.commit();
 
-if (snapshot.size === batchSize) {
-await deleteCollection(collectionRef, batchSize);
-}
+  if (snapshot.size === batchSize) {
+    await deleteCollection(collectionRef, batchSize);
+  }
 }
 
 function setupYourPostsCarousel(postId) {
@@ -4950,3 +5019,5 @@ window.getCachedUser = getCachedUser;
 window.setCachedUser = setCachedUser;
 window.fetchCurrentUserData = fetchCurrentUserData;
 window.leaveCommunity = leaveCommunity;
+window.debouncedLoadAdminReportSummary = debouncedLoadAdminReportSummary;
+window.delay = delay;
