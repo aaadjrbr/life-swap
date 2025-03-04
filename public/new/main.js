@@ -671,44 +671,72 @@ async function deleteCommunity(communityId) {
 }
 
 async function leaveCommunity(communityId) {
-  if (confirm("Are you sure you want to leave this community?")) {
-    const user = auth.currentUser;
-    if (!user) {
-      console.error("No authenticated user!");
-      return;
+  if (!confirm("Are you sure you want to leave this community?")) {
+    return;
+  }
+
+  const user = auth.currentUser;
+  if (!user) {
+    console.error("No authenticated user!");
+    alert("You must be logged in to leave a community.");
+    return;
+  }
+
+  const userRef = doc(db, "users", user.uid);
+  const memberRef = doc(db, "communities", communityId, "members", user.uid);
+
+  try {
+    // Start a batch to ensure atomic updates
+    const batch = writeBatch(db);
+
+    // Step 1: Remove the user from the community's members subcollection
+    batch.delete(memberRef);
+    console.log(`Queued deletion of member ${user.uid} from community ${communityId}`);
+
+    // Step 2: Update the user's communityIds array
+    const userDoc = await getDoc(userRef);
+    if (!userDoc.exists()) {
+      throw new Error("User document not found in Firestore");
     }
 
-    const userRef = doc(db, "users", user.uid);
-    const memberRef = doc(db, "communities", communityId, "members", user.uid);
+    const userData = userDoc.data();
+    let currentCommunityIds = userData.communityIds || [];
+    console.log("Current communityIds before leaving:", currentCommunityIds);
 
-    try {
-      const userDoc = await getDoc(userRef);
-      if (!userDoc.exists()) {
-        throw new Error("User document not found");
-      }
-
-      const currentCommunityIds = userDoc.data().communityIds || [];
-      console.log("Current communityIds:", currentCommunityIds);
-
-      const updatedCommunityIds = currentCommunityIds.filter(id => id !== communityId);
-      console.log("Updated communityIds:", updatedCommunityIds);
-
-      const batch = writeBatch(db);
-      batch.delete(memberRef);
+    // Filter out the communityId to leave
+    const updatedCommunityIds = currentCommunityIds.filter(id => id !== communityId);
+    if (currentCommunityIds.length === updatedCommunityIds.length) {
+      console.warn(`Community ID ${communityId} not found in user's communityIds array`);
+    } else {
+      console.log("Updated communityIds after leaving:", updatedCommunityIds);
       batch.update(userRef, { communityIds: updatedCommunityIds });
-
-      await batch.commit();
-      console.log(`Successfully left ${communityId}. New communityIds:`, updatedCommunityIds);
-
-      // Verify update
-      const verifyDoc = await getDoc(userRef);
-      console.log("Verified communityIds in Firestore:", verifyDoc.data().communityIds);
-
-      window.location.href = "./start.html";
-    } catch (error) {
-      console.error("Error leaving community:", error);
-      alert("Failed to leave the community. Check the console for details.");
     }
+
+    // Commit the batch
+    await batch.commit();
+    console.log(`Successfully left community ${communityId}. Updated communityIds:`, updatedCommunityIds);
+
+    // Verify the update in Firestore
+    const updatedUserDoc = await getDoc(userRef);
+    const verifiedCommunityIds = updatedUserDoc.data().communityIds || [];
+    console.log("Verified communityIds in Firestore after update:", verifiedCommunityIds);
+
+    if (!verifiedCommunityIds.includes(communityId)) {
+      console.log(`Confirmed: Community ID ${communityId} removed from user's communityIds`);
+    } else {
+      console.error(`Failed to remove community ID ${communityId} from user's communityIds`);
+      throw new Error("Verification failed: Community ID still present in user's communityIds");
+    }
+
+    // Clear cached community data to ensure fresh data on next load
+    resetCommDataCache();
+
+    // Redirect to the start page
+    alert("You have successfully left the community!");
+    window.location.href = "./start.html";
+  } catch (error) {
+    console.error("Error leaving community:", error);
+    alert(`Failed to leave the community: ${error.message}. Check the console for details.`);
   }
 }
 
