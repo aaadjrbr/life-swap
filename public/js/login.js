@@ -26,7 +26,7 @@
 
                 // Redirect to another page after successful login
                 setTimeout(() => {
-                    window.location.href = "/explore.html"; // Change this to your desired redirect URL
+                    window.location.href = "/new/start.html"; // Change this to your desired redirect URL
                 }, 2000);
             } catch (error) {
                 // Handle errors

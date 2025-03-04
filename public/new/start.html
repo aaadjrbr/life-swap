@@ -8,39 +8,40 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 <body>
-  <!-- Community Picker Modal -->
-  <div id="communityModal" class="modal hidden">
-    <div class="modal-content">
-      <h2>Welcome to Life Swap</h2>
-      <p>Pick or create a community to start swapping!</p>
+  <div class="community-picker">
+    <h1>Welcome to Life Swap</h1>
+    <p><a href="../index.html">Home</a> | <a href="#">Contact</a></p>
+    <p>Pick or create a community to start swapping!</p>
 
-      <!-- Your Communities -->
-      <div id="yourCommunities">
-        <h3>Your Communities</h3>
-        <div id="yourCommunityList"></div> <!-- Ensure this ID matches -->
-      </div>
+    <div id="yourCommunities">
+      <h3>Your Communities</h3>
+      <div id="yourCommunityList" class="scrollable"></div>
+    </div>
 
-      <!-- Search Communities -->
-      <div id="pickCommunity">
-        <input type="text" id="communitySearch" placeholder="Search by name or ID...">
-        <button id="exploreCommunitiesBtn">Explore on Map</button>
-        <div id="communityList"></div>
-      </div>
-      
-      <div id="mapModal" class="modal hidden">
-        <div class="modal-content" style="width: 90%; max-width: 600px; height: 500px;">
-          <h2>Explore Communities</h2>
-          <div id="map" style="width: 100%; height: 400px;"></div>
-          <button id="closeMapBtn">Close</button>
-        </div>
-      </div>
+    <div id="pickCommunity">
+      <input type="text" id="communitySearch" placeholder="Search by name or ID...">
+      <button id="exploreCommunitiesBtn">Explore on Map</button>
+      <br/><br/>
+      <div id="communityList" class="scrollable"></div>
+    </div>
 
-      <!-- Create New Community -->
-      <button id="createCommunityBtn">Create a New Community</button>
-      <div id="createCommunityForm" class="hidden">
+    <div id="mapModal" class="modal hidden">
+      <div class="modal-content" style="width: 100%;">
+        <h2>Explore Communities</h2>
+        <div id="map" style="width: 100%; height: 400px;"></div>
+        <button id="closeMapBtn">Close</button>
+      </div>
+    </div>
+
+    <br/><br/>
+    <button id="createCommunityBtn">Create a New Community</button>
+    <div id="createCommunityModal" class="modal hidden">
+      <div class="modal-content">
+        <h2>Create a Community</h2>
         <input type="text" id="newCommunityName" placeholder="Community Name (e.g., Seattle Swappers)">
         <input type="text" id="newCommunityLocation" placeholder="Type a city...">
-        <div id="locationSuggestions" class="suggestions"></div>
+        <div id="locationSuggestions" class="suggestions scrollable"></div>
+        <p style="color: red; font-size: 0.9em"><em>*You need to click in one of the suggestions</em></p>
         <button id="submitCommunityBtn">Create Community</button>
         <button id="cancelCreateBtn">Cancel</button>
       </div>

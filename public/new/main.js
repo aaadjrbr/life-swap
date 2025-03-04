@@ -546,91 +546,129 @@ function copyPostId(postId) {
 }
 
 async function deleteCommunity(communityId) {
-    if (!confirm("Are you sure you want to delete this community and ALL its data? This can’t be undone!")) return;
-  
-    const commRef = doc(db, "communities", communityId);
-    const subcollections = ["members", "posts"];
-    const statusElement = document.getElementById("delete-status");
-  
-    function updateStatus(message, state = "deleting") {
-      if (statusElement) {
-        statusElement.innerText = message;
-        statusElement.className = `delete-status ${state}`;
-      }
-      console.log(`Status: ${message}`);
-    }
-  
-    updateStatus("Starting deletion... Don’t leave this page!", "deleting");
-  
-    try {
-      console.log("DB instance:", db.toString());
-      console.log("Community ref:", commRef.path);
-  
-      // Check initial state
-      const initialCheck = await getDoc(commRef);
-      console.log("Before delete, doc exists:", initialCheck.exists());
-      if (initialCheck.exists()) {
-        console.log("Doc data before delete:", initialCheck.data());
-      }
-  
-      // Delete subcollections
-      for (const subName of subcollections) {
-        updateStatus(`Deleting ${subName}...`, "deleting");
-        const subRef = collection(commRef, subName);
-        const snapshot = await getDocs(subRef);
-        const totalDocs = snapshot.size;
-        console.log(`${subName} has ${totalDocs} docs`);
-  
-        if (totalDocs > 0) {
-          const batch = writeBatch(db);
-          snapshot.forEach((docSnapshot) => {
-            batch.delete(docSnapshot.ref);
-          });
-          await batch.commit();
-          console.log(`Deleted ${totalDocs} docs from ${subName}`);
-        }
-        updateStatus(`${subName} deleted (${totalDocs} docs).`, "deleting");
-      }
-  
-      // Delete main doc
-      updateStatus("Deleting main community record...", "deleting");
-      await deleteDoc(commRef);
-      console.log(`deleteDoc called on ${communityId}`);
-  
-      // Immediate check
-      const immediateCheck = await getDoc(commRef);
-      console.log("Right after deleteDoc, exists:", immediateCheck.exists());
-      if (immediateCheck.exists()) {
-        console.log("Data still there:", immediateCheck.data());
-      } else {
-        console.log("Doc gone immediately after delete");
-      }
-  
-      // Wait 2 seconds and check again ( persistence sync)
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      const finalCheck = await getDoc(commRef);
-      console.log("After 2s delay, exists:", finalCheck.exists());
-      if (finalCheck.exists()) {
-        console.error("Doc STILL exists after delay:", finalCheck.data());
-        throw new Error("Doc didn’t delete—something’s recreating it!");
-      } else {
-        console.log("Confirmed: Doc gone after delay");
-      }
-  
-      resetCommDataCache();
-      console.log("Cache cleared");
-  
-      updateStatus(`Community ${communityId} and all data deleted! Redirecting...`, "success");
-      setTimeout(() => {
-        window.location.href = "./start.html";
-      }, 2000);
-  
-    } catch (error) {
-      console.error("Delete failed:", error);
-      updateStatus(`Error: ${error.message}`, "error");
-      alert("Deletion failed—check console!");
-    }
+  if (!confirm("Are you sure you want to delete this community? This action is permanent and cannot be undone.")) {
+    return;
   }
+
+  const communityRef = doc(db, "communities", communityId);
+  const subcollections = ["members", "posts", "banAppeals", "postReports"];
+  const statusElement = document.getElementById("delete-status");
+  const bodyElement = document.body;
+  const maxRetries = 5;
+  let retryCount = 0;
+
+  function updateStatus(message, state = "in-progress") {
+    if (statusElement) {
+      statusElement.textContent = message;
+      statusElement.className = `delete-status ${state === "in-progress" ? "deleting" : state}`;
+      statusElement.style.display = "block"; // Ensure it’s visible
+    }
+    if (state === "in-progress") {
+      bodyElement.classList.add("deleting"); // Add overlay
+    } else {
+      bodyElement.classList.remove("deleting"); // Remove overlay
+    }
+    console.log(`[DeleteCommunity] ${message}`);
+  }
+
+  updateStatus("Initiating community deletion process... Please wait.", "in-progress");
+
+  try {
+    console.log("[DeleteCommunity] Firestore instance:", db.toString());
+    console.log("[DeleteCommunity] Community reference path:", communityRef.path);
+
+    // Verify initial state
+    const initialDoc = await getDoc(communityRef);
+    console.log("[DeleteCommunity] Pre-deletion check - Document exists:", initialDoc.exists());
+    if (initialDoc.exists()) {
+      console.log("[DeleteCommunity] Pre-deletion document data:", initialDoc.data());
+    } else {
+      updateStatus("Community does not exist. Deletion unnecessary.", "success");
+      return;
+    }
+
+    // Core deletion logic in a transaction
+    async function executeDeletion() {
+      const deletionStartTime = Date.now();
+      console.log("[DeleteCommunity] Executing deletion transaction at:", new Date().toISOString());
+
+      await runTransaction(db, async (transaction) => {
+        const communityDoc = await transaction.get(communityRef);
+        if (!communityDoc.exists()) {
+          console.log("[DeleteCommunity] Document not found during transaction - skipping.");
+          return;
+        }
+
+        // Delete all subcollections
+        for (const subcollectionName of subcollections) {
+          console.log(`[DeleteCommunity] Processing subcollection: ${subcollectionName}`);
+          const subcollectionRef = collection(communityRef, subcollectionName);
+          const subcollectionSnapshot = await getDocs(subcollectionRef);
+          console.log(`[DeleteCommunity] ${subcollectionName} contains ${subcollectionSnapshot.size} documents`);
+          subcollectionSnapshot.forEach((docSnapshot) => {
+            transaction.delete(docSnapshot.ref);
+          });
+          console.log(`[DeleteCommunity] Queued ${subcollectionSnapshot.size} documents in ${subcollectionName} for deletion`);
+        }
+
+        // Delete the main community document
+        transaction.delete(communityRef);
+        console.log("[DeleteCommunity] Main community document queued for deletion");
+      });
+
+      console.log("[DeleteCommunity] Transaction completed in:", (Date.now() - deletionStartTime) / 1000, "seconds");
+    }
+
+    // Perform the deletion
+    updateStatus("Deleting community data...");
+    await executeDeletion();
+
+    // Verify deletion with retries
+    while (retryCount < maxRetries) {
+      const postDeletionCheck = await getDoc(communityRef);
+      console.log(`[DeleteCommunity] Verification ${retryCount + 1} - Post-deletion check - Exists:`, postDeletionCheck.exists());
+      if (!postDeletionCheck.exists()) {
+        console.log("[DeleteCommunity] Document successfully removed - verifying persistence...");
+      } else {
+        console.log("[DeleteCommunity] Document still present:", postDeletionCheck.data());
+      }
+
+      // Wait and recheck
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      const finalVerification = await getDoc(communityRef);
+      console.log(`[DeleteCommunity] Verification ${retryCount + 1} - After 2s delay - Exists:`, finalVerification.exists());
+
+      if (!finalVerification.exists()) {
+        console.log("[DeleteCommunity] Deletion confirmed - Document permanently removed.");
+        break;
+      } else {
+        console.error("[DeleteCommunity] Document reappeared with data:", finalVerification.data());
+        retryCount++;
+        updateStatus(`Deletion incomplete - Retrying (${retryCount}/${maxRetries})...`);
+        console.log(`[DeleteCommunity] Retry ${retryCount} initiated at:`, new Date().toISOString());
+        await executeDeletion();
+      }
+    }
+
+    if (retryCount >= maxRetries) {
+      throw new Error("Unable to delete community - Document persists after maximum retries.");
+    }
+
+    // Final cleanup
+    resetCommDataCache();
+    console.log("[DeleteCommunity] Local cache cleared.");
+
+    updateStatus(`Community ${communityId} successfully deleted. Redirecting...`, "success");
+    setTimeout(() => {
+      window.location.href = "./start.html";
+    }, 2000);
+
+  } catch (error) {
+    console.error("[DeleteCommunity] Deletion process failed:", error);
+    updateStatus(`Error: ${error.message}`, "error");
+    alert("Community deletion failed. Please review the console for details.");
+  }
+}
 
 async function leaveCommunity(communityId) {
 if (confirm("Are you sure you want to leave this community?")) {
