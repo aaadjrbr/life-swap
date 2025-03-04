@@ -1161,25 +1161,29 @@ document.body.removeChild(form);
 let reportSummaryCache = null;
 
 async function loadAdminReportSummary(userId) {
-const commData = await getCommData();
-const isAdmin = commData.admins?.includes(userId) || commData.creatorId === userId;
+  if (!userId) {
+    console.error("No userId provided to loadAdminReportSummary");
+    return;
+  }
+  const commData = await getCommData();
+  const isAdmin = commData.admins?.includes(userId) || commData.creatorId === userId;
 
-let summaryDiv = document.getElementById("admin-report-summary");
-if (!summaryDiv) {
-summaryDiv = document.createElement("div");
-summaryDiv.id = "admin-report-summary";
-summaryDiv.className = "admin-report-summary";
-document.querySelector(".community-page").insertBefore(summaryDiv, document.querySelector(".top-bar").nextSibling);
-}
+  let summaryDiv = document.getElementById("admin-report-summary");
+  if (!summaryDiv) {
+    summaryDiv = document.createElement("div");
+    summaryDiv.id = "admin-report-summary";
+    summaryDiv.className = "admin-report-summary";
+    document.querySelector(".community-page").insertBefore(summaryDiv, document.querySelector(".top-bar").nextSibling);
+  }
 
-if (reportSummaryCache) {
-summaryDiv.innerHTML = reportSummaryCache.html;
-attachSummaryListeners(summaryDiv, isAdmin, userId);
-console.log("Loaded report summary from cache!");
-return;
-}
+  if (reportSummaryCache) {
+    summaryDiv.innerHTML = reportSummaryCache.html;
+    attachSummaryListeners(summaryDiv, isAdmin, userId);
+    console.log("Loaded report summary from cache!");
+    return;
+  }
 
-await updateReportSummaryUI(summaryDiv, userId, isAdmin);
+  await updateReportSummaryUI(summaryDiv, userId, isAdmin);
 }
 
 async function updateReportSummaryUI(summaryDiv, userId, isAdmin) {
@@ -1268,7 +1272,7 @@ function attachSummaryListeners(summaryDiv, isAdmin, userId) {
           const appealsSnapshot = await getDocs(collection(db, "communities", communityId, "banAppeals"));
           const commData = (await getDoc(doc(db, "communities", communityId))).data() || { banReasons: {} };
           if (!appealsSnapshot.empty) {
-            html += "<br><h3>User Appeals (Bans)</h3>";
+            html += "<br><h3>User Appeals (Bans/Posts)</h3>";
             for (const doc of appealsSnapshot.docs) {
               const appeal = doc.data();
               const userData = await fetchUserData(appeal.userId);
@@ -4135,7 +4139,7 @@ bannedList.before(messagesDiv);
 const appealsRef = collection(db, "communities", communityId, "banAppeals");
 const appealsSnapshot = await getDocs(appealsRef);
 if (!appealsSnapshot.empty) {
-messagesDiv.innerHTML = "<h3>Appeal Messages</h3>";
+messagesDiv.innerHTML = "<h3>Appeal Messages (Bans/Posts)</h3>";
 for (const doc of appealsSnapshot.docs) {
   const appeal = doc.data();
   const userData = await fetchUserData(appeal.userId);
