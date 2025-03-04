@@ -912,70 +912,103 @@ async function compressImage(file) {
 }
 
 function setupLocationAutocomplete() {
-const locationInput = document.getElementById("postLocation");
-const suggestionsDiv = document.getElementById("postLocationSuggestions");
-
-if (!locationInput || !suggestionsDiv) {
-console.error("Location input or suggestions div not found!");
-return;
-}
-
-//console.log("Setting up location autocomplete for postLocation");
-
-locationInput.oninput = debounce(async () => {
-const query = locationInput.value.trim();
-console.log(`Querying Nominatim with: ${query}`);
-if (query.length < 2) {
-  suggestionsDiv.innerHTML = "";
-  suggestionsDiv.classList.add("hidden");
-  return;
-}
-
-const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`;
-try {
-  const response = await fetch(url, { headers: { "User-Agent": "LifeSwap/1.0 (your-email@example.com)" } });
-  const data = await response.json();
-  console.log("Nominatim response:", data);
-
-  suggestionsDiv.innerHTML = "";
-  if (data.length > 0) {
-    suggestionsDiv.classList.remove("hidden");
-    const inputRect = locationInput.getBoundingClientRect();
-    suggestionsDiv.style.position = "absolute";
-    suggestionsDiv.style.left = `${inputRect.left}px`;
-    suggestionsDiv.style.top = `${inputRect.bottom + window.scrollY}px`;
-    suggestionsDiv.style.width = `${inputRect.width}px`; // Match input width
-
-    data.forEach((place) => {
-      const city = place.address.city || place.address.town || place.address.village || place.address.hamlet || "";
-      const state = place.address.state || "";
-      const country = place.address.country || "";
-      const region = state ? state : country;
-      const displayName = city && region ? `${city}, ${region}` : place.display_name;
-
-      const suggestion = document.createElement("div");
-      suggestion.classList.add("suggestion-item");
-      suggestion.textContent = displayName;
-      suggestion.onclick = () => {
-        locationInput.value = displayName;
-        locationInput.dataset.lat = place.lat;
-        locationInput.dataset.lon = place.lon;
+    const locationInput = document.getElementById("postLocation");
+    const suggestionsDiv = document.getElementById("postLocationSuggestions");
+  
+    if (!locationInput || !suggestionsDiv) {
+      console.error("Location input or suggestions div not found!");
+      return;
+    }
+  
+    const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+    const CACHE_LIMIT = 50;
+    const cache = new Map(); // In-memory cache with expiration
+  
+    function setCache(key, value) {
+      if (cache.size >= CACHE_LIMIT) {
+        const firstKey = cache.keys().next().value; // Remove oldest entry
+        cache.delete(firstKey);
+      }
+      cache.set(key, { value, expiry: Date.now() + CACHE_TTL });
+    }
+  
+    function getCache(key) {
+      const cached = cache.get(key);
+      if (!cached) return null;
+      if (Date.now() > cached.expiry) {
+        cache.delete(key); // Remove expired cache
+        return null;
+      }
+      return cached.value;
+    }
+  
+    async function fetchLocationSuggestions(query) {
+      const cachedData = getCache(query);
+      if (cachedData) return cachedData;
+  
+      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`;
+  
+      try {
+        const response = await fetch(url, { headers: { "User-Agent": "LifeSwap/1.0 (your-email@example.com)" } });
+        if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+        const data = await response.json();
+        setCache(query, data);
+        return data;
+      } catch (error) {
+        console.error("Error fetching location suggestions:", error);
+        return [];
+      }
+    }
+  
+    async function handleInput() {
+      const query = locationInput.value.trim();
+      if (query.length < 2) {
         suggestionsDiv.innerHTML = "";
         suggestionsDiv.classList.add("hidden");
-        console.log(`Selected: ${displayName}, lat: ${place.lat}, lon: ${place.lon}`);
-      };
-      suggestionsDiv.appendChild(suggestion);
-    });
-    console.log("Suggestions displayed for postLocationSuggestions");
-  } else {
-    suggestionsDiv.classList.add("hidden");
-  }
-} catch (error) {
-  console.error("Error fetching location suggestions:", error);
-  suggestionsDiv.classList.add("hidden");
-}
-}, 300);
-}
+        return;
+      }
+  
+      suggestionsDiv.innerHTML = "<div class='loading'>Searching...</div>"; // Loading state
+  
+      const data = await fetchLocationSuggestions(query);
+      displaySuggestions(data);
+    }
+  
+    function displaySuggestions(data) {
+      suggestionsDiv.innerHTML = "";
+      if (data.length === 0) {
+        suggestionsDiv.classList.add("hidden");
+        return;
+      }
+  
+      suggestionsDiv.classList.remove("hidden");
+      const fragment = document.createDocumentFragment();
+  
+      data.forEach((place) => {
+        const city = place.address.city || place.address.town || place.address.village || "";
+        const state = place.address.state || "";
+        const country = place.address.country || "";
+        const displayName = city && state ? `${city}, ${state}` : place.display_name;
+  
+        const suggestion = document.createElement("div");
+        suggestion.classList.add("suggestion-item");
+        suggestion.textContent = displayName;
+        suggestion.onclick = () => {
+          locationInput.value = displayName;
+          locationInput.dataset.lat = place.lat;
+          locationInput.dataset.lon = place.lon;
+          suggestionsDiv.innerHTML = "";
+          suggestionsDiv.classList.add("hidden");
+        };
+  
+        fragment.appendChild(suggestion);
+      });
+  
+      suggestionsDiv.appendChild(fragment);
+    }
+  
+    locationInput.oninput = debounce(handleInput, 500);
+  } 
 
 async function editCommunityName(communityId) {
 const commRef = doc(db, "communities", communityId);
