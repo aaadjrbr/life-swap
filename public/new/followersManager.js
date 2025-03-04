@@ -547,6 +547,8 @@ async function loadSearchFollowingBatch(userId, snapshot, reset = false, totalFo
   updateSearchFollowerButtons(userId, totalFollowingCount, loadedFollowingCount, "following");
 }
 
+let activitiesCache = new Map(); // Key: userId, Value: { communities: [], timestamp: Date }
+
 async function viewUserActivities(userId) {
   const modal = document.getElementById("userActivitiesModal");
   const activitiesList = document.getElementById("activitiesList");
@@ -560,67 +562,105 @@ async function viewUserActivities(userId) {
   modal.style.display = "flex";
   modal.classList.remove("hidden");
 
+  const cached = activitiesCache.get(userId);
+  if (cached && (Date.now() - cached.timestamp < 15 * 60 * 1000)) { // 15-minute expiration
+    renderActivities(userId, cached.communities, activitiesList, modal);
+  } else {
+    await fetchAndCacheActivities(userId, activitiesList, modal);
+  }
+
+  // Single close listener
+  const closeBtn = document.getElementById("closeActivitiesBtn");
+  closeBtn.removeEventListener("click", closeModalHandler);
+  closeBtn.addEventListener("click", closeModalHandler);
+}
+
+async function fetchAndCacheActivities(userId, activitiesList, modal) {
   const userRef = doc(db, "users", userId);
   let userDoc;
   try {
     userDoc = await getDoc(userRef);
-    if (!userDoc.exists()) {
-      throw new Error("User document not found");
-    }
+    if (!userDoc.exists()) throw new Error("User not found");
   } catch (error) {
-    console.error("Error fetching user data:", error);
+    console.error("Error fetching user:", error);
     activitiesList.innerHTML = "<p>Failed to load user data.</p>";
     return;
   }
 
   const username = userDoc.data().username || "Unknown User";
-  console.log(`Fetched username for user ${userId}: ${username}`);
-
   const header = modal.querySelector("h2") || document.createElement("h2");
   if (!modal.querySelector("h2")) modal.querySelector(".modal-content").prepend(header);
   header.innerHTML = `${username} communities`;
 
-  if (!userDoc.data().communityIds || userDoc.data().communityIds.length === 0) {
-    activitiesList.innerHTML = "<p>User is not in any communities.</p>";
-  } else {
-    const communityIds = userDoc.data().communityIds;
-    console.log(`User ${userId} communityIds:`, communityIds);
+  const communityIds = userDoc.data().communityIds || [];
+  const communities = await fetchCommunities(userId, communityIds, activitiesList);
+  // Update cache with fresh data
+  activitiesCache.set(userId, { communities, timestamp: Date.now() });
+  renderActivities(userId, communities, activitiesList, modal);
+}
 
-    const communities = [];
-    for (const commId of communityIds) {
-      const commRef = doc(db, "communities", commId);
-      const memberRef = doc(db, "communities", commId, "members", userId);
-      
-      const [commDoc, memberDoc] = await Promise.all([getDoc(commRef), getDoc(memberRef)]);
-      
-      if (commDoc.exists() && memberDoc.exists()) {
-        // User is still a member if their doc exists in the subcollection
-        communities.push({ id: commId, name: commDoc.data().name || "Unnamed Community" });
-        console.log(`User ${userId} confirmed in community ${commId}`);
-      } else {
-        console.log(`User ${userId} not in community ${commId} (comm exists: ${commDoc.exists()}, member exists: ${memberDoc.exists()})`);
-      }
-    }
-
-    activitiesList.innerHTML = communities.length > 0
-      ? communities.map(comm => `
-          <div class="community-item">
-            <span>${comm.name}</span>
-            <button class="copy-id-btn" data-id="${comm.id}">Copy ID</button>
-          </div>
-        `).join("")
-      : "<p>No valid communities found.</p>";
-
-    activitiesList.querySelectorAll(".copy-id-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        navigator.clipboard.writeText(btn.dataset.id)
-          .then(() => console.log(`Copied community ID: ${btn.dataset.id}`))
-          .catch(err => console.error("Failed to copy ID:", err));
-      });
-    });
+async function fetchCommunities(userId, communityIds, activitiesList) {
+  if (communityIds.length === 0) {
+    return [];
   }
 
-  document.getElementById("closeActivitiesBtn").addEventListener("click", () => closeModal("userActivitiesModal"));
+  const communities = [];
+  for (const commId of communityIds) {
+    try {
+      const [commDoc, memberDoc] = await Promise.all([
+        getDoc(doc(db, "communities", commId)),
+        getDoc(doc(db, "communities", commId, "members", userId))
+      ]);
+      if (commDoc.exists() && memberDoc.exists()) {
+        communities.push({ id: commId, name: commDoc.data().name || "Unnamed Community" });
+      }
+    } catch (error) {
+      console.error(`Failed to fetch community ${commId}:`, error);
+    }
+  }
+  return communities;
+}
+
+function renderActivities(userId, communities, activitiesList, modal) {
+  activitiesList.innerHTML = communities.length > 0
+    ? communities.map(comm => `
+        <div class="community-item">
+          <span>${comm.name}</span>
+          <button class="copy-id-btn" data-id="${comm.id}">Copy ID</button>
+        </div>
+      `).join("")
+    : "<p>No communities found.</p>";
+
+  activitiesList.querySelectorAll(".copy-id-btn").forEach(btn => {
+    btn.onclick = () => {
+      navigator.clipboard.writeText(btn.dataset.id)
+        .then(() => console.log(`Copied community ID: ${btn.dataset.id}`))
+        .catch(err => console.error("Failed to copy ID:", err));
+    };
+  });
+
+  // Add or update refresh button
+  let refreshBtn = modal.querySelector(".refresh-btn");
+  if (!refreshBtn) {
+    refreshBtn = document.createElement("button");
+    refreshBtn.textContent = "Refresh";
+    refreshBtn.className = "refresh-btn";
+    modal.querySelector(".modal-content").appendChild(refreshBtn);
+  }
+  refreshBtn.onclick = async () => {
+    activitiesList.innerHTML = '<div class="loading">Refreshing...</div>';
+    const communityIds = (await getDoc(doc(db, "users", userId))).data().communityIds || [];
+    const freshCommunities = await fetchCommunities(userId, communityIds, activitiesList);
+    // Explicitly update cache with refreshed data
+    activitiesCache.set(userId, { communities: freshCommunities, timestamp: Date.now() });
+    renderActivities(userId, freshCommunities, activitiesList, modal);
+  };
+}
+
+function closeModalHandler() {
+  // Optionally clear cache on close if you want a fresh start next time
+  // activitiesCache.clear();
+  closeModal("userActivitiesModal");
 }
 
 window.viewFollowers = viewFollowers;
