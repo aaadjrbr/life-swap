@@ -229,12 +229,13 @@ async function generateShareContent(communityId) {
         const pdfDoc = new jsPDF();
 
         pdfDoc.setFontSize(16);
-        pdfDoc.text("Join Our Community!", 20, 20);
+        pdfDoc.text("Join Our Community Today!", 20, 20);
+        pdfDoc.text("Swap things you don’t need for things you do need. (Time/Skills/Items)", 20, 30);
         pdfDoc.setFontSize(12);
-        pdfDoc.text(`Community: ${commData.name}`, 20, 30);
-        pdfDoc.text(`Location: ${locationName}`, 20, 40);
-        pdfDoc.addImage(qrImageData, "PNG", 20, 50, 50, 50);
-        pdfDoc.text("Scan to join Life Swap!", 20, 110);
+        pdfDoc.text(`Community: ${commData.name}`, 20, 40);
+        pdfDoc.text(`Location: ${locationName}`, 20, 50);
+        pdfDoc.addImage(qrImageData, "PNG", 20, 60, 60, 60);
+        pdfDoc.text("Scan to join Life Swap!", 20, 130);
 
         pdfDoc.setFontSize(10);
         pdfDoc.text(
@@ -247,7 +248,7 @@ async function generateShareContent(communityId) {
             "creating a network that thrives on mutual support, one swap at a time."
           ],
           20,
-          130,
+          140,
           { maxWidth: 170 }
         );
 
