@@ -862,113 +862,105 @@ isOwner
 }
 
 async function reportPost(postId) {
-const user = auth.currentUser;
-const reportsRef = collection(db, "communities", communityId, "postReports");
-const existingReportQ = query(reportsRef, where("postId", "==", postId), where("reporterId", "==", user.uid));
-const existingReportSnapshot = await getDocs(existingReportQ);
+  const user = auth.currentUser;
+  const reportsRef = collection(db, "communities", communityId, "postReports");
+  const existingReportQ = query(reportsRef, where("postId", "==", postId), where("reporterId", "==", user.uid));
+  const existingReportSnapshot = await getDocs(existingReportQ);
 
-if (!existingReportSnapshot.empty) {
-alert("You’ve already reported this post!");
-return;
-}
-
-if (!confirm("Are you sure you want to report this post?")) {
-return; // User canceled
-}
-
-// Add the report to Firestore
-await addDoc(reportsRef, {
-postId,
-reporterId: user.uid,
-communityId,
-timestamp: new Date()
-});
-
-alert("Post reported!");
-refreshReportSummary(); // Add this
-
-// Update UI without refreshing
-const postDiv = document.getElementById(`post-${postId}`);
-const reportStatus = await getPostReportStatus(postId);
-const commData = await getCommData();
-const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
-
-if (postDiv) {
-// Update report-related UI
-const existingWarning = postDiv.querySelector(".report-warning");
-const existingAdminControls = postDiv.querySelector(".admin-report-controls");
-
-// Remove existing report UI elements if they exist
-if (existingWarning) existingWarning.remove();
-if (existingAdminControls) existingAdminControls.remove();
-
-// Hide post for non-admins/non-owners if it has 2+ reports
-if (reportStatus.isHidden) {
-  postDiv.remove(); // Remove from community posts if hidden
-  return;
-}
-
-// Add warning for post owner
-if (reportStatus.isOwner) {
-  if (reportStatus.reportCount === 1) {
-    postDiv.insertAdjacentHTML(
-      "beforeend",
-      `<div class="report-warning" id="warning-${postId}">
-        This post has 1 report. One more will hide it from others—check it in the summary above!
-      </div>`
-    );
-  } else if (reportStatus.reportCount >= 2) {
-    postDiv.insertAdjacentHTML(
-      "beforeend",
-      `<div class="report-warning" id="warning-${postId}">
-        This post has ${reportStatus.reportCount} reports and is hidden from others. Appeal in the summary above!
-      </div>`
-    );
+  if (!existingReportSnapshot.empty) {
+    alert("You’ve already reported this post!");
+    return;
   }
-}
 
-// Add admin controls if user is an admin
-if (isAdmin && reportStatus.reportCount > 0) {
-  postDiv.insertAdjacentHTML(
-    "beforeend",
-    `<div class="admin-report-controls" id="admin-controls-${postId}">
-      This post received ${reportStatus.reportCount} report${reportStatus.reportCount > 1 ? 's' : ''}.
-      <button class="remove-post-btn" data-post-id="${postId}">Remove Post</button>
-      <button class="clear-reports-btn" data-post-id="${postId}">Clear Reports</button>
-    </div>`
-  );
-  postDiv.querySelector(`.remove-post-btn[data-post-id="${postId}"]`).addEventListener("click", () => deletePost(postId));
-  postDiv.querySelector(`.clear-reports-btn[data-post-id="${postId}"]`).addEventListener("click", () => clearReports(postId));
-}
-}
-
-// Update "Your Posts" section if visible
-const yourPostDiv = document.querySelector(`#yourPostsList #post-${postId}`);
-if (yourPostDiv) {
-const existingWarning = yourPostDiv.querySelector(".report-warning");
-if (existingWarning) existingWarning.remove();
-
-if (reportStatus.isOwner) {
-  if (reportStatus.reportCount === 1) {
-    yourPostDiv.insertAdjacentHTML(
-      "beforeend",
-      `<div class="report-warning" id="warning-${postId}">
-        This post has 1 report. One more will hide it from others—check it in the summary above!
-      </div>`
-    );
-  } else if (reportStatus.reportCount >= 2) {
-    yourPostDiv.insertAdjacentHTML(
-      "beforeend",
-      `<div class="report-warning" id="warning-${postId}">
-        This post has ${reportStatus.reportCount} reports and is hidden from others. Appeal in the summary above!
-      </div>`
-    );
+  if (!confirm("Are you sure you want to report this post?")) {
+    return;
   }
-}
-}
 
-// Update admin summary
-await loadAdminReportSummary();
+  await addDoc(reportsRef, {
+    postId,
+    reporterId: user.uid,
+    communityId,
+    timestamp: new Date()
+  });
+
+  alert("Post reported!");
+  refreshReportSummary(user.uid); // Pass user.uid here
+
+  // Update UI without refreshing
+  const postDiv = document.getElementById(`post-${postId}`);
+  const reportStatus = await getPostReportStatus(postId);
+  const commData = await getCommData();
+  const isAdmin = commData.admins?.includes(user.uid) || commData.creatorId === user.uid;
+
+  if (postDiv) {
+    const existingWarning = postDiv.querySelector(".report-warning");
+    const existingAdminControls = postDiv.querySelector(".admin-report-controls");
+
+    if (existingWarning) existingWarning.remove();
+    if (existingAdminControls) existingAdminControls.remove();
+
+    if (reportStatus.isHidden) {
+      postDiv.remove();
+      return;
+    }
+
+    if (reportStatus.isOwner) {
+      if (reportStatus.reportCount === 1) {
+        postDiv.insertAdjacentHTML(
+          "beforeend",
+          `<div class="report-warning" id="warning-${postId}">
+            This post has 1 report. One more will hide it from others—check it in the summary above!
+          </div>`
+        );
+      } else if (reportStatus.reportCount >= 2) {
+        postDiv.insertAdjacentHTML(
+          "beforeend",
+          `<div class="report-warning" id="warning-${postId}">
+            This post has ${reportStatus.reportCount} reports and is hidden from others. Appeal in the summary above!
+          </div>`
+        );
+      }
+    }
+
+    if (isAdmin && reportStatus.reportCount > 0) {
+      postDiv.insertAdjacentHTML(
+        "beforeend",
+        `<div class="admin-report-controls" id="admin-controls-${postId}">
+          This post received ${reportStatus.reportCount} report${reportStatus.reportCount > 1 ? 's' : ''}.
+          <button class="remove-post-btn" data-post-id="${postId}">Remove Post</button>
+          <button class="clear-reports-btn" data-post-id="${postId}">Clear Reports</button>
+        </div>`
+      );
+      postDiv.querySelector(`.remove-post-btn[data-post-id="${postId}"]`).addEventListener("click", () => deletePost(postId));
+      postDiv.querySelector(`.clear-reports-btn[data-post-id="${postId}"]`).addEventListener("click", () => clearReports(postId));
+    }
+  }
+
+  const yourPostDiv = document.querySelector(`#yourPostsList #post-${postId}`);
+  if (yourPostDiv) {
+    const existingWarning = yourPostDiv.querySelector(".report-warning");
+    if (existingWarning) existingWarning.remove();
+
+    if (reportStatus.isOwner) {
+      if (reportStatus.reportCount === 1) {
+        yourPostDiv.insertAdjacentHTML(
+          "beforeend",
+          `<div class="report-warning" id="warning-${postId}">
+            This post has 1 report. One more will hide it from others—check it in the summary above!
+          </div>`
+        );
+      } else if (reportStatus.reportCount >= 2) {
+        yourPostDiv.insertAdjacentHTML(
+          "beforeend",
+          `<div class="report-warning" id="warning-${postId}">
+            This post has ${reportStatus.reportCount} reports and is hidden from others. Appeal in the summary above!
+          </div>`
+        );
+      }
+    }
+  }
+
+  await loadAdminReportSummary(user.uid); // Pass user.uid here too
 }
 
 async function clearReports(postId) {
@@ -1232,157 +1224,167 @@ attachSummaryListeners(summaryDiv, isAdmin, userId);
 
 // Keep attachSummaryListeners as-is (from last update)
 function attachSummaryListeners(summaryDiv, isAdmin, userId) {
-const details = summaryDiv.querySelector("details");
-details.addEventListener("toggle", async () => {
-const contentDiv = summaryDiv.querySelector("#report-content");
-if (details.open) {
-  contentDiv.innerHTML = '<div class="loading">Loading...</div>';
-  details.querySelector("summary").textContent = `${reportSummaryCache.html.match(/\(\d+\)/) || ''}Hide Reports`;
+  const details = summaryDiv.querySelector("details");
+  details.addEventListener("toggle", async () => {
+    const contentDiv = summaryDiv.querySelector("#report-content");
+    if (details.open) {
+      contentDiv.innerHTML = '<div class="loading">Loading...</div>';
+      details.querySelector("summary").textContent = `${reportSummaryCache.html.match(/\(\d+\)/) || ''}Hide Reports`;
 
-  if (isAdmin) {
-    const reportsRef = collection(db, "communities", communityId, "postReports");
-    const reportsQ = query(reportsRef);
-    const reportsSnapshot = await getDocs(reportsQ);
-    if (reportsSnapshot.empty) {
-      contentDiv.innerHTML = "<p>No reported posts!</p>";
-    } else {
-      const reportCounts = {};
-      reportsSnapshot.forEach(doc => {
-        const postId = doc.data().postId;
-        reportCounts[postId] = (reportCounts[postId] || 0) + 1;
-      });
-
-      contentDiv.innerHTML = "<h3>Reported Posts</h3>";
-      for (const [postId, count] of Object.entries(reportCounts)) {
-        const postRef = doc(db, "communities", communityId, "posts", postId);
-        const postDoc = await getDoc(postRef);
-        const postData = postDoc.exists() ? postDoc.data() : null;
-        const title = postData ? postData.title : "Deleted Post";
-        const ownerData = postData ? await fetchUserData(postData.userId) : { name: "Unknown" };
-
-        contentDiv.innerHTML += `
-          <div class="report-item" data-post-id="${postId}">
-            <span>Post "${title}" by ${ownerData.name} (ID: ${postId}) - ${count} report${count > 1 ? 's' : ''}</span>
-            <button class="remove-post-btn" data-post-id="${postId}">Remove Post</button>
-            <button class="clear-reports-btn" data-post-id="${postId}">Clear Reports</button>
-          </div>
-        `;
-      }
-
-      const appealsRef = collection(db, "communities", communityId, "banAppeals");
-      const appealsSnapshot = await getDocs(appealsRef);
-      const commDoc = await getDoc(doc(db, "communities", communityId));
-      const commData = commDoc.exists() ? commDoc.data() : { banReasons: {} };
-
-      if (!appealsSnapshot.empty) {
-        contentDiv.innerHTML += "<br><h3>User Appeals (Bans)</h3>";
-        for (const doc of appealsSnapshot.docs) {
-          const appeal = doc.data();
-          const userData = await fetchUserData(appeal.userId);
-          const displayName = `${userData.name || "Unknown"} (${appeal.username || "unknown"})`;
-          const banReason = commData.banReasons?.[appeal.userId] || "No reason provided";
-          contentDiv.innerHTML += `
-            <div class="appeal-item" data-appeal-id="${doc.id}">
-              <p><strong>${displayName}:</strong> "${appeal.message}" (Ban Reason: ${banReason})</p>
-              <span>${new Date(appeal.timestamp.toDate()).toLocaleString()}</span>
-              <button class="delete-appeal-btn" data-appeal-id="${doc.id}">Delete</button>
-            </div>
-          `;
-        }
-      } else {
-        contentDiv.innerHTML += "<h3>User Appeals</h3><p>No appeals yet, bro.</p>";
-      }
-    }
-  } else {
-    const reportsRef = collection(db, "communities", communityId, "postReports");
-    const userPostsQ = query(collection(db, "communities", communityId, "posts"), where("userId", "==", userId));
-    const userPostsSnapshot = await getDocs(userPostsQ);
-    const reportedPosts = [];
-
-    for (const postDoc of userPostsSnapshot.docs) {
-      const postId = postDoc.id;
-      const reportQ = query(reportsRef, where("postId", "==", postId));
-      const reportSnapshot = await getDocs(reportQ);
-      if (!reportSnapshot.empty) {
-        reportedPosts.push({ postId, title: postDoc.data().title, count: reportSnapshot.size });
-      }
-    }
-
-    if (reportedPosts.length === 0) {
-      contentDiv.innerHTML = "<p>No reports on your posts!</p>";
-    } else {
-      contentDiv.innerHTML = "<h3>Your Reported Posts</h3>";
-      for (const post of reportedPosts) {
-        const appealQ = query(collection(db, "communities", communityId, "banAppeals"), where("userId", "==", userId), where("postId", "==", post.postId));
-        const appealSnapshot = await getDocs(appealQ);
-        const hasAppeal = !appealSnapshot.empty;
-
-        contentDiv.innerHTML += `
-          <div class="report-item" data-post-id="${post.postId}">
-            <p>Post "${post.title}" (ID: ${post.postId}) has ${post.count} report${post.count > 1 ? 's' : ''}</p>
-            ${post.count >= 2 ? '<p style="color: red;">Hidden from others!</p>' : ''}
-            <div class="appeal-container" data-post-id="${post.postId}">
-              ${!hasAppeal ? `
-                <form class="appeal-form" data-post-id="${post.postId}">
-                  <textarea placeholder="Appeal to admins (e.g., 'Not breaking rules because...')" required></textarea>
-                  <button type="submit">Send Appeal</button>
-                </form>
-              ` : '<p>Appeal sent, waiting on admins.</p>'}
-            </div>
-          </div>
-        `;
-      }
-    }
-  }
-
-  if (isAdmin) {
-    contentDiv.querySelectorAll(".remove-post-btn").forEach(btn => {
-      btn.addEventListener("click", () => deletePost(btn.dataset.postId));
-    });
-    contentDiv.querySelectorAll(".clear-reports-btn").forEach(btn => {
-      btn.addEventListener("click", () => clearReports(btn.dataset.postId));
-    });
-    contentDiv.querySelectorAll(".delete-appeal-btn").forEach(btn => {
-      btn.addEventListener("click", async () => {
-        if (confirm("Delete this appeal, bro?")) {
-          const appealId = btn.dataset.appealId;
-          await deleteDoc(doc(db, "communities", communityId, "banAppeals", appealId));
-          const appealItem = btn.closest(".appeal-item");
-          if (appealItem) appealItem.remove();
-          refreshReportSummary(userId);
-        }
-      });
-    });
-  } else {
-    contentDiv.querySelectorAll(".appeal-form").forEach(form => {
-      form.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const postId = form.dataset.postId;
-        const message = form.querySelector("textarea").value.trim();
-        if (message) {
-          const userDoc = await getDoc(doc(db, "users", userId));
-          const userData = userDoc.exists() ? userDoc.data() : { username: `user_${userId.slice(0, 8)}` };
-
-          await addDoc(collection(db, "communities", communityId, "banAppeals"), {
-            userId: userId,
-            username: userData.username,
-            postId,
-            message,
-            timestamp: new Date()
+      if (isAdmin) {
+        let html = "";
+        const reportsRef = collection(db, "communities", communityId, "postReports");
+        const reportsSnapshot = await getDocs(query(reportsRef));
+        if (reportsSnapshot.empty) {
+          html += "<p>No reported posts!</p>";
+        } else {
+          html += "<h3>Reported Posts</h3>";
+          const reportCounts = {};
+          reportsSnapshot.forEach(doc => {
+            const postId = doc.data().postId;
+            reportCounts[postId] = (reportCounts[postId] || 0) + 1;
           });
-          alert("Appeal sent!");
-          const appealContainer = form.closest(".appeal-container");
-          appealContainer.innerHTML = '<p>Appeal sent, waiting on admins.</p>';
-          refreshReportSummary(userId);
+          for (const [postId, count] of Object.entries(reportCounts)) {
+            try {
+              const postDoc = await getDoc(doc(db, "communities", communityId, "posts", postId));
+              const postData = postDoc.exists() ? postDoc.data() : null;
+              const title = postData ? postData.title : "Deleted Post";
+              const ownerData = postData ? await fetchUserData(postData.userId) : { name: "Unknown" };
+              html += `
+                <div class="report-item" data-post-id="${postId}">
+                  <span>Post "${title}" by ${ownerData.name} (ID: ${postId}) - ${count} report${count > 1 ? 's' : ''}</span>
+                  <button class="remove-post-btn" data-post-id="${postId}">Remove Post</button>
+                  <button class="clear-reports-btn" data-post-id="${postId}">Clear Reports</button>
+                </div>
+              `;
+            } catch (error) {
+              console.error(`Error loading post ${postId}:`, error);
+              html += `<p>Error loading post ${postId}</p>`;
+            }
+          }
         }
-      });
-    });
-  }
-} else {
-  details.querySelector("summary").textContent = `${reportSummaryCache.html.match(/\(\d+\)/) || ''}See Reports`;
-  contentDiv.innerHTML = "";
-}
-});
+
+        try {
+          const appealsSnapshot = await getDocs(collection(db, "communities", communityId, "banAppeals"));
+          const commData = (await getDoc(doc(db, "communities", communityId))).data() || { banReasons: {} };
+          if (!appealsSnapshot.empty) {
+            html += "<br><h3>User Appeals (Bans)</h3>";
+            for (const doc of appealsSnapshot.docs) {
+              const appeal = doc.data();
+              const userData = await fetchUserData(appeal.userId);
+              const displayName = `${userData.name || "Unknown"} (${appeal.username || "unknown"})`;
+              const banReason = commData.banReasons?.[appeal.userId] || "No reason provided";
+              html += `
+                <div class="appeal-item" data-appeal-id="${doc.id}">
+                  <p><strong>${displayName}:</strong> "${appeal.message}" (Ban Reason: ${banReason})</p>
+                  <span>${new Date(appeal.timestamp.toDate()).toLocaleString()}</span>
+                  <button class="delete-appeal-btn" data-appeal-id="${doc.id}">Delete</button>
+                </div>
+              `;
+            }
+          } else {
+            html += "<br><h3>User Appeals</h3><p>No appeals yet.</p>";
+          }
+        } catch (error) {
+          console.error("Error loading appeals:", error);
+          html += "<br><p>Error loading appeals!</p>";
+        }
+
+        contentDiv.innerHTML = html;
+
+        contentDiv.querySelectorAll(".remove-post-btn").forEach(btn => {
+          btn.addEventListener("click", () => deletePost(btn.dataset.postId));
+        });
+        contentDiv.querySelectorAll(".clear-reports-btn").forEach(btn => {
+          btn.addEventListener("click", () => clearReports(btn.dataset.postId));
+        });
+        contentDiv.querySelectorAll(".delete-appeal-btn").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            if (confirm("Delete this appeal, bro?")) {
+              await deleteDoc(doc(db, "communities", communityId, "banAppeals", btn.dataset.appealId));
+              refreshReportSummary(userId);
+            }
+          });
+        });
+      } else {
+        // Non-admin logic
+        let html = "";
+        const reportsRef = collection(db, "communities", communityId, "postReports");
+        const userPostsQ = query(collection(db, "communities", communityId, "posts"), where("userId", "==", userId));
+        try {
+          const userPostsSnapshot = await getDocs(userPostsQ);
+          const reportedPosts = [];
+
+          for (const postDoc of userPostsSnapshot.docs) {
+            const postId = postDoc.id;
+            const reportQ = query(reportsRef, where("postId", "==", postId));
+            const reportSnapshot = await getDocs(reportQ);
+            if (!reportSnapshot.empty) {
+              reportedPosts.push({ postId, title: postDoc.data().title, count: reportSnapshot.size });
+            }
+          }
+
+          if (reportedPosts.length === 0) {
+            html = "<p>No reports on your posts!</p>";
+          } else {
+            html = "<h3>Your Reported Posts</h3>";
+            for (const post of reportedPosts) {
+              const appealQ = query(collection(db, "communities", communityId, "banAppeals"), where("userId", "==", userId), where("postId", "==", post.postId));
+              const appealSnapshot = await getDocs(appealQ);
+              const hasAppeal = !appealSnapshot.empty;
+
+              html += `
+                <div class="report-item" data-post-id="${post.postId}">
+                  <p>Post "${post.title}" (ID: ${post.postId}) has ${post.count} report${post.count > 1 ? 's' : ''}</p>
+                  ${post.count >= 2 ? '<p style="color: red;">Hidden from others!</p>' : ''}
+                  <div class="appeal-container" data-post-id="${post.postId}">
+                    ${!hasAppeal ? `
+                      <form class="appeal-form" data-post-id="${post.postId}">
+                        <textarea placeholder="Appeal to admins (e.g., 'Not breaking rules because...')" required></textarea>
+                        <button type="submit">Send Appeal</button>
+                      </form>
+                    ` : '<p>Appeal sent, waiting on admins.</p>'}
+                  </div>
+                </div>
+              `;
+            }
+          }
+        } catch (error) {
+          console.error("Error loading user reports:", error);
+          html = "<p>Error loading your reports!</p>";
+        }
+
+        contentDiv.innerHTML = html;
+
+        // Attach appeal form listeners
+        contentDiv.querySelectorAll(".appeal-form").forEach(form => {
+          form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const postId = form.dataset.postId;
+            const message = form.querySelector("textarea").value.trim();
+            if (message) {
+              const userDoc = await getDoc(doc(db, "users", userId));
+              const userData = userDoc.exists() ? userDoc.data() : { username: `user_${userId.slice(0, 8)}` };
+
+              await addDoc(collection(db, "communities", communityId, "banAppeals"), {
+                userId: userId,
+                username: userData.username,
+                postId,
+                message,
+                timestamp: new Date()
+              });
+              alert("Appeal sent!");
+              form.closest(".appeal-container").innerHTML = '<p>Appeal sent, waiting on admins.</p>';
+              refreshReportSummary(userId);
+            }
+          });
+        });
+      }
+    } else {
+      details.querySelector("summary").textContent = `${reportSummaryCache.html.match(/\(\d+\)/) || ''}See Reports`;
+      contentDiv.innerHTML = "";
+    }
+  });
 }
 
 function refreshReportSummary(userId) {
