@@ -56,7 +56,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-// Efficient checker for communityIds - ⚠️ IMPORTANT: This checks for communities ids that doesn't exist in cases ownwer delete communities wihtout user having a chance to leave, so the ID of the community might remains, so this function deletes it.
+// -------- ⚠️ IMPORTANT -------------------
+// Efficient checker for communityIds - ⚠️ IMPORTANT (READ): This checks for communities ids that doesn't exist in cases ownwer delete communities wihtout user having a chance to leave, so the ID of the community might remains, so this function deletes it.
 async function checkAndCleanCommunityIds(userId, userData) {
   const communityIds = userData.communityIds || [];
   if (communityIds.length === 0) return userData;
@@ -79,6 +80,7 @@ async function checkAndCleanCommunityIds(userId, userData) {
   }
   return userData;
 }
+// -------- ⚠️ IMPORTANT -------------------
 
 function setupCommunityPicker(userData) {
   loadYourCommunities(userData);
@@ -183,7 +185,7 @@ async function generateShareContent(communityId) {
 
     const { latitude, longitude } = commData.location;
     const locationName = await getLocationName(latitude, longitude);
-    const qrUrl = `${window.location.origin}/join.html?id=${communityId}`;
+    const qrUrl = `${window.location.origin}/new/join.html?id=${communityId}`;
 
     // Generate QR code
     const qrCanvas = document.createElement("canvas");
