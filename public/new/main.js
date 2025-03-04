@@ -63,21 +63,21 @@ userDataCache[key] = { value, expiry: Date.now() + USER_CACHE_TTL };
 console.log(`Cached ${key}, expires at ${new Date(Date.now() + USER_CACHE_TTL)}`);
 }
 let currentPage = 1;
-const postsPerPage = 10;
+export const postsPerPage = 10;
 let lastMemberDoc = null;
 let lastBannedDoc = null;
-let carouselPostIds = []; // Store post IDs for navigation
+export let carouselPostIds = []; // Store post IDs for navigation
 let carouselIndex = 0; // Current start index
-const postsPerCarousel = window.innerWidth < 768 ? 2 : 4; // 2 on mobile, 4 on desktop
-let isLoading = false;
+export const postsPerCarousel = window.innerWidth < 768 ? 2 : 4; // 2 on mobile, 4 on desktop
+export let isLoading = false;
 let lastPostDoc = null;
 let totalPosts = 0;
-const postsPerLoad = 10; // 10 posts per scroll
+export const postsPerLoad = 10; // 10 posts per scroll
 let loadedPostIds = new Set();
 let initialPostsLoaded = false;
 let isSearching = false; // Flag to track if we're in search mode
 let postCache = new Map(); // Add this near your other globals (e.g., after userDataCache)
-const POSTS_PER_LOAD = 20; // Bigger batch size
+export const POSTS_PER_LOAD = 20; // Bigger batch size
 let isFetching = false; 
 let allNotifications = [];
 let lastDoc = null;
@@ -186,14 +186,33 @@ if (isBanned) {
   });
   return;
 } else if (!isMember) {
-  document.querySelector(".community-page").innerHTML = `
-    <div class="not-member-message">
-      <h2>You aren't a member of this community.</h2>
-      <p><a href="./start.html">Go back</a></p>
-    </div>
-  `;
-  return;
-}
+    document.querySelector(".community-page").innerHTML = `
+      <div class="not-member-message">
+        <h2>You aren't a member of this community.</h2>
+        <p>Copy the community ID and go back to join! We are waiting for you!</p>
+        <p><strong>Community ID:</strong> <span id="communityIdText">${communityId}</span> 
+           <a href="./start.html" id="copyAndJoinLink">Copy ID and Join</a></p>
+        <p><a href="./start.html">Go back</a></p>
+      </div>
+    `;
+    
+    // Add event listener to copy the community ID when the link is clicked
+    document.getElementById("copyAndJoinLink").addEventListener("click", (e) => {
+      e.preventDefault(); // Prevent immediate navigation
+      navigator.clipboard.writeText(communityId)
+        .then(() => {
+          alert("Community ID copied to clipboard! Head back to join.");
+          setTimeout(() => {
+            window.location.href = "./start.html"; // Navigate after a short delay
+          }, 500);
+        })
+        .catch((err) => {
+          console.error("Failed to copy community ID:", err);
+          alert("Failed to copy ID. Please copy it manually: " + communityId);
+        });
+    });
+    return;
+  }
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") {
