@@ -3248,168 +3248,200 @@ img.src = photoUrls[currentIndex];
 }
 
 async function viewProfile(uid) {
-const modal = document.getElementById("viewProfileModal");
-const nameEl = document.getElementById("profileName");
-const photoEl = document.getElementById("profilePhoto");
-const detailsEl = document.getElementById("profileDetails");
-const actionsEl = document.getElementById("profileActions");
+  const modal = document.getElementById("viewProfileModal");
+  const nameEl = document.getElementById("profileName");
+  const photoEl = document.getElementById("profilePhoto");
+  const detailsEl = document.getElementById("profileDetails");
+  const actionsEl = document.getElementById("profileActions");
 
-actionsEl.innerHTML = '<div class="loading">Loading...</div>';
-detailsEl.innerHTML = '';
-nameEl.textContent = '';
-photoEl.src = "https://via.placeholder.com/40";
-document.querySelectorAll(".modal:not(#viewProfileModal)").forEach(m => m.style.display = "none");
-modal.style.display = "flex";
-modal.classList.remove("hidden");
+  actionsEl.innerHTML = '<div class="loading">Loading...</div>';
+  detailsEl.innerHTML = '';
+  nameEl.textContent = '';
+  photoEl.src = "https://via.placeholder.com/40";
+  document.querySelectorAll(".modal:not(#viewProfileModal)").forEach(m => m.style.display = "none");
+  modal.style.display = "flex";
+  modal.classList.remove("hidden");
 
-if (typeof auth === "undefined") {
-console.error("Firebase auth is not defined. Ensure Firebase is initialized.");
-actionsEl.innerHTML = "<p>Error: Authentication system not loaded.</p>";
-return;
-}
-
-const currentUser = await new Promise((resolve) => {
-const unsubscribe = auth.onAuthStateChanged((user) => {
-  unsubscribe();
-  resolve(user);
-});
-});
-
-if (!currentUser) {
-console.error("No authenticated user found. User must be signed in.");
-actionsEl.innerHTML = "<p>Please sign in to view profiles.</p>";
-return;
-}
-
-const userData = await fetchUserData(uid);
-const commData = await getCommData();
-const isCreator = commData.creatorId === auth.currentUser.uid;
-const isAdmin = commData.admins?.includes(auth.currentUser.uid);
-const isSelf = uid === auth.currentUser.uid;
-const isProfileAdmin = commData.admins?.includes(uid) || commData.creatorId === uid;
-
-nameEl.textContent = `${userData.name} (${userData.swaps || 0} swaps)`;
-photoEl.src = userData.profilePhoto || "https://via.placeholder.com/40";
-
-const userRef = doc(db, "users", uid);
-const userDoc = await getDoc(userRef);
-let followerCount = userDoc.data()?.followerCount || 0;
-let followingCount = userDoc.data()?.followingCount || 0;
-const joinedAt = userDoc.data()?.joinedAt ? new Date(userDoc.data().joinedAt.toDate()).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : "N/A";
-
-const followersRef = collection(db, "users", uid, "followers");
-const followingQuery = query(followersRef, where("followerId", "==", currentUser.uid));
-let followingSnapshot;
-try {
-followingSnapshot = await getDocs(followingQuery);
-} catch (error) {
-console.error("Error fetching follow status:", error);
-if (error.name === "BloomFilterError") {
-  console.warn("BloomFilter error, retrying with default:", error);
-  followingSnapshot = await getDocs(followingQuery);
-} else {
-  throw error;
-}
-}
-const isFollowing = !followingSnapshot.empty;
-console.log(`Is following ${uid}? ${isFollowing}`);
-
-detailsEl.innerHTML = `
-<p id="followerCount">Followers: ${followerCount} / Following: ${followingCount}</p>
-<p>Member since: ${joinedAt}</p>
-${isProfileAdmin ? '<span class="admin-tag">Admin</span>' : ''}
-`;
-actionsEl.innerHTML = "";
-
-if (!isSelf) {
-actionsEl.innerHTML += `
-  <button id="followBtn" class="${isFollowing ? 'unfollow' : 'follow'}" data-uid="${uid}">
-    ${isFollowing ? 'Unfollow' : 'Follow'}
-  </button>
-`;
-}
-
-const requestsRef = collection(db, "users", uid, "profileRequests");
-const requestQ = query(requestsRef, where("requesterId", "==", auth.currentUser.uid));
-const requestSnapshot = await getDocs(requestQ);
-const request = requestSnapshot.docs[0]?.data();
-const requestId = requestSnapshot.docs[0]?.id;
-
-if (isSelf || (request && request.status === "accepted") || isCreator || isAdmin) {
-detailsEl.innerHTML += `
-  <p>Email: ${userData.email || "Not set"}</p>
-  <p>City: ${userData.city || "Not set"}</p>
-  <p>Phone: ${userData.phone || "Not set"}</p>
-`;
-if (request && request.status === "accepted" && !isSelf && !isAdmin && !isCreator) {
-  actionsEl.innerHTML += `<button class="revoke-btn" id="revokeProfileBtn" data-request-id="${requestId}">Revoke Profile Access</button>`;
-}
-actionsEl.innerHTML += `<button id="chatBtn" data-uid="${uid}">Chat</button>`;
-} else if (request && request.status === "pending") {
-actionsEl.innerHTML = `<button class="request-btn pending" id="requestProfileBtn" data-request-id="${requestId}" disabled>Pending...</button>`;
-} else if (!isSelf) {
-actionsEl.innerHTML += `<button class="request-btn" id="requestProfileBtn">Ask to see full profile</button>`;
-}
-
-if (isCreator) {
-if (commData.members.includes(uid) && !commData.admins?.includes(uid) && uid !== commData.creatorId) {
-  actionsEl.innerHTML += `<button class="admin-btn" id="makeAdminBtn">Make Admin</button>`;
-}
-if (commData.members.includes(uid) && commData.admins?.includes(uid) && uid !== commData.creatorId) {
-  actionsEl.innerHTML += `<button class="remove-admin-btn" id="removeAdminBtn">Remove Admin</button>`;
-}
-if (commData.members.includes(uid) && uid !== commData.creatorId) {
-  actionsEl.innerHTML += `<button class="ban-btn" id="banUserBtn">Ban User</button>`;
-}
-} else if (isAdmin && uid !== commData.creatorId) {
-if (commData.members.includes(uid)) {
-  actionsEl.innerHTML += `<button class="ban-btn" id="banUserBtn">Ban User</button>`;
-}
-}
-
-const requestBtn = document.getElementById("requestProfileBtn");
-if (requestBtn && !requestBtn.disabled) {
-requestBtn.addEventListener("click", () => requestProfileAccess(uid));
-}
-if (document.getElementById("makeAdminBtn")) {
-document.getElementById("makeAdminBtn").addEventListener("click", async () => {
-  await makeAdmin(communityId, uid);
-  await viewProfile(uid);
-});
-}
-if (document.getElementById("removeAdminBtn")) {
-document.getElementById("removeAdminBtn").addEventListener("click", async () => {
-  await removeAdmin(communityId, uid);
-  await viewProfile(uid);
-});
-}
-if (document.getElementById("banUserBtn")) {
-document.getElementById("banUserBtn").addEventListener("click", () => banUser(communityId, uid));
-}
-if (document.getElementById("revokeProfileBtn")) {
-document.getElementById("revokeProfileBtn").addEventListener("click", () => revokeProfileAccess(uid, document.getElementById("revokeProfileBtn").dataset.requestId));
-}
-const chatBtn = document.getElementById("chatBtn");
-if (chatBtn) {
-chatBtn.addEventListener("click", () => {
-  if (typeof window.openChat === "function") {
-    closeModal("viewProfileModal");
-    window.openChat(uid, communityId);
-  } else {
-    console.error("Chat functionality not loaded yet!");
-    alert("Chat system isn’t ready. Try again in a sec.");
+  if (typeof auth === "undefined") {
+    console.error("Firebase auth is not defined. Ensure Firebase is initialized.");
+    actionsEl.innerHTML = "<p>Error: Authentication system not loaded.</p>";
+    return;
   }
-});
-}
-const followBtn = document.getElementById("followBtn");
-if (followBtn) {
-followBtn.addEventListener("click", async () => {
-  console.log("Follow button clicked for UID:", uid);
-  await toggleFollow(uid, followBtn);
-  // Refresh UI with updated counts
-  //await viewProfile(uid);
-});
-}
+
+  const currentUser = await new Promise((resolve) => {
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+      unsubscribe();
+      resolve(user);
+    });
+  });
+
+  if (!currentUser) {
+    console.error("No authenticated user found. User must be signed in.");
+    actionsEl.innerHTML = "<p>Please sign in to view profiles.</p>";
+    return;
+  }
+
+  const userData = await fetchUserData(uid);
+  const commData = await getCommData();
+  const isCreator = commData.creatorId === auth.currentUser.uid;
+  const isAdmin = commData.admins?.includes(auth.currentUser.uid);
+  const isSelf = uid === auth.currentUser.uid;
+  const isProfileAdmin = commData.admins?.includes(uid) || commData.creatorId === uid;
+
+  // Check for verified status
+  const userRef = doc(db, "users", uid);
+  const userDoc = await getDoc(userRef);
+  const userDocData = userDoc.data();
+  const isVerified = userDocData && 
+    userDocData.username && userDocData.username.trim() !== "" &&
+    userDocData.name && userDocData.name.trim() !== "" &&
+    userDocData.city && userDocData.city.trim() !== "" &&
+    userDocData.phone && userDocData.phone.trim() !== "" &&
+    userDocData.profilePhoto && userDocData.profilePhoto.trim() !== "" &&
+    userDocData.email && userDocData.email.trim() !== "";
+  
+  nameEl.innerHTML = `${userData.name} (🤝 ${userData.swaps || 0} swaps)${isVerified ? ' <span title="Users verified have completed their profile checks." class="verified-badge"> Verified</span>' : ''}`;
+  photoEl.src = userData.profilePhoto || "https://via.placeholder.com/40";
+
+  // Add click to enlarge profile photo
+  photoEl.style.cursor = "pointer"; // Hint it’s clickable
+  photoEl.addEventListener("click", () => {
+    // Create overlay if it doesn’t exist
+    let overlay = document.getElementById("profilePhotoOverlay");
+    if (!overlay) {
+      overlay = document.createElement("div");
+      overlay.id = "profilePhotoOverlay";
+      overlay.className = "photo-overlay";
+      document.body.appendChild(overlay);
+    }
+
+    // Set up the enlarged image
+    overlay.innerHTML = `<img src="${photoEl.src}" alt="Enlarged Profile Photo" class="enlarged-photo">`;
+    overlay.style.display = "flex";
+
+    // Click to dismiss
+    overlay.addEventListener("click", () => {
+      overlay.style.display = "none";
+    });
+  });
+
+  const followerCount = userDocData?.followerCount || 0;
+  const followingCount = userDocData?.followingCount || 0;
+  const joinedAt = userDocData?.joinedAt ? new Date(userDocData.joinedAt.toDate()).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : "N/A";
+
+  const followersRef = collection(db, "users", uid, "followers");
+  const followingQuery = query(followersRef, where("followerId", "==", currentUser.uid));
+  let followingSnapshot;
+  try {
+    followingSnapshot = await getDocs(followingQuery);
+  } catch (error) {
+    console.error("Error fetching follow status:", error);
+    if (error.name === "BloomFilterError") {
+      console.warn("BloomFilter error, retrying with default:", error);
+      followingSnapshot = await getDocs(followingQuery);
+    } else {
+      throw error;
+    }
+  }
+  const isFollowing = !followingSnapshot.empty;
+  console.log(`Is following ${uid}? ${isFollowing}`);
+
+  detailsEl.innerHTML = `
+    <p id="followerCount">Followers: ${followerCount} / Following: ${followingCount}</p>
+    <p>Member since: ${joinedAt}</p>
+    ${isProfileAdmin ? '<span class="admin-tag">Admin</span>' : ''}
+  `;
+  actionsEl.innerHTML = "";
+
+  if (!isSelf) {
+    actionsEl.innerHTML += `
+      <button id="followBtn" class="${isFollowing ? 'unfollow' : 'follow'}" data-uid="${uid}">
+        ${isFollowing ? 'Unfollow' : 'Follow'}
+      </button>
+    `;
+  }
+
+  const requestsRef = collection(db, "users", uid, "profileRequests");
+  const requestQ = query(requestsRef, where("requesterId", "==", auth.currentUser.uid));
+  const requestSnapshot = await getDocs(requestQ);
+  const request = requestSnapshot.docs[0]?.data();
+  const requestId = requestSnapshot.docs[0]?.id;
+
+  if (isSelf || (request && request.status === "accepted") || isCreator || isAdmin) {
+    detailsEl.innerHTML += `
+      <p>Email: ${userData.email || "Not set"}</p>
+      <p>City: ${userData.city || "Not set"}</p>
+      <p>Phone: ${userData.phone || "Not set"}</p>
+    `;
+    if (request && request.status === "accepted" && !isSelf && !isAdmin && !isCreator) {
+      actionsEl.innerHTML += `<button class="revoke-btn" id="revokeProfileBtn" data-request-id="${requestId}">Revoke Profile Access</button>`;
+    }
+    actionsEl.innerHTML += `<button id="chatBtn" data-uid="${uid}">Chat</button>`;
+  } else if (request && request.status === "pending") {
+    actionsEl.innerHTML = `<button class="request-btn pending" id="requestProfileBtn" data-request-id="${requestId}" disabled>Pending...</button>`;
+  } else if (!isSelf) {
+    actionsEl.innerHTML += `<button class="request-btn" id="requestProfileBtn">Ask to see full profile</button>`;
+  }
+
+  if (isCreator) {
+    if (commData.members.includes(uid) && !commData.admins?.includes(uid) && uid !== commData.creatorId) {
+      actionsEl.innerHTML += `<button class="admin-btn" id="makeAdminBtn">Make Admin</button>`;
+    }
+    if (commData.members.includes(uid) && commData.admins?.includes(uid) && uid !== commData.creatorId) {
+      actionsEl.innerHTML += `<button class="remove-admin-btn" id="removeAdminBtn">Remove Admin</button>`;
+    }
+    if (commData.members.includes(uid) && uid !== commData.creatorId) {
+      actionsEl.innerHTML += `<button class="ban-btn" id="banUserBtn">Ban User</button>`;
+    }
+  } else if (isAdmin && uid !== commData.creatorId) {
+    if (commData.members.includes(uid)) {
+      actionsEl.innerHTML += `<button class="ban-btn" id="banUserBtn">Ban User</button>`;
+    }
+  }
+
+  const requestBtn = document.getElementById("requestProfileBtn");
+  if (requestBtn && !requestBtn.disabled) {
+    requestBtn.addEventListener("click", () => requestProfileAccess(uid));
+  }
+  if (document.getElementById("makeAdminBtn")) {
+    document.getElementById("makeAdminBtn").addEventListener("click", async () => {
+      await makeAdmin(communityId, uid);
+      await viewProfile(uid);
+    });
+  }
+  if (document.getElementById("removeAdminBtn")) {
+    document.getElementById("removeAdminBtn").addEventListener("click", async () => {
+      await removeAdmin(communityId, uid);
+      await viewProfile(uid);
+    });
+  }
+  if (document.getElementById("banUserBtn")) {
+    document.getElementById("banUserBtn").addEventListener("click", () => banUser(communityId, uid));
+  }
+  if (document.getElementById("revokeProfileBtn")) {
+    document.getElementById("revokeProfileBtn").addEventListener("click", () => revokeProfileAccess(uid, document.getElementById("revokeProfileBtn").dataset.requestId));
+  }
+  const chatBtn = document.getElementById("chatBtn");
+  if (chatBtn) {
+    chatBtn.addEventListener("click", () => {
+      if (typeof window.openChat === "function") {
+        closeModal("viewProfileModal");
+        window.openChat(uid, communityId);
+      } else {
+        console.error("Chat functionality not loaded yet!");
+        alert("Chat system isn’t ready. Try again in a sec.");
+      }
+    });
+  }
+  const followBtn = document.getElementById("followBtn");
+  if (followBtn) {
+    followBtn.addEventListener("click", async () => {
+      console.log("Follow button clicked for UID:", uid);
+      await toggleFollow(uid, followBtn);
+      // Refresh UI with updated counts
+      //await viewProfile(uid);
+    });
+  }
 }
 
 async function toggleFollow(targetUid, button) {
