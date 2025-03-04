@@ -548,71 +548,79 @@ async function loadSearchFollowingBatch(userId, snapshot, reset = false, totalFo
 }
 
 async function viewUserActivities(userId) {
-const modal = document.getElementById("userActivitiesModal");
-const activitiesList = document.getElementById("activitiesList");
+  const modal = document.getElementById("userActivitiesModal");
+  const activitiesList = document.getElementById("activitiesList");
 
-if (!modal || !activitiesList) {
-  console.error("User activities modal elements missing!");
-  return;
-}
-
-activitiesList.innerHTML = '<div class="loading">Loading...</div>';
-modal.style.display = "flex";
-modal.classList.remove("hidden");
-
-// Fetch user data to get username
-const userRef = doc(db, "users", userId);
-let userDoc;
-try {
-  userDoc = await getDoc(userRef);
-  if (!userDoc.exists()) {
-    throw new Error("User document not found");
+  if (!modal || !activitiesList) {
+    console.error("User activities modal elements missing!");
+    return;
   }
-} catch (error) {
-  console.error("Error fetching user data:", error);
-  activitiesList.innerHTML = "<p>Failed to load user data.</p>";
-  return;
-}
 
-const username = userDoc.data().username || "Unknown User"; // Fallback if username missing
-console.log(`Fetched username for user ${userId}: ${username}`);
+  activitiesList.innerHTML = '<div class="loading">Loading...</div>';
+  modal.style.display = "flex";
+  modal.classList.remove("hidden");
 
-// Update modal header with username
-const header = modal.querySelector("h2") || document.createElement("h2");
-if (!modal.querySelector("h2")) modal.querySelector(".modal-content").prepend(header);
-header.innerHTML = `${username} communities`;
-
-// Fetch communities
-if (!userDoc.data().communityIds || userDoc.data().communityIds.length === 0) {
-  activitiesList.innerHTML = "<p>User is not in any communities.</p>";
-} else {
-  const communityIds = userDoc.data().communityIds;
-  const communities = [];
-  for (const commId of communityIds) {
-    const commRef = doc(db, "communities", commId);
-    const commDoc = await getDoc(commRef);
-    if (commDoc.exists()) {
-      communities.push({ id: commId, name: commDoc.data().name || "Unnamed Community" });
+  const userRef = doc(db, "users", userId);
+  let userDoc;
+  try {
+    userDoc = await getDoc(userRef);
+    if (!userDoc.exists()) {
+      throw new Error("User document not found");
     }
+  } catch (error) {
+    console.error("Error fetching user data:", error);
+    activitiesList.innerHTML = "<p>Failed to load user data.</p>";
+    return;
   }
 
-  activitiesList.innerHTML = communities.map(comm => `
-    <div class="community-item">
-      <span>${comm.name}</span>
-      <button class="copy-id-btn" data-id="${comm.id}">Copy ID</button>
-    </div>
-  `).join("") || "<p>No valid communities found.</p>";
+  const username = userDoc.data().username || "Unknown User";
+  console.log(`Fetched username for user ${userId}: ${username}`);
 
-  activitiesList.querySelectorAll(".copy-id-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      navigator.clipboard.writeText(btn.dataset.id)
-        .then(() => console.log(`Copied community ID: ${btn.dataset.id}`))
-        .catch(err => console.error("Failed to copy ID:", err));
+  const header = modal.querySelector("h2") || document.createElement("h2");
+  if (!modal.querySelector("h2")) modal.querySelector(".modal-content").prepend(header);
+  header.innerHTML = `${username} communities`;
+
+  if (!userDoc.data().communityIds || userDoc.data().communityIds.length === 0) {
+    activitiesList.innerHTML = "<p>User is not in any communities.</p>";
+  } else {
+    const communityIds = userDoc.data().communityIds;
+    console.log(`User ${userId} communityIds:`, communityIds);
+
+    const communities = [];
+    for (const commId of communityIds) {
+      const commRef = doc(db, "communities", commId);
+      const memberRef = doc(db, "communities", commId, "members", userId);
+      
+      const [commDoc, memberDoc] = await Promise.all([getDoc(commRef), getDoc(memberRef)]);
+      
+      if (commDoc.exists() && memberDoc.exists()) {
+        // User is still a member if their doc exists in the subcollection
+        communities.push({ id: commId, name: commDoc.data().name || "Unnamed Community" });
+        console.log(`User ${userId} confirmed in community ${commId}`);
+      } else {
+        console.log(`User ${userId} not in community ${commId} (comm exists: ${commDoc.exists()}, member exists: ${memberDoc.exists()})`);
+      }
+    }
+
+    activitiesList.innerHTML = communities.length > 0
+      ? communities.map(comm => `
+          <div class="community-item">
+            <span>${comm.name}</span>
+            <button class="copy-id-btn" data-id="${comm.id}">Copy ID</button>
+          </div>
+        `).join("")
+      : "<p>No valid communities found.</p>";
+
+    activitiesList.querySelectorAll(".copy-id-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        navigator.clipboard.writeText(btn.dataset.id)
+          .then(() => console.log(`Copied community ID: ${btn.dataset.id}`))
+          .catch(err => console.error("Failed to copy ID:", err));
+      });
     });
-  });
-}
+  }
 
-document.getElementById("closeActivitiesBtn").addEventListener("click", () => closeModal("userActivitiesModal"));
+  document.getElementById("closeActivitiesBtn").addEventListener("click", () => closeModal("userActivitiesModal"));
 }
 
 window.viewFollowers = viewFollowers;

@@ -77,7 +77,7 @@ function setupCommunityPicker(userData) {
   }
 }
 
-async function loadYourCommunities(userData) {
+async function loadYourCommunities() {
   const yourCommunityList = document.getElementById("yourCommunityList");
   if (!yourCommunityList) {
     console.error("yourCommunityList not found!");
@@ -86,33 +86,46 @@ async function loadYourCommunities(userData) {
   yourCommunityList.innerHTML = "Loading your communities...";
 
   try {
-    const communityIds = userData.communityIds || [];
+    const userRef = doc(db, "users", auth.currentUser.uid);
+    const userDoc = await getDoc(userRef);
+    const communityIds = userDoc.data().communityIds || [];
+    console.log("Raw communityIds:", communityIds);
+
     if (communityIds.length === 0) {
       yourCommunityList.innerHTML = "<p>You’re not in any communities yet.</p>";
       return;
     }
 
-    const cacheKey = `yourCommunities_${communityIds.join(",")}`;
+    // Filter by actual membership
+    const validCommunities = [];
+    for (const commId of communityIds) {
+      const memberRef = doc(db, "communities", commId, "members", auth.currentUser.uid);
+      const memberDoc = await getDoc(memberRef);
+      if (memberDoc.exists()) {
+        const commRef = doc(db, "communities", commId);
+        const commDoc = await getDoc(commRef);
+        if (commDoc.exists()) {
+          validCommunities.push({ id: commId, ...commDoc.data() });
+        }
+      } else {
+        console.log(`User not in members of ${commId}, skipping`);
+      }
+    }
+
+    if (validCommunities.length === 0) {
+      yourCommunityList.innerHTML = "<p>You’re not in any communities yet.</p>";
+      return;
+    }
+
+    const cacheKey = `yourCommunities_${validCommunities.map(c => c.id).join(",")}`;
     const cached = firestoreCache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_EXPIRY_MS) {
       renderYourCommunities(cached.data);
       return;
     }
 
-    const chunks = [];
-    for (let i = 0; i < communityIds.length; i += 10) {
-      chunks.push(communityIds.slice(i, i + 10));
-    }
-
-    const communities = [];
-    for (const chunk of chunks) {
-      const q = query(collection(db, "communities"), where("__name__", "in", chunk));
-      const snapshot = await getDocs(q);
-      snapshot.forEach(doc => communities.push({ id: doc.id, ...doc.data() }));
-    }
-
-    firestoreCache.set(cacheKey, { data: communities, timestamp: Date.now() });
-    renderYourCommunities(communities);
+    firestoreCache.set(cacheKey, { data: validCommunities, timestamp: Date.now() });
+    renderYourCommunities(validCommunities);
   } catch (error) {
     console.error("Loading your communities failed:", error);
     yourCommunityList.innerHTML = "<p>Failed to load communities, bro!</p>";
@@ -228,13 +241,22 @@ async function loadCommunities(searchQuery = "") {
         : "";
       communities.slice(0, 10).forEach((comm) => {
         const distanceText = comm.distance !== undefined ? ` (${comm.distance.toFixed(1)} miles away)` : "";
-        communityList.innerHTML += `
-          <div>
-            <span>${comm.name}${distanceText}</span>
-            <button class="join-btn" data-community-id="${comm.id}">Join</button>
-          </div>
+        const div = document.createElement("div");
+        div.innerHTML = `
+          <span>${comm.name}${distanceText}</span>
+          <button class="join-btn" data-community-id="${comm.id}">Join</button>
         `;
+        communityList.appendChild(div);
       });
+    
+      // Attach listeners
+      communityList.querySelectorAll(".join-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          console.log(`Join button clicked for ${btn.dataset.communityId}`);
+          joinCommunity(btn.dataset.communityId);
+        });
+      });
+    
       const retryBtn = document.getElementById("retryGeoBtn");
       if (retryBtn) retryBtn.onclick = () => loadCommunities();
     }
@@ -251,13 +273,18 @@ window.joinCommunity = async function(communityId) {
     return;
   }
 
+  console.log(`Starting joinCommunity for ${communityId}, user ${user.uid}`);
+
   try {
     const userRef = doc(db, "users", user.uid);
     const commRef = doc(db, "communities", communityId);
     const memberRef = doc(db, "communities", communityId, "members", user.uid);
 
+    console.log("Refs:", { userRef: userRef.path, commRef: commRef.path, memberRef: memberRef.path });
+
     const [commDoc, userDoc] = await Promise.all([getDoc(commRef), getDoc(userRef)]);
     if (!commDoc.exists()) {
+      console.error(`Community ${communityId} doesn’t exist`);
       alert("This community ain’t real, bro!");
       return;
     }
@@ -266,21 +293,41 @@ window.joinCommunity = async function(communityId) {
       return;
     }
 
+    console.log("Community data:", commDoc.data());
     const communityIds = userDoc.data().communityIds || [];
-    if (communityIds.includes(communityId)) {
-      goToCommunity(communityId);
-      return; // Avoid unnecessary writes
-    }
+    console.log("Current communityIds:", communityIds);
 
     const batch = writeBatch(db);
-    communityIds.push(communityId);
-    batch.update(userRef, { communityIds });
-    batch.set(memberRef, { joinedAt: new Date() }, { merge: true });
+
+    // Always update communityIds if not present
+    if (!communityIds.includes(communityId)) {
+      communityIds.push(communityId);
+      batch.update(userRef, { communityIds });
+      console.log(`Added ${communityId} to communityIds`);
+    } else {
+      console.log(`Already in communityIds: ${communityId}`);
+    }
+
+    // Always set member subcollection (like old code)
+    batch.set(memberRef, { joinedAt: new Date(), userId: user.uid }, { merge: true });
+    console.log("Setting member at:", memberRef.path);
+
     await batch.commit();
+    console.log("Batch committed successfully!");
+
+    // Verify
+    const memberDoc = await getDoc(memberRef);
+    if (memberDoc.exists()) {
+      console.log("User added to members:", memberDoc.data());
+    } else {
+      console.error("User NOT added to members subcollection!");
+      alert("Joined, but membership didn’t stick, bro!");
+    }
+
     goToCommunity(communityId);
   } catch (error) {
-    console.error("Join failed:", error);
-    alert("Join crashed, bro!");
+    console.error("Join failed:", error.message, error.code);
+    alert("Join crashed, bro! Check console.");
   }
 };
 
@@ -577,12 +624,20 @@ async function loadCommunitiesInView(map, markers) {
         const marker = L.marker([latitude, longitude]);
         marker.bindPopup(`
           <b>${comm.name}</b><br>
-          <button onclick="joinCommunity('${doc.id}')">Join</button>
+          <button class="map-join-btn" data-community-id="${doc.id}">Join</button>
         `);
         marker.bindTooltip(shortName, {
           permanent: true,
           direction: "top",
           offset: [-15, -5]
+        });
+        marker.on("popupopen", () => {
+          const joinBtn = marker.getPopup().getElement().querySelector(".map-join-btn");
+          if (joinBtn) {
+            joinBtn.addEventListener("click", () => {
+              joinCommunity(doc.id);
+            });
+          }
         });
         markers.addLayer(marker);
         communities.push({ ...comm, marker });

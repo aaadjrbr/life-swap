@@ -671,24 +671,45 @@ async function deleteCommunity(communityId) {
 }
 
 async function leaveCommunity(communityId) {
-if (confirm("Are you sure you want to leave this community?")) {
-const user = auth.currentUser;
-const userRef = doc(db, "users", user.uid);
-const commRef = doc(db, "communities", communityId);
-const memberRef = doc(db, "communities", communityId, "members", user.uid);
+  if (confirm("Are you sure you want to leave this community?")) {
+    const user = auth.currentUser;
+    if (!user) {
+      console.error("No authenticated user!");
+      return;
+    }
 
-const batch = writeBatch(db);
-// Remove user from members subcollection
-batch.delete(memberRef);
-// Update user's communityIds
-const userDoc = await getDoc(userRef);
-const communityIds = userDoc.data().communityIds.filter(id => id !== communityId);
-batch.update(userRef, { communityIds });
-// No need to sync an old members array—onMemberChange handles memberCount
+    const userRef = doc(db, "users", user.uid);
+    const memberRef = doc(db, "communities", communityId, "members", user.uid);
 
-await batch.commit();
-window.location.href = "./start.html";
-}
+    try {
+      const userDoc = await getDoc(userRef);
+      if (!userDoc.exists()) {
+        throw new Error("User document not found");
+      }
+
+      const currentCommunityIds = userDoc.data().communityIds || [];
+      console.log("Current communityIds:", currentCommunityIds);
+
+      const updatedCommunityIds = currentCommunityIds.filter(id => id !== communityId);
+      console.log("Updated communityIds:", updatedCommunityIds);
+
+      const batch = writeBatch(db);
+      batch.delete(memberRef);
+      batch.update(userRef, { communityIds: updatedCommunityIds });
+
+      await batch.commit();
+      console.log(`Successfully left ${communityId}. New communityIds:`, updatedCommunityIds);
+
+      // Verify update
+      const verifyDoc = await getDoc(userRef);
+      console.log("Verified communityIds in Firestore:", verifyDoc.data().communityIds);
+
+      window.location.href = "./start.html";
+    } catch (error) {
+      console.error("Error leaving community:", error);
+      alert("Failed to leave the community. Check the console for details.");
+    }
+  }
 }
 
 async function fetchCurrentUserData() {
@@ -4900,3 +4921,4 @@ window.fetchUserData = fetchUserData;
 window.getCachedUser = getCachedUser;
 window.setCachedUser = setCachedUser;
 window.fetchCurrentUserData = fetchCurrentUserData;
+window.leaveCommunity = leaveCommunity;
