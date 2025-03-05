@@ -1,0 +1,116 @@
+/* General body styling */
+body {
+    font-family: 'Lexend', sans-serif;
+    background-color: #f5f6f5; /* Subtle off-white background */
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+}
+
+/* Container for the action content */
+.container {
+    background-color: #fff;
+    padding: 30px;
+    border-radius: 25px;
+    width: 40%;
+    max-width: 400px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    text-align: center;
+}
+
+/* Headings */
+h1, h2 {
+    color: #2c3e50;
+    font-family: 'Lexend', sans-serif;
+    margin-bottom: 20px;
+}
+
+h2 {
+    font-size: 1.5em;
+    font-weight: 600;
+}
+
+/* Input and button styling */
+input {
+    width: 90%;
+    padding: 12px 16px;
+    margin: 12px 0;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    font-family: 'Lexend', sans-serif;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+input:focus {
+    border-color: #3498db;
+    box-shadow: 0 4px 8px rgba(52, 152, 219, 0.4);
+    background-color: #fff;
+    outline: none;
+}
+
+a.button {
+    background-color: #2980b9; /* Professional blue */
+    color: white;
+    padding: 10px 20px;
+    text-decoration: none;
+    border-radius: 5px;
+    display: inline-block;
+    font-family: 'Lexend', sans-serif;
+    font-size: 1em;
+    text-align: center;
+}
+
+a.button:hover {
+    background-color: #1f6391; /* Darker blue on hover */
+}
+
+button {
+    cursor: pointer;
+    font-family: 'Lexend', sans-serif;
+    font-weight: 600;
+    color: #ffffff;
+    background: #0d6dfdec;
+    border: 3px solid #0d6dfd;
+    padding: 15px;
+    font-size: 1.1em;
+    border-radius: 35px;
+    transition: background-color 0.3s;
+    width: 100%;
+    margin-top: 20px;
+}
+
+button:hover {
+    background-image: linear-gradient(to right, #ffffff57, #ffffff6e);
+    border: 3px solid #0d6efd;
+    transform: scale(1.05);
+    transition: background-color 0.3s;
+}
+
+/* Error Message Styles */
+#reset-error-message {
+    color: red;
+    font-size: 14px;
+    margin-top: 10px;
+}
+
+#email-verification-success {
+    display: none;
+}
+
+#message {
+    margin-bottom: 20px;
+    font-size: 1.1em;
+}
+
+/* Responsive Styles */
+@media (max-width: 600px) {
+    .container {
+        width: 80%;
+    }
+}

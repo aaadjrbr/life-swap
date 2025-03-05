@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auth Action Handler - Life Swap</title>
+    <link rel="icon" href="" type="image/x-icon">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Lexend:wght@100..900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./css/auth-action.css">
+    <script type="module" src="./js/authAction.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Processing message -->
+        <h1>⏳ Processing your request...</h1>
+        <p id="message"></p>
+
+        <!-- Form for password reset -->
+        <form id="password-reset-form" style="display: none;">
+            <h2>Reset Your Password</h2>
+            <input type="password" id="new-password" placeholder="Enter New Password" required aria-label="New Password" autocomplete="new-password">
+            <input type="password" id="confirm-password" placeholder="Confirm New Password" required aria-label="Confirm Password" autocomplete="new-password">
+            <button type="submit">Reset Password</button><br/><br>
+            <a href="./login.html" class="button">Go to Login</a>
+            <p id="reset-error-message"></p>
+        </form>
+
+        <!-- Email verification message -->
+        <div id="email-verification-success" style="display: none;">
+            <h2>Email Verified 🎉</h2>
+            <p>Your email has been successfully verified. You can now log in to your account.</p>
+            <a href="./login.html" class="button">Go to Login</a>
+            <br/><br/>
+        </div>
+
+        <a href="./index.html" class="button">Go back home</a>
+    </div>
+</body>
+</html>
