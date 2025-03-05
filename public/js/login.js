@@ -85,7 +85,7 @@ loginForm.addEventListener('submit', async (e) => {
         const user = userCredential.user;
 
         if (user.emailVerified) {
-            window.location.href = 'start.html';  // Proceed if email is verified
+            window.location.href = 'edit-profile.html';  // Proceed if email is verified
         } else {
             displayErrorMessage(errorMessage, "Please verify your email before logging in.");
             resendVerificationLink.style.display = 'block';  // Show the resend link
@@ -103,7 +103,7 @@ const googleProvider = new GoogleAuthProvider();
 document.getElementById('google-login-btn').addEventListener('click', async () => {
     try {
         const result = await signInWithPopup(auth, googleProvider);
-        window.location.href = 'start.html';  // Redirect after login
+        window.location.href = 'edit-profile.html';  // Redirect after login
     } catch (error) {
         displayErrorMessage(errorMessage, `Google sign-in failed: ${error.message}`);
         console.error("Google sign-in failed:", error);
