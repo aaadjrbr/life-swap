@@ -103,7 +103,7 @@ const googleProvider = new GoogleAuthProvider();
 document.getElementById('google-login-btn').addEventListener('click', async () => {
     try {
         const result = await signInWithPopup(auth, googleProvider);
-        window.location.href = 'profiles.html';  // Redirect after login
+        window.location.href = 'start.html';  // Redirect after login
     } catch (error) {
         displayErrorMessage(errorMessage, `Google sign-in failed: ${error.message}`);
         console.error("Google sign-in failed:", error);
