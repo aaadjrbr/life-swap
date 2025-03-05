@@ -156,18 +156,24 @@ button.like-btn {
 
 /* Buttons */
 button {
-  padding: 5px 10px;
+  padding: 6px 11px;
   background: #0056b3;
   color: #fff;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   margin: 5px;
+  font-size: 0.9em;
+  font-weight: 400;
 }
 
 button:hover {
   background: #0057b3d8;
   color: #fff;
+}
+
+div#comments button:hover {
+  background-color: none !important;
 }
 
 button:disabled {
@@ -355,6 +361,7 @@ button:disabled {
 
 .reply-btn:hover {
   color: #0056b3;
+  background: none !important;
 }
 
 .cancel-reply {
@@ -368,6 +375,7 @@ button:disabled {
 
 .cancel-reply:hover {
   color: #c82333;
+  background: none !important;
 }
 
 .delete-comment-btn, .delete-reply-btn {
@@ -380,6 +388,7 @@ button:disabled {
 
 .delete-comment-btn:hover, .delete-reply-btn:hover {
   color: #c82333;
+  background: none !important;
 }
 
 .see-more-btn {
@@ -400,6 +409,7 @@ button:disabled {
 }
 
 .admin-tag {
+  user-select: none;
   display: inline-block;
   background: linear-gradient(135deg, #ffff19, #fdff84); /* Gradient from blue to cyan */
   color: rgb(255, 50, 50);
@@ -505,11 +515,18 @@ img.lazy[src] {
   border: solid 2px #b4b4b42e;
 }
 
+p.post-id {
+  background: #f2f2f2;
+  padding: 5px;
+  border-radius: 10px;
+}
+
 div#postList p {
   margin: 10px;
   line-height: 1.3;
-  color: #0056b3;
+  color: #666;
   padding-top: 5px;
+  font-size: 0.9em;
 }
 
 #yourPostsList p {
@@ -517,9 +534,8 @@ div#postList p {
 }
 
 .post-description {
-  font-size: 1.1em;
+  font-size: 1.1em !important;
   padding-bottom: 10px;
-  color: #0056b3;
 }
 
 .post-placeholder {
@@ -542,6 +558,12 @@ div#postList p {
   margin-right: 10px;
   object-fit: cover;
   border: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.comment-content img.profile-photo,
+.reply-bubble img.profile-photo {
+  width: 45px;
+  height: 45px;
 }
 
 .username {
@@ -686,10 +708,10 @@ button#viewRequestsBtn {
   display: flex;
   align-items: flex-start;
   margin: 5px 0;
-  background: #e9ecef;
+  background: #d5d9dc;
   border-radius: 15px;
   padding: 8px;
-  max-width: 75%;
+  max-width: 80%;
 }
 
 .reply-text {
@@ -1934,9 +1956,10 @@ div#profileDetails p {
 }
 
 .verified-badge {
+  user-select: none;
   display: inline-block;
   background: linear-gradient(135deg, #1a73e8, #00d4ff); /* Gradient from blue to cyan */
-  color: white;
+  color: white !important;
   padding: 3px 8px; /* Slightly bigger for presence */
   border-radius: 14px; /* Softer curve */
   font-size: 12px;
