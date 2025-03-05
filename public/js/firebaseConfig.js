@@ -27,7 +27,11 @@ import {
   getAuth, 
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  signInWithPopup,
+  sendPasswordResetEmail,
+  GoogleAuthProvider,
   signOut 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 import { 
@@ -104,6 +108,10 @@ export {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
+  signInWithPopup,
+  sendPasswordResetEmail,
+  sendEmailVerification,
+  GoogleAuthProvider,
 
   // Storage utilities
   ref,
