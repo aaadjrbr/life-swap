@@ -72,7 +72,6 @@ export {
   // Core services
   app,
   db,
-  auth,
   getAuth,
   initializeApp,
   storage,
