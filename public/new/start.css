@@ -1,5 +1,5 @@
 body {
-  font-family: Arial, sans-serif;
+  font-family: 'Lexend', sans-serif;
   margin: 0;
   padding: 20px;
   background: #f4f4f4;
@@ -45,6 +45,14 @@ p {
   margin-bottom: 20px;
 }
 
+button, input, textarea, label, select, h3, h4, h5, h6, h2 {
+  font-family: 'Lexend', sans-serif;
+}
+
+h1, h2, h3, label, select, summary, input, textarea {
+  color: #0056b3;
+}
+
 input, textarea {
   width: 100%;
   padding: 10px;
@@ -55,17 +63,20 @@ input, textarea {
 }
 
 button {
-  padding: 10px 20px;
-  background: #007bff;
-  color: white;
+  padding: 6px 11px;
+  background: #0056b3;
+  color: #fff;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   margin: 5px;
+  font-size: 0.9em;
+  font-weight: 400;
 }
 
 button:hover {
-  background: #0056b3;
+  background: #0057b3d8;
+  color: #fff;
 }
 
 #cancelCreateBtn, .leave-btn {
@@ -80,8 +91,9 @@ button:hover {
   max-height: 300px;
   overflow-y: auto;
   border: 1px solid #ddd;
-  border-radius: 4px;
   padding: 5px;
+  background: #ebe5e5db;
+  border-radius: 10px;
 }
 
 .suggestions {
@@ -103,12 +115,16 @@ button:hover {
 }
 
 #communityList div, #yourCommunityList div {
-  padding: 10px;
+  padding: 15px;
   border-bottom: 1px solid #ddd;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-direction: column;
+  box-shadow: inset -5px 5px 9px rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  background: rgb(255 255 255);
+  margin: 10px;
 }
 
 #yourCommunities {
@@ -192,7 +208,7 @@ button:hover {
 #shareModal button {
   padding: 10px 20px;
   margin: 5px;
-  background: #007bff;
+  background: #0056b3;
   color: white;
   border: none;
   border-radius: 4px;
@@ -200,7 +216,7 @@ button:hover {
 }
 
 #shareModal button:hover {
-  background: #0056b3;
+  background: #0057b3d6;
 }
 
 #shareModal #cancelOption {
@@ -212,5 +228,10 @@ button:hover {
 }
 
 footer {
+  color: #666;
   text-align: center;
+}
+
+span {
+  color: #666
 }

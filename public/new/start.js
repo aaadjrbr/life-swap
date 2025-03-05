@@ -101,7 +101,7 @@ async function loadYourCommunities(userData) {
   const yourCommunityList = document.getElementById("yourCommunityList");
   if (!yourCommunityList) return;
 
-  yourCommunityList.innerHTML = "Loading your communities...";
+  yourCommunityList.innerHTML = "⏳ Loading your communities...";
   const userId = auth.currentUser.uid;
   const cacheKey = `yourCommunities_${userId}`;
 
@@ -198,7 +198,7 @@ async function generateShareContent(communityId) {
     modal.className = "modal";
     modal.innerHTML = `
       <div class="modal-content">
-        <h2>Share Option</h2>
+        <h2>🔗 Share Option</h2>
         <p>Select how you'd like to share this community:</p>
         <button id="qrOption">Download QR Code</button>
         <button id="pdfOption">Download PDF</button>
@@ -294,7 +294,7 @@ async function loadCommunities(searchQuery = "", startAfterDoc = null) {
   const communityList = document.getElementById("communityList");
   if (!communityList) return;
 
-  communityList.innerHTML = "Loading communities...";
+  communityList.innerHTML = "⏳ Loading communities...";
   const cacheKey = searchQuery ? `search_${searchQuery}` : "nearby";
 
   if (sessionCache.has(cacheKey) && !startAfterDoc) {
@@ -481,22 +481,30 @@ window.joinCommunity = async function(communityId) {
 function setupLocationAutocomplete() {
   const locationInput = document.getElementById("newCommunityLocation");
   const suggestionsDiv = document.getElementById("locationSuggestions");
-  if (!locationInput || !suggestionsDiv) return;
+  const termsCheckbox = document.getElementById("termsCheckbox");
+  const submitBtn = document.getElementById("submitCommunityBtn");
+  
+  console.log("Setup running, elements:", { locationInput, suggestionsDiv, termsCheckbox, submitBtn });
+  if (!locationInput || !suggestionsDiv || !termsCheckbox || !submitBtn) {
+    console.error("One or more elements not found, exiting setup");
+    return;
+  }
+
+  // Remove the initial disabled state from JS (assume HTML starts it enabled)
+  submitBtn.disabled = false;
 
   const debouncedSearch = debounce(async (query) => {
     if (query.length < 2) {
       suggestionsDiv.innerHTML = "";
       return;
     }
-
     if (sessionCache.has(query)) {
       renderSuggestions(sessionCache.get(query));
       return;
     }
-
     try {
       const response = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=5&addressdetails=1`, {
-        headers: { "User-Agent": "LifeSwap/1.0 (your-email@example.com)" },
+        headers: { "User-Agent": "LifeSwap/1.0 (aaadjrbr@gmail.com)" },
         signal: AbortSignal.timeout(5000)
       });
       const data = await response.json();
@@ -508,7 +516,10 @@ function setupLocationAutocomplete() {
     }
   }, 500);
 
-  locationInput.oninput = (e) => debouncedSearch(e.target.value.trim());
+  locationInput.oninput = (e) => {
+    console.log("Location input changed");
+    debouncedSearch(e.target.value.trim());
+  };
 
   function renderSuggestions(data) {
     suggestionsDiv.innerHTML = !Array.isArray(data) || data.length === 0
@@ -529,73 +540,100 @@ function setupLocationAutocomplete() {
         locationInput.dataset.lat = item.dataset.lat;
         locationInput.dataset.lon = item.dataset.lon;
         suggestionsDiv.innerHTML = "";
+        console.log("Suggestion selected, lat/lon:", { lat: locationInput.dataset.lat, lon: locationInput.dataset.lon });
       };
     });
   }
 
-  const submitBtn = document.getElementById("submitCommunityBtn");
-  if (submitBtn) {
-    submitBtn.onclick = async () => {
-      const name = document.getElementById("newCommunityName")?.value.trim();
-      const location = locationInput.value.trim();
-      const lat = parseFloat(locationInput.dataset.lat);
-      const lon = parseFloat(locationInput.dataset.lon);
+  termsCheckbox.onchange = () => {
+    console.log("Checkbox changed to:", termsCheckbox.checked);
+  };
+  document.getElementById("newCommunityName").oninput = () => {
+    console.log("Name input changed");
+  };
 
-      if (!name || !location || isNaN(lat) || isNaN(lon)) {
-        alert("Fill out the name and pick a valid location!");
-        return;
-      }
+  submitBtn.onclick = async () => {
+    const name = document.getElementById("newCommunityName")?.value.trim();
+    const location = locationInput.value.trim();
+    const lat = parseFloat(locationInput.dataset.lat);
+    const lon = parseFloat(locationInput.dataset.lon);
+    const termsAgreed = termsCheckbox.checked;
 
-      try {
-        const user = auth.currentUser;
-        if (!user) throw new Error("No user logged in!");
+    console.log("Submit clicked, state:", { name, location, lat, lon, termsAgreed });
 
-        const userRef = doc(db, "users", user.uid);
-        const userDoc = await getDoc(userRef);
-        if (!userDoc.exists()) throw new Error("User doc missing!");
+    if (!termsAgreed) {
+      console.log("Alert: Terms not agreed");
+      alert("You need to check the box to agree to the terms!");
+      return;
+    }
 
-        const commRef = await addDoc(collection(db, "communities"), {
-          name,
-          nameLower: name.toLowerCase(),
-          location: { latitude: lat, longitude: lon },
-          creatorId: user.uid,
-          createdAt: new Date()
-        });
+    if (!name || !location || isNaN(lat) || isNaN(lon)) {
+      console.log("Alert: Incomplete form");
+      alert("Fill out the name and pick a valid location!");
+      return;
+    }
 
-        const batch = writeBatch(db);
-        batch.set(doc(db, "communities", commRef.id, "members", user.uid), { joinedAt: new Date() });
-        const currentCommunityIds = userDoc.data().communityIds || []; // Fetch fresh from Firestore
-        batch.update(userRef, { communityIds: [...currentCommunityIds, commRef.id] });
-        await batch.commit();
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("No user logged in!");
 
-        sessionCache.delete(`yourCommunities_${user.uid}`);
-        document.getElementById("createCommunityModal")?.classList.add("hidden");
-        goToCommunity(commRef.id);
-      } catch (error) {
-        console.error("Create community failed:", error);
-        alert("Creation crashed!");
-      }
-    };
-  }
+      const userRef = doc(db, "users", user.uid);
+      const userDoc = await getDoc(userRef);
+      if (!userDoc.exists()) throw new Error("User doc missing!");
+
+      const commRef = await addDoc(collection(db, "communities"), {
+        name,
+        nameLower: name.toLowerCase(),
+        location: { latitude: lat, longitude: lon },
+        creatorId: user.uid,
+        createdAt: new Date()
+      });
+
+      const batch = writeBatch(db);
+      batch.set(doc(db, "communities", commRef.id, "members", user.uid), { joinedAt: new Date() });
+      const currentCommunityIds = userDoc.data().communityIds || [];
+      batch.update(userRef, { communityIds: [...currentCommunityIds, commRef.id] });
+      await batch.commit();
+
+      sessionCache.delete(`yourCommunities_${user.uid}`);
+      document.getElementById("createCommunityModal")?.classList.add("hidden");
+      goToCommunity(commRef.id);
+    } catch (error) {
+      console.error("Create community failed:", error);
+      alert("Creation crashed!");
+    }
+  };
 }
 
 function calculateDistanceInMiles(lat1, lon1, lat2, lon2) {
-  const R = 3958.8;
-  const toRad = (val) => val * (Math.PI / 180);
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
+  const R = 3958.8; // Earth's radius in miles
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
   const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
 
+// Custom debounce with logging
 function debounce(func, wait) {
   let timeout;
   return function (...args) {
+    console.log("Map event fired (moveend/zoomend), debouncing...");
     clearTimeout(timeout);
-    timeout = setTimeout(() => func.apply(this, args), wait);
+    timeout = setTimeout(() => {
+      console.log("Executing debounced function after delay");
+      func.apply(this, args);
+    }, wait);
   };
+}
+
+// Broad cache key function
+function getBroadCacheKey(center) {
+  const lat = Math.round(center.lat * 2) / 2; // Round to nearest 0.5 degree
+  const lng = Math.round(center.lng * 2) / 2;
+  return `broad_${lat}_${lng}`;
 }
 
 async function showMapModal() {
@@ -663,7 +701,7 @@ function centerMapOnUserLocation(map, communityMarkers) {
           recenterButton.disabled = false;
         },
         (error) => {
-          alert(`Can’t grab your spot, bro: ${error.message}`);
+          alert(`Can’t grab your spot: ${error.message}`);
           recenterButton.textContent = "📍";
           recenterButton.disabled = false;
         },
@@ -693,39 +731,106 @@ function centerMapOnUserLocation(map, communityMarkers) {
 
 async function loadCommunitiesInView(map, markers) {
   const zoomLevel = map.getZoom();
-  if (zoomLevel < 6) return;
+  const center = map.getCenter();
+  const bounds = map.getBounds();
+
+  // Handle zoom < 9 (we’ll fix the removeChild error later)
+  if (zoomLevel < 9) {
+    markers.clearLayers();
+    console.log("Zoom level too low (<9), clearing markers, no fetch/cache");
+    if (!map._alertControl) {
+      map._alertControl = L.control({ position: "topright" });
+      map._alertControl.onAdd = function () {
+        const div = L.DomUtil.create("div", "zoom-alert");
+        div.style.cssText = `
+          background: rgba(255, 255, 255, 0.9);
+          padding: 10px;
+          border-radius: 5px;
+          border: 1px solid #ccc;
+          font-family: Arial, sans-serif;
+          font-size: 14px;
+          color: #333;
+        `;
+        div.innerHTML = "<p>You need to zoom in to see communities</p>";
+        return div;
+      };
+      map._alertControl.addTo(map);
+    }
+    return;
+  } else if (map._alertControl) {
+    map._alertControl.remove();
+    delete map._alertControl;
+  }
 
   markers.clearLayers();
-  const bounds = map.getBounds();
-  const cacheKey = `map_${bounds.getCenter().lat.toFixed(2)}_${bounds.getCenter().lng.toFixed(2)}_${zoomLevel}`;
+  const broadKey = getBroadCacheKey(center);
+  const cachedCommunities = sessionCache.get(broadKey);
 
-  if (sessionCache.has(cacheKey)) {
-    sessionCache.get(cacheKey).forEach(comm => markers.addLayer(comm.marker));
+  // Check last fetch position and distance
+  const lastFetch = map._lastFetch || { lat: null, lng: null, zoom: null };
+  const distanceMoved = lastFetch.lat && lastFetch.lng
+    ? calculateDistanceInMiles(center.lat, center.lng, lastFetch.lat, lastFetch.lng)
+    : Infinity;
+
+  if (cachedCommunities && Date.now() - cachedCommunities.timestamp < 5 * 60 * 1000) {
+    if (distanceMoved < 50 && lastFetch.zoom === zoomLevel) {
+      console.log(`Map moved ${distanceMoved.toFixed(1)} miles, too small (< 50 miles) and same zoom (${zoomLevel}), skipping fetch, using cache for ${broadKey}`);
+    } else {
+      console.log(`Map moved ${distanceMoved.toFixed(1)} miles or zoom changed from ${lastFetch.zoom} to ${zoomLevel}, using cache for ${broadKey}`);
+    }
+
+    const communities = cachedCommunities.communities.filter(comm => {
+      const { latitude, longitude } = comm.location;
+      const distance = calculateDistanceInMiles(center.lat, center.lng, latitude, longitude);
+      return distance <= 100 && bounds.contains([latitude, longitude]);
+    });
+
+    communities.forEach(comm => {
+      if (!comm.marker) {
+        const shortName = comm.name.length > 10 ? `${comm.name.substring(0, 10)}...` : comm.name;
+        comm.marker = L.marker([comm.location.latitude, comm.location.longitude])
+          .bindPopup(`<b>${comm.name}</b><br><button class="map-join-btn" data-community-id="${comm.id}">Join</button>`)
+          .bindTooltip(shortName, { permanent: true, direction: "top", offset: [-15, -5] });
+        comm.marker.on("popupopen", () => {
+          comm.marker.getPopup().getElement().querySelector(".map-join-btn")?.addEventListener("click", () => joinCommunity(comm.id));
+        });
+      }
+      markers.addLayer(comm.marker);
+    });
+    console.log(`Filtered ${communities.length} communities from cache for ${broadKey}`);
     return;
   }
 
+  // Fetch new data if no cache or moved significantly
+  console.log(`Fetching new data for ${broadKey}, moved ${distanceMoved.toFixed(1)} miles`);
   try {
-    const q = query(collection(db, "communities"), limit(100));
+    const q = query(collection(db, "communities"), limit(200));
     const snapshot = await getDocs(q);
-    const communities = [];
-    snapshot.forEach(doc => {
-      const comm = doc.data();
+    const allCommunities = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    const communities = allCommunities.filter(comm => {
       const { latitude, longitude } = comm.location;
-      if (bounds.contains([latitude, longitude])) {
-        const shortName = comm.name.length > 10 ? `${comm.name.substring(0, 10)}...` : comm.name;
-        const marker = L.marker([latitude, longitude])
-          .bindPopup(`<b>${comm.name}</b><br><button class="map-join-btn" data-community-id="${doc.id}">Join</button>`)
-          .bindTooltip(shortName, { permanent: true, direction: "top", offset: [-15, -5] });
-        marker.on("popupopen", () => {
-          marker.getPopup().getElement().querySelector(".map-join-btn")?.addEventListener("click", () => joinCommunity(doc.id));
-        });
-        communities.push({ ...comm, marker });
-      }
+      const distance = calculateDistanceInMiles(center.lat, center.lng, latitude, longitude);
+      return distance <= 100;
     });
 
-    sessionCache.set(cacheKey, communities);
-    communities.forEach(comm => markers.addLayer(comm.marker));
+    sessionCache.set(broadKey, { communities, timestamp: Date.now() });
+    map._lastFetch = { lat: center.lat, lng: center.lng, zoom: zoomLevel };
+
+    const visibleCommunities = communities.filter(comm => bounds.contains([comm.location.latitude, comm.location.longitude]));
+    visibleCommunities.forEach(comm => {
+      const shortName = comm.name.length > 10 ? `${comm.name.substring(0, 10)}...` : comm.name;
+      comm.marker = L.marker([comm.location.latitude, comm.location.longitude])
+        .bindPopup(`<b>${comm.name}</b><br><button class="map-join-btn" data-community-id="${comm.id}">Join</button>`)
+        .bindTooltip(shortName, { permanent: true, direction: "top", offset: [-15, -5] });
+      comm.marker.on("popupopen", () => {
+        comm.marker.getPopup().getElement().querySelector(".map-join-btn")?.addEventListener("click", () => joinCommunity(comm.id));
+      });
+      markers.addLayer(comm.marker);
+    });
+
+    console.log(`Cached ${communities.length} communities for ${broadKey}, ${visibleCommunities.length} visible`);
   } catch (error) {
-    console.error("Loading map communities failed:", error);
+    console.error(`Fetch failed for ${broadKey}:`, error);
   }
 }

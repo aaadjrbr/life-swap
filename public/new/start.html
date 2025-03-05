@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Lexend:wght@100..900&display=swap" rel="stylesheet">
 </head>
 <body>
   <div class="community-picker">
@@ -16,19 +17,19 @@
     <p>Pick or <a href="#createCommunityBtn">create a community</a> to start swapping!</p>
 
     <div id="yourCommunities">
-      <h3>Your Communities</h3>
+      <h3>🤝 Your Communities</h3>
       <div id="yourCommunityList" class="scrollable"></div>
     </div>
 
     <div id="pickCommunity">
-      <h3>Search Communities (ID/Name or Map)</h3>
+      <h3>🔎 Search Communities (ID/Name or Map)</h3>
       <input type="text" id="communitySearch" placeholder="Search by name or ID...">
       <br/>
-      <h3>Nearby Communities</h3>
+      <h3>🧭 Nearby Communities</h3>
       <p>Communities searched by ID or name will display here:</p>
       <div id="communityList" class="scrollable"></div>
       <h3>Or</h3>
-      <button id="exploreCommunitiesBtn">Explore on Map</button>
+      <button id="exploreCommunitiesBtn">🗺️ Explore on Map</button>
     </div>
 
     <div id="mapModal" class="modal hidden">
@@ -40,7 +41,7 @@
     </div>
 
     <br/><br/>
-    <h2>Create Community</h2>
+    <h2>➕ Create Community</h2>
     <button id="createCommunityBtn">Create a New Community</button>
     <div id="createCommunityModal" class="modal hidden">
       <div class="modal-content">
@@ -49,11 +50,14 @@
         <input type="text" id="newCommunityLocation" placeholder="Type a city...">
         <div id="locationSuggestions" class="suggestions scrollable"></div>
         <p style="color: red; font-size: 0.9em"><em>*You need to click in one of the suggestions</em></p>
-        <button id="submitCommunityBtn">Create Community</button>
+        <label style="display: flex; align-items: center; margin: 10px 0; font-size: 0.9em;">
+          <input type="checkbox" id="termsCheckbox" style="margin-right: 8px; width: auto;"> 
+          <span>By creating a community you agree with the <a href="/terms.html" target="_blank" style="color: #007bff; text-decoration: underline;">terms</a></span>
+        </label>
+        <button id="submitCommunityBtn" disabled>Create Community</button>
         <button id="cancelCreateBtn">Cancel</button>
       </div>
     </div>
-  </div>
 
   <br/><br/>
   <footer>
