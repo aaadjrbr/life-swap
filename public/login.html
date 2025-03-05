@@ -3,22 +3,237 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Life Swap - Login</title>
+    <title>Login - Life Swap</title>
+    <link rel="icon" href="./alfie-ai.ico" type="image/x-icon">
     <link rel="stylesheet" href="./css/login.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Lexend:wght@100..900&display=swap" rel="stylesheet">
+    <meta name="robots" content="index, follow" />
+   <style>
+        /* Cookie Banner Styling */
+        #cookie-consent {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            background-color: #34495e;
+            color: white;
+            width: 100%;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        #cookie-consent p {
+            margin: 0;
+            font-size: 1em;
+            display: inline-block;
+            padding: 35px;
+            margin-bottom: -35px;
+            margin-top: -25px;
+        }
+
+        #cookie-consent a {
+            color: #ffd700;
+            text-decoration: none;
+        }
+
+        #cookie-consent a:hover {
+            text-decoration: underline;
+        }
+
+        .btn-accept {
+            background: #2980b9;
+            color: #ffffff;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1em;
+            cursor: pointer;
+            width: 40%;
+        }
+
+        .btn-accept:hover {
+            background: #1f6391;
+            border: none !important;
+        }
+
+        /* Toggle Switch Styling */
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            flex-wrap: wrap;
+        }
+
+        .toggle {
+            position: relative;
+            width: 40px;
+            height: 20px;
+            background-color: #ccc;
+            border-radius: 20px;
+            margin-left: 10px;
+            cursor: pointer;
+        }
+
+        .toggle::before {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            background-color: white;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+        }
+
+        .toggle.active {
+            background-color: #ffd700;
+        }
+
+        .toggle.active::before {
+            left: 22px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+    </style>
 </head>
+<!-- Google tag (gtag.js) --> 
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-WYMRF4LKM1"></script>
+<script> window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag('js', new Date()); gtag('config', 'G-WYMRF4LKM1');
+</script>
+
 <body>
-    <div class="login-container">
-        <h1>Login</h1>
-        <p><a href="./index.html">Home</a> | <a href="#">Contact</a></p>
-        <form id="loginForm">
-            <input type="email" id="email" placeholder="Email" required>
+    <h1><img src="" style="width: 210px; height: auto;"></h1>
+    <div class="button-go-back-container">
+        <a class="button-go-back" style="text-align: center; text-decoration: none; font-size: 1.2em;" href="./index.html">
+            <span>Go back</span>
+        </a>
+    </div>
+    <h2>Login to get started:</h2>
+    
+    <!-- Login Form -->
+    <form id="login-form">
+        <label for="email">Email</label>
+        <input type="email" id="email" placeholder="Email" required>
+        <div class="password-container">
+            <label for="password">Password</label>
             <input type="password" id="password" placeholder="Password" required>
-            <button type="submit">Login</button>
-        </form>
-        <div id="message" class="message"></div>
+            <span class="toggle-password" id="toggle-password">👀</span>
+        </div>
+        <p id="error-message" class="alert-box alert-error" style="display: none;"></p>
+        <p><a href="#" id="resend-verification-link" style="font-size: 1em !important; color: rgb(105 12 126); display: none; font-family: 'Fredoka', sans-serif; font-weight: bold;">
+            🔄 Resend Verification Email</a></p>
+        <br/>
+        <button type="submit" style="width: 100%;">Login</button><br/><br/>
+        <button id="google-login-btn">
+            <img src="https://firebasestorage.googleapis.com/v0/b/kids-chatgpt.appspot.com/o/static%2Fgoogle-g.png?alt=media&token=d680ae54-ffab-4c98-9e92-7f6b21d83fe2" alt="Google G" style="width: 30px; height: 30px; margin-right: 10px;">
+            <span>Login with Google</span>
+        </button><br/>               
+        <br/><br/>
+        <a href="#" id="forgot-password-link">Forgot Password?</a> <!-- Forgot Password Link -->
+    </form>
+
+    <!-- Password Reset Form, initially hidden -->
+    <form id="password-reset-form" style="display: none;">
+        <h2>😬 Oops! Forgot my password</h2>
+        <label for="email">Email</label>
+        <input type="email" id="reset-email" placeholder="Enter your email" required>
+        <p id="reset-error-message" class="alert-box alert-error" style="display: none;"></p>
+        <p id="reset-success-message" class="alert-box alert-success" style="display: none;"></p>
+        <button type="submit">Reset Password</button><br/><br/>
+        <a href="#" id="i-remember">Nevermind 😅</a>
+    </form>
+
+    <!-- Toggle to create a new profile -->
+    <div class="center-container">
+        <button id="toggle-create-account">Create New Account</button>
     </div>
 
-    <!-- Import the firebaseConfig.js file -->
-    <script type="module" src="./js/login.js"></script>
+    <!-- Create Account Form, initially hidden -->
+    <form id="create-account-form" style="display: none;">
+        <h2 style="color: white;">Create New Account</h2>
+        <label for="email">Your Email</label>
+        <input type="email" id="new-email" placeholder="Enter New Email" required>
+        <div class="password-container">
+            <label for="new-account-password">Password</label>
+            <input type="password" id="new-account-password" placeholder="Password" required>
+            <span class="toggle-password" id="toggle-new-account-password">👀</span>
+        </div>
+        <div class="password-container">
+            <label for="confirm-account-password">Confirm Password</label>
+            <input type="password" id="confirm-account-password" placeholder="Confirm Password" required>
+            <span class="toggle-password" id="toggle-confirm-account-password">👀</span>
+        </div>
+        <p id="create-error-message" class="alert-box alert-error" style="display: none;"></p>
+        <p id="create-success-message" class="alert-box alert-success" style="display: none;"></p>
+        <button type="submit">Create Account</button>
+        <p style="font-size: 0.9em; color: #fff;">
+            <em>*By creating an account, you acknowledge and agree to our <a href="./privacy-policy.html">Privacy Policy</a>.</em>
+        </p>
+        <div style="margin-bottom: 15px;">
+            <input type="checkbox" id="agreeTerms" name="agreeTerms" required style="margin-right: 10px;">
+            <label for="agreeTerms" style="color: #34495e; font-weight: 400; font-size: 1em;">I have read and agree to the <a href="./privacy-policy.html" target="_blank" style="color: #006eff;">Terms of Service</a>.</label>            
+        </div>        
+    </form>
+    <br/><br/>
+  <!-- Footer -->
+  <footer class="bg-dark text-white text-center py-4">
+    <p><a href="./privacy-policy.html">Privacy Policy & Terms of Use</a></p>
+    <div style="margin-top: 40px;"></div>
+    <p>&copy; 2025 Life Swap. All Rights Reserved.</p>
+  </footer>
+    <br/><br/>
+
+    <div id="cookie-consent" class="hidden">
+        <br/>
+        <div>
+            <img src="" style="width: 120px; height: auto;"> 
+            <br/>
+            <p>Life Swap uses cookies 🍪 to ensure you get the best experience on our website. <a href="cookie-policy.html" target="_blank">Learn more in our Cookie Policy</a>.</p>
+            <br/><br/>
+            <div class="toggle-container">
+                <span>Track only necessary info</span>
+                <div id="tracking-toggle" class="toggle"></div>
+            </div>
+        </div>
+        <br/>
+        <button class="btn-accept" id="accept-cookies">Accept</button>
+        <br/><br/>
+    </div>
+    
+    <script>
+        // Check if user has already accepted cookies
+        const consentBanner = document.getElementById('cookie-consent');
+        const hasConsent = localStorage.getItem('cookieConsent');
+        
+        if (!hasConsent) {
+            consentBanner.classList.remove('hidden');
+        }
+    
+        // Accept Button Click Event
+        document.getElementById('accept-cookies').addEventListener('click', function() {
+            localStorage.setItem('cookieConsent', 'accepted');
+            consentBanner.classList.add('hidden');
+        });
+    
+        // Toggle Switch
+        const toggle = document.getElementById('tracking-toggle');
+        let trackingEnabled = true;  // By default, tracking is enabled
+    
+        toggle.addEventListener('click', function() {
+            toggle.classList.toggle('active');
+            trackingEnabled = !trackingEnabled; // Toggle tracking preference
+            if (trackingEnabled) {
+                console.log("Tracking all info.");
+            } else {
+                console.log("Tracking only necessary info.");
+            }
+        });
+    </script>
+    <script src="js/firebaseConfig.js" type="module"></script>
+    <script src="js/login.js" type="module"></script>
 </body>
 </html>
