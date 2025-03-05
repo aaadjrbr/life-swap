@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="./customHeader.css">
   <link rel="stylesheet" href="./chat.css">
   <link rel="stylesheet" href="./stories.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Lexend:wght@100..900&display=swap" rel="stylesheet">
 </head>
 <body>
   <div class="community-page">
@@ -16,16 +17,16 @@
       <div class="community-info">
         <h2 id="communityName"></h2>
         <p id="communityMeta">Created: <span id="createdAt"></span> by <span id="creatorName"></span></p>
+        <h3 class="life-swap">Life Swap. One swap at a time. <a href="#" style="text-decoration: none;">Donate 💙</a></h3>
       </div>
       <button id="viewCommunitiesBtn">Your Communities</button>
       <button id="viewNotificationsBtn">Notifications <span id="notificationCount" class="notification-badge"></span></button>
     </div>
-    <p>Share with friends!</p>
     <p id="communityId"></p>
     <button class="copy-btn" id="copyCommunityIdBtn">Copy Community ID</button>
-    <p>Total Users: <span id="totalUsers">0</span> | Banned Users: <span id="bannedUsers">0</span> | <span id="profileRequestsBtn"></span></p>
+    <p style="color: #0056b3;">Total Users: <span id="totalUsers">0</span> | Banned Users: <span id="bannedUsers">0</span> | <span id="profileRequestsBtn"></span></p>
     <div id="userSwapInfo" class="user-swap-info">
-      Your user name: <span id="userNameCopy" class="clickable">[Loading...]</span> | Number of Swaps: <span id="swapCount">0</span>
+      Username: <span id="userNameCopy" class="clickable">⏳ Loading...</span> | 🤝 Your Swaps: <span id="swapCount">0</span>
     </div>
     <div class="community-page">
     <div id="communityActions"></div>
@@ -143,7 +144,7 @@
         <button type="button" id="clearSearchBtn" title="Clear search">Clear</button>
       </div>
       <div id="search-scrolldown"></div>
-      <button id="refreshPostsBtn">Refresh Posts</button>
+      <button id="refreshPostsBtn">Refresh Posts 🔄</button>
       <div id="postList"></div>
       <div id="caughtUpMessage" class="caught-up" style="display: none;">You are all caught up!</div>
       <div id="sentinel" style="height: 1px;"></div>
@@ -249,14 +250,14 @@
     <!-- Added Loading Overlay -->
     <div id="loadingOverlay" class="hidden">
       <div class="loading-spinner"></div>
-      <p>Deleting...</p>
+      <p>⏳ Deleting...</p>
     </div>
   </div>
 </div>
 
 <!-- Loading Overlay -->
 <div id="loadingOverlay" class="loading-overlay hidden">
-  <div class="loading-text">Deleting...</div>
+  <div class="loading-text">⏳ Deleting...</div>
 </div>
 
 <!-- Notifications Modal -->

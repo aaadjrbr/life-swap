@@ -139,10 +139,6 @@ textarea#header-message {
 
 /* Media Queries for Mobile */
 @media (max-width: 600px) {
-    .top-bar {
-        flex-direction: column;
-        align-items: flex-start;
-    }
 
     #custom-header {
         padding: 10px;

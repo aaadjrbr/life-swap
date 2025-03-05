@@ -260,15 +260,16 @@ if (user.uid) {
 }
 
 actions.innerHTML = `
-  <button id="viewMembersBtn">View Members</button>
-  ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="viewBannedBtn">View Banned</button>` : ""}
-  ${commData.creatorId === user.uid ? `<button class="delete-btn" id="deleteCommunityBtn">Delete Community</button>` : ""}
-  ${commData.members.includes(user.uid) && commData.creatorId !== user.uid ? `<button class="leave-btn" id="leaveCommunityBtn">Leave Community</button>` : ""}
-  <button id="viewProfileViewRequestsBtn">See Profile View Requests ${profileViewRequestCount > 0 ? `<span class="request-badge">${profileViewRequestCount}</span>` : ''}</button>
+  ${commData.creatorId === user.uid ? `<button class="delete-btn" id="deleteCommunityBtn">Delete (Community)</button>` : ""}
   ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="editNameBtn">Edit Name (Community)</button>` : ""}
-  <button id="viewSavedPostsBtn">View Saved Posts</button>
-  <button id="viewChatsBtn">View Chats</button>
-  <button id="viewMyFollowersBtn">View My Followers</button>
+  <br><br>
+  <button id="viewMembersBtn">Members</button>
+  ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="viewBannedBtn">Banned</button>` : ""}
+  ${commData.members.includes(user.uid) && commData.creatorId !== user.uid ? `<button class="leave-btn" id="leaveCommunityBtn">Leave Community</button>` : ""}
+  <button id="viewProfileViewRequestsBtn">Profile Requests ${profileViewRequestCount > 0 ? `<span class="request-badge">${profileViewRequestCount}</span>` : ''}</button>
+  <button id="viewSavedPostsBtn">Saved Posts</button>
+  <button id="viewChatsBtn">Chats</button>
+  <button id="viewMyFollowersBtn">Followers</button>
 `;
 
 await new Promise(resolve => setTimeout(resolve, 0));
@@ -498,7 +499,7 @@ console.log("Cleared unread flags for chats:", snapshot.size);
 
 const hasUnreadChats = clearUnread ? false : snapshot.size > 0;
 if (viewChatsBtn) {
-viewChatsBtn.innerHTML = `View Chats ${hasUnreadChats ? '<span class="chat-badge">(new)</span>' : ''}`;
+viewChatsBtn.innerHTML = `Chats ${hasUnreadChats ? '<span class="chat-badge">(new)</span>' : ''}`;
 }
 }
 
@@ -523,7 +524,7 @@ const profileViewRequestsSnapshot = await getDocs(profileViewRequestsQ);
 const profileViewRequestCount = profileViewRequestsSnapshot.size;
 const viewProfileViewRequestsBtn = actions.querySelector("#viewProfileViewRequestsBtn");
 if (viewProfileViewRequestsBtn) {
-  viewProfileViewRequestsBtn.innerHTML = `See Profile View Requests ${profileViewRequestCount > 0 ? `<span class="request-badge">${profileViewRequestCount}</span>` : ''}`;
+  viewProfileViewRequestsBtn.innerHTML = `Profile Requests ${profileViewRequestCount > 0 ? `<span class="request-badge">${profileViewRequestCount}</span>` : ''}`;
 }
 }
 }
@@ -1066,7 +1067,7 @@ function setupLocationAutocomplete() {
         return;
       }
   
-      suggestionsDiv.innerHTML = "<div class='loading'>Searching...</div>"; // Loading state
+      suggestionsDiv.innerHTML = "<div class='loading'>⏳ Searching...</div>"; // Loading state
   
       const data = await fetchLocationSuggestions(query);
       displaySuggestions(data);
@@ -1232,7 +1233,7 @@ function attachSummaryListeners(summaryDiv, isAdmin, userId) {
   details.addEventListener("toggle", async () => {
     const contentDiv = summaryDiv.querySelector("#report-content");
     if (details.open) {
-      contentDiv.innerHTML = '<div class="loading">Loading...</div>';
+      contentDiv.innerHTML = '<div class="loading">⏳ Loading...</div>';
       details.querySelector("summary").textContent = `${reportSummaryCache.html.match(/\(\d+\)/) || ''}Hide Reports`;
 
       if (isAdmin) {
@@ -1304,7 +1305,7 @@ function attachSummaryListeners(summaryDiv, isAdmin, userId) {
         });
         contentDiv.querySelectorAll(".delete-appeal-btn").forEach(btn => {
           btn.addEventListener("click", async () => {
-            if (confirm("Delete this appeal, bro?")) {
+            if (confirm("Delete this appeal?")) {
               await deleteDoc(doc(db, "communities", communityId, "banAppeals", btn.dataset.appealId));
               refreshReportSummary(userId);
             }
@@ -1978,7 +1979,7 @@ const lookingForFilter = document.getElementById("lookingForFilter")?.value || "
 const offeringFilter = document.getElementById("offeringFilter")?.value || "";
 const postsPerPage = window.innerWidth < 768 ? 2 : 4;
 
-track.innerHTML = '<div class="loading">Loading...</div>';
+track.innerHTML = '<div class="loading">⏳ Loading...</div>';
 
 // Get member count and set trending threshold
 const memberCount = await getMemberCount(communityId);
@@ -2100,9 +2101,9 @@ const postDiv = document.createElement("div");
 postDiv.className = "carousel-post";
 postDiv.innerHTML = `
   <h4>${post.title || "Untitled"}</h4>
-  <p>Looking For: ${post.lookingFor || "N/A"}</p>
-  <p>Offering: ${post.offering || "N/A"}</p>
-  <p>Likes: ${post.likes || 0}</p>
+  <p class="highlight">Looking For: ${post.lookingFor || "N/A"}</p>
+  <p class="highlight">Offering: ${post.offering || "N/A"}</p>
+  <p>❤️ Likes: ${post.likes || 0}</p>
   <p>By: <span class="username" data-uid="${post.userId}">${userData.name || "Unknown"}</span></p>
   <button class="copy-btn" data-post-id="${post.id}">Copy Post ID</button>
 `;
@@ -2333,7 +2334,7 @@ try {
     .sort((a, b) => b.score - a.score);
 } catch (error) {
   console.error(`Failed to load posts for ${communityId}:`, error);
-  postsDiv.innerHTML = "<p>Oops, something broke! Refresh, bro.</p>";
+  postsDiv.innerHTML = "<p>Oops, something broke! Refresh.</p>";
   isFetching = false;
   return;
 }
@@ -2421,7 +2422,7 @@ postDiv.innerHTML = `
     <h3><span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
   </div>
   <h3>${post.title || 'Untitled'}</h3>
-  <p>${post.description || ''}</p>
+  <p class="post-description">${post.description || ''}</p>
   <div class="photo-carousel" id="carousel-${postId}-community" data-photos='${JSON.stringify(photoUrls)}'>
     ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${postId}-community"><</button>` : ''}
     <img loading="lazy" src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image" data-index="0">
@@ -2429,12 +2430,13 @@ postDiv.innerHTML = `
   </div>
   <p>Location: ${post.location?.name || 'N/A'}</p>
   <p>Category: ${displayCategory}</p>
-  <p>Looking For: ${post.lookingFor || 'N/A'} | Offering: ${post.offering || 'N/A'}</p>
+  <p class="highlight">Looking For: ${post.lookingFor || 'N/A'} | Offering: ${post.offering || 'N/A'}</p>
   <p class="timestamp">${timestamp}</p>
   <p class="post-id">Post ID: ${postId} <button class="copy-btn" data-post-id="${postId}">Copy</button></p>
-  <button class="save-toggle-btn" data-post-id="${postId}" data-community-id="${communityId}">${isSaved ? "Unsave" : "Save"}</button>
-  <button class="like-btn" data-post-id="${postId}">${(post.likedBy || []).includes(auth.currentUser.uid) ? 'Unlike' : 'Like'} (${post.likes || 0})</button>
-  <button class="report-btn" id="reportPost-${postId}">Report Post</button>
+  <button class="like-btn" data-post-id="${postId}">${(post.likedBy || []).includes(auth.currentUser.uid) ? '💔 Unlike' : '❤️ Like'} (${post.likes || 0})</button>
+  <button class="save-toggle-btn" data-post-id="${postId}" data-community-id="${communityId}">${isSaved ? "🗑️ Unsave" : "💾 Save"}</button>
+  <button class="report-btn" id="reportPost-${postId}">🚩 Report Post</button>
+  <br><br>
   ${post.userId === auth.currentUser.uid || isAdmin ? `<button class="delete-btn" id="deletePost-${postId}">Delete Post</button>` : ""}
   ${reportStatus?.isOwner && reportStatus.reportCount === 1 ? `
     <div class="report-warning" id="warning-${postId}">
@@ -2549,7 +2551,7 @@ const prevBtn = document.createElement("button");
 prevBtn.textContent = "<";
 prevBtn.addEventListener("click", async () => {
   if (PaginationState.currentPage > 1) {
-    postsDiv.innerHTML = '<div class="loading">Loading...</div>';
+    postsDiv.innerHTML = '<div class="loading">⏳ Loading...</div>';
     await loadPosts(communityId, false, PaginationState.currentPage - 1);
   }
 });
@@ -2581,7 +2583,7 @@ if (pageNum === PaginationState.currentPage) {
   pageBtn.disabled = true;
 } else {
   pageBtn.addEventListener("click", async () => {
-    postsDiv.innerHTML = '<div class="loading">Loading...</div>';
+    postsDiv.innerHTML = '<div class="loading">⏳ Loading...</div>';
     await loadPosts(communityId, false, pageNum);
   });
 }
@@ -2593,7 +2595,7 @@ const nextBtn = document.createElement("button");
 nextBtn.textContent = ">";
 nextBtn.addEventListener("click", async () => {
   if (PaginationState.currentPage < totalPages) {
-    postsDiv.innerHTML = '<div class="loading">Loading...</div>';
+    postsDiv.innerHTML = '<div class="loading">⏳ Loading...</div>';
     await loadPosts(communityId, false, PaginationState.currentPage + 1);
   }
 });
@@ -2687,14 +2689,14 @@ try {
         <h3><span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
       </div>
       <h3>${post.title}</h3>
-      <p>${post.description}</p>
+      <p class="post-description">${post.description}</p>
       <div class="photo-carousel" id="carousel-${doc.id}-your" data-photos='${JSON.stringify(photoUrls)}'>
         ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${doc.id}-your"><</button>` : ''}
         <img loading="lazy" src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image" data-index="0">
         ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${doc.id}-your">></button>` : ''}
       </div>
       <p>Location: ${post.location.name}</p>
-      <p>Category: ${post.category || 'N/A'} | Looking For: ${post.lookingFor || 'N/A'} | Offering: ${post.offering || 'N/A'}</p>
+      <p class="highlight">Category: ${post.category || 'N/A'} | Looking For: ${post.lookingFor || 'N/A'} | Offering: ${post.offering || 'N/A'}</p>
       <p class="timestamp">${timestamp}</p>
       <p class="post-id">Post ID: ${doc.id} <button class="copy-btn" data-post-id="${doc.id}">Copy</button></p>
       ${post.userId === auth.currentUser.uid || isAdmin ? `<button class="delete-btn" id="deletePost-${doc.id}">Delete Post</button>` : ""}
@@ -2724,7 +2726,7 @@ try {
   else document.getElementById("scroll-to-ur-posts")?.scrollIntoView({ behavior: "smooth" });
 } catch (error) {
   console.error("Failed to load your posts:", error);
-  yourPostsList.innerHTML = "<p>Oops, something broke! Try refreshing, bro.</p>";
+  yourPostsList.innerHTML = "<p>Oops, something broke! Try refreshing.</p>";
   if (!reset) window.scrollTo(0, scrollTop);
   else document.getElementById("scroll-to-ur-posts")?.scrollIntoView({ behavior: "smooth" });
 }
@@ -2859,7 +2861,7 @@ closeBtn.onclick = () => closeModal("viewSavedPostsModal");
 return;
 }
 
-savedPostsList.innerHTML = '<div class="loading">Loading...</div>';
+savedPostsList.innerHTML = '<div class="loading">⏳ Loading...</div>';
 modal.style.display = "flex";
 modal.classList.remove("hidden");
 
@@ -3016,7 +3018,7 @@ return commData.postCount || 0; // Fallback to 0 if not set yet
 async function searchPostsById(postId) {
 const postsDiv = document.getElementById("postList");
 const caughtUpDiv = document.getElementById("caughtUpMessage");
-postsDiv.innerHTML = '<div class="loading">Searching...</div>';
+postsDiv.innerHTML = '<div class="loading">⏳ Searching...</div>';
 caughtUpDiv.style.display = "none";
 
 if (!postId || postId.trim() === "") {
@@ -3094,7 +3096,7 @@ postsDiv.innerHTML = `
   </div>
   <div class="post" id="post-${actualPostId}">
     <h3>${post.title || "No Title"}</h3>
-    <p>${post.description || "No Description"}</p>
+    <p class="post-description">${post.description || "No Description"}</p>
     <div class="photo-carousel" id="carousel-${actualPostId}-search" data-photos='${JSON.stringify(photoUrls)}'>
       ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${actualPostId}-search"><</button>` : ""}
       <img loading="lazy" src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image">
@@ -3103,11 +3105,12 @@ postsDiv.innerHTML = `
     <p>By: <span class="username" data-uid="${post.userId || 'unknown'}">${userData.name || "Unknown"} (${userData.username || "unknown"})</span></p>
     <p>Location: ${post.location?.name || "N/A"}</p>
     <p>Category: ${post.category || "N/A"}</p>
-    <p>Looking For: ${post.lookingFor || "N/A"} | Offering: ${post.offering || "N/A"}</p>
+    <p class="highlight">Looking For: ${post.lookingFor || "N/A"} | Offering: ${post.offering || "N/A"}</p>
     <p>Posted: ${timestamp}</p>
     <p>Post ID: ${actualPostId} <button class="copy-btn" data-post-id="${actualPostId}">Copy</button></p>
-    <button class="like-btn" data-post-id="${actualPostId}">${(post.likedBy || []).includes(currentUser.uid) ? 'Unlike' : 'Like'} (${post.likes || 0})</button>
-    <button class="report-btn" id="reportPost-${actualPostId}">Report Post</button>
+    <button class="like-btn" data-post-id="${actualPostId}">${(post.likedBy || []).includes(currentUser.uid) ? '💔 Unlike' : '❤️ Like'} (${post.likes || 0})</button>
+    <button class="report-btn" id="reportPost-${actualPostId}">🚩 Report Post</button>
+    <br><br>
     ${(isOwner || isAdmin) ? `<button class="delete-btn" id="deletePost-${actualPostId}">Delete Post</button>` : ""}
     ${reportStatus.isOwner && reportStatus.reportCount === 1 ? `
       <div class="report-warning" id="warning-${actualPostId}">
@@ -3260,7 +3263,7 @@ async function viewProfile(uid) {
   const detailsEl = document.getElementById("profileDetails");
   const actionsEl = document.getElementById("profileActions");
 
-  actionsEl.innerHTML = '<div class="loading">Loading...</div>';
+  actionsEl.innerHTML = '<div class="loading">⏳ Loading...</div>';
   detailsEl.innerHTML = '';
   nameEl.textContent = '';
   photoEl.src = "https://via.placeholder.com/40";
@@ -3868,7 +3871,7 @@ return;
 }
 
 lastMemberDoc = null;
-membersList.innerHTML = '<div class="loading">Loading...</div>';
+membersList.innerHTML = '<div class="loading">⏳ Loading...</div>';
 modal.style.display = "flex";
 modal.classList.remove("hidden");
 
@@ -3997,7 +4000,7 @@ async function searchMembers(communityId, searchTerm) {
 const membersList = document.getElementById("membersList");
 let startIndex = 0;
 
-membersList.innerHTML = '<div class="loading">Searching...</div>';
+membersList.innerHTML = '<div class="loading">⏳ Searching...</div>';
 
 if (!searchTerm) {
 lastMemberDoc = null;
@@ -4120,7 +4123,7 @@ const bannedList = document.getElementById("bannedList");
 const bannedSearch = document.getElementById("bannedSearch");
 
 lastBannedDoc = null;
-bannedList.innerHTML = '<div class="loading">Loading...</div>';
+bannedList.innerHTML = '<div class="loading">⏳ Loading...</div>';
 modal.style.display = "flex";
 modal.classList.remove("hidden");
 
@@ -4265,7 +4268,7 @@ const ITEMS_PER_PAGE = 10;
 let startIndex = 0; // Track where we are in the filtered list
 
 // Clear the list and remove old buttons
-bannedList.innerHTML = '<div class="loading">Searching...</div>';
+bannedList.innerHTML = '<div class="loading">⏳ Searching...</div>';
 
 if (!searchTerm) {
 lastBannedDoc = null;
@@ -4394,7 +4397,7 @@ const modal = document.getElementById("viewCommunitiesModal");
 const communitiesList = document.getElementById("communitiesList");
 const closeBtn = document.getElementById("closeCommunitiesBtn");
 
-communitiesList.innerHTML = '<div class="loading">Loading...</div>';
+communitiesList.innerHTML = '<div class="loading">⏳ Loading...</div>';
 modal.style.display = "flex";
 modal.classList.remove("hidden");
 
@@ -4508,7 +4511,7 @@ refreshBtn.style.marginLeft = "10px";
 modal.querySelector(".modal-content").insertBefore(refreshBtn, document.getElementById("clearNotificationsBtn"));
 }
 
-notificationList.innerHTML = '<div class="loading">Loading...</div>';
+notificationList.innerHTML = '<div class="loading">⏳ Loading...</div>';
 modal.style.display = "flex";
 modal.classList.remove("hidden");
 
@@ -4554,7 +4557,7 @@ if (reset) {
   lastDoc = null;
   displayedCount = 0;
   allNotifications = [];
-  notificationList.innerHTML = '<div class="loading">Loading...</div>';
+  notificationList.innerHTML = '<div class="loading">⏳ Loading...</div>';
 }
 
 let retries = 3;

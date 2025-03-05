@@ -88,14 +88,14 @@
 .chat-message {
   margin: 10px 0;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: 20px;
   max-width: 70%;
   word-wrap: break-word;
   position: relative;
 }
 
 .chat-message.sent {
-  background: #007bff;
+  background: #007bffed;
   color: #fff;
   margin-left: auto;
 }
@@ -279,12 +279,13 @@
 }
 
 .post-id-chat {
-  color: orange; /* Blue for clickable vibe */
+  color: #090d9b;
   cursor: pointer;
   text-decoration: underline;
 }
+
 .post-id-chat:hover {
-  color: rgba(255, 166, 0, 0.847); /* Darker on hover */
+  color: #090e9bb8;
 }
 
 .chat-message a {
