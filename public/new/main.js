@@ -268,7 +268,7 @@ actions.innerHTML = `
   ${commData.members.includes(user.uid) && commData.creatorId !== user.uid ? `<button class="leave-btn" id="leaveCommunityBtn">Leave Community</button>` : ""}
   <button id="viewProfileViewRequestsBtn">Profile Requests ${profileViewRequestCount > 0 ? `<span class="request-badge">${profileViewRequestCount}</span>` : ''}</button>
   <button id="viewSavedPostsBtn">Saved Posts</button>
-  <button id="viewChatsBtn">Chats</button>
+  <button id="viewChatsBtn">💬 Chats</button>
   <button id="viewMyFollowersBtn">Followers</button>
 `;
 
@@ -499,7 +499,7 @@ console.log("Cleared unread flags for chats:", snapshot.size);
 
 const hasUnreadChats = clearUnread ? false : snapshot.size > 0;
 if (viewChatsBtn) {
-viewChatsBtn.innerHTML = `Chats ${hasUnreadChats ? '<span class="chat-badge">(new)</span>' : ''}`;
+viewChatsBtn.innerHTML = `💬 Chats ${hasUnreadChats ? '<span class="chat-badge">(new)</span>' : ''}`;
 }
 }
 
@@ -2913,8 +2913,8 @@ if (savedPostsSnapshot.empty) {
         <p>Community: <a href="./community.html?id=${savedData.communityId}">${communityName}</a></p>
         <p class="saved-note">Note: <span data-doc-id="${savedDoc.id}">${savedData.note || "No note"}</span></p>
         <div class="post-card-actions">
-          <button class="edit-note-btn" data-doc-id="${savedDoc.id}">Edit Note</button>
-          <button class="delete-saved-btn" data-doc-id="${savedDoc.id}">Unsave</button>
+          <button class="edit-note-btn" data-doc-id="${savedDoc.id}">✏️ Edit Note</button>
+          <button class="delete-saved-btn" data-doc-id="${savedDoc.id}">🗑️ Unsave</button>
         </div>
       </div>
     `;
