@@ -1,5 +1,5 @@
 import { auth } from './firebaseConfig.js';
-import { applyActionCode, verifyPasswordResetCode, confirmPasswordReset } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-auth.js";
+import { applyActionCode, verifyPasswordResetCode, confirmPasswordReset } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 // Get the action mode and action code from the URL
 const queryString = window.location.search;
