@@ -5,15 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" href="./favicon.png" type="image/x-icon">
   <title>Join Community - Life Swap</title>
-  <!-- Google Fonts: Poppins for a clean, modern feel -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
-  <!-- Google Material Icons -->
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
   <style>
     body {
       margin: 0;
       padding: 0;
-      background: linear-gradient(135deg, #e0f7fa, #b2ebf2); /* Soft cyan gradient */
+      background: linear-gradient(135deg, #e0f7fa, #b2ebf2);
       font-family: 'Poppins', sans-serif;
       min-height: 100vh;
       display: flex;
@@ -86,6 +84,14 @@
       cursor: not-allowed;
     }
 
+    a.member {
+      background: #2ecc71; /* Green to indicate membership */
+    }
+
+    a.member:hover {
+      background: #27ae60;
+    }
+
     a .material-icons {
       margin-right: 8px;
     }
@@ -100,13 +106,12 @@
     .login-msg a {
       background: none;
       color: #0288d1;
-      padding: 5px;
       padding: 0;
       font-weight: 400;
     }
 
     .login-msg a:hover {
-      color: #0278bd2b;
+      color: #0278bd;
       text-decoration: underline;
       transform: none;
     }
@@ -118,7 +123,6 @@
       font-weight: 300;
     }
 
-    /* SVG Background Accent */
     .modal::before {
       content: '';
       position: absolute;
@@ -143,9 +147,8 @@
 
     .login-msg a.signup-link {
       background: #0278bd2b;
-      padding: 5px;
-      color: white;
       padding: 5px 15px;
+      color: white;
       border-radius: 20px;
     }
 
@@ -181,7 +184,7 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
     import { getFirestore, doc, getDoc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
     import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-  
+
     // Firebase Config (unchanged)
     const firebaseConfig = {
       apiKey: "AIzaSyB5Q0kHoViWJl-t-pWCKj_AT-ClAMadfrU",
@@ -192,24 +195,24 @@
       appId: "1:475311181000:web:32d03d80f70081bfb629fd",
       measurementId: "G-CHJY2ZEYYF"
     };
-  
+
     // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
     const auth = getAuth(app);
-  
-    // Smart cache with expiration (24 hours) - unchanged
+
+    // Smart cache with expiration (24 hours)
     const locationCache = new Map();
     const CACHE_EXPIRY = 24 * 60 * 60 * 1000;
-  
+
     async function getLocationName(lat, lon) {
       const cacheKey = `loc_${lat}_${lon}`;
       const cached = locationCache.get(cacheKey);
-  
+
       if (cached && (Date.now() - cached.timestamp < CACHE_EXPIRY)) {
         return cached.value;
       }
-  
+
       try {
         const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, {
           headers: { "User-Agent": "LifeSwap/1.0 (aadjrbr@gmail.com)" }
@@ -218,7 +221,7 @@
         const city = data.address?.city || data.address?.town || data.address?.village || "";
         const region = data.address?.state || data.address?.county || data.address?.country || "";
         const locationName = city && region ? `${city}, ${region}` : data.display_name || "Unknown Location";
-  
+
         locationCache.set(cacheKey, { value: locationName, timestamp: Date.now() });
         return locationName;
       } catch (error) {
@@ -226,15 +229,15 @@
         return "Unknown Location";
       }
     }
-  
+
     // Get community ID from URL
     const params = new URLSearchParams(window.location.search);
     const id = params.get("id");
-  
+
     const joinLink = document.getElementById("joinLink");
     const authMsg = document.getElementById("authMsg");
     const errorMsg = document.getElementById("errorMsg");
-  
+
     if (!id) {
       errorMsg.textContent = "No community ID provided.";
     } else {
@@ -242,29 +245,52 @@
         // Clear previous messages
         errorMsg.textContent = "";
         authMsg.textContent = "";
-  
+
         if (!user) {
-          // User is not authenticated - show the friendly message
+          // User is not authenticated
           authMsg.innerHTML = 'Welcome! To participate in our communities, we kindly ask that you create an account. This helps ensure a safe and secure experience for all members while protecting against fraudulent activity. Please click <a href="./login.html">here</a> to get started (Then try again the QR code).';
           joinLink.classList.add("disabled");
           joinLink.href = "#";
           document.getElementById("communityName").textContent = "Life Swap";
           document.getElementById("communityLocation").textContent = "Sign up/Login and try again.";
         } else {
-          // User is authenticated - fetch community data
+          // User is authenticated - fetch community and membership data
           const commRef = doc(db, "communities", id);
+          const userRef = doc(db, "users", user.uid);
+          const memberRef = doc(db, "communities", id, "members", user.uid);
+
           try {
-            const docSnap = await getDoc(commRef);
-            if (!docSnap.exists()) {
+            const [commSnap, userSnap, memberSnap] = await Promise.all([
+              getDoc(commRef),
+              getDoc(userRef),
+              getDoc(memberRef)
+            ]);
+
+            if (!commSnap.exists()) {
               throw new Error("Community not found!");
             }
-            const data = docSnap.data();
+
+            const data = commSnap.data();
             const locationName = await getLocationName(data.location.latitude, data.location.longitude);
-  
-            document.getElementById("communityName").textContent = `Join ${data.name}`;
+            const userCommunityIds = userSnap.exists() ? userSnap.data().communityIds || [] : [];
+            const isMember = memberSnap.exists() || userCommunityIds.includes(id);
+
+            document.getElementById("communityName").textContent = `${data.name}`;
             document.getElementById("communityLocation").textContent = locationName;
-            joinLink.classList.remove("disabled");
-            joinLink.href = `./community.html?id=${id}`;
+
+            if (isMember) {
+              // User is already a member
+              joinLink.classList.remove("disabled");
+              joinLink.classList.add("member");
+              joinLink.innerHTML = '<span class="material-icons">check_circle</span>You’re Already a Member! (Go)';
+              joinLink.href = `./community.html?id=${id}`;
+            } else {
+              // User is not a member
+              joinLink.classList.remove("disabled");
+              joinLink.classList.remove("member");
+              joinLink.innerHTML = '<span class="material-icons">login</span>Join Now';
+              joinLink.href = `./start.html?id=${id}`; // Redirect to start.html to handle joining
+            }
           } catch (error) {
             console.error("Fetch failed:", error);
             errorMsg.textContent = "An error occurred while loading the community. Please try again later.";
