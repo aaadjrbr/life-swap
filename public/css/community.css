@@ -107,7 +107,7 @@ span#createdAt {
   background: #dc3545;
   color: white;
   border-radius: 50%;
-  padding: 2px 6px;
+  padding: 4px 4px;
   font-size: 12px;
   display: none; /* Hidden by default, shown when count > 0 */
 }
@@ -157,6 +157,7 @@ input, textarea {
 }
 
 button.like-btn {
+  color: orange;
   padding: 0;
   background: none;
   font-size: 1.2em;
@@ -177,7 +178,7 @@ button {
   border-radius: 4px;
   cursor: pointer;
   margin: 5px;
-  font-size: 0.9em;
+  font-size: 1em;
   font-weight: 400;
 }
 
@@ -1737,10 +1738,10 @@ color: #0056b3;
 }
 
 .save-toggle-btn {
+  color: orange;
   margin-left: 10px;
   padding: 0;
   background: none;
-  color: white;
   border: none;
   border-radius: 3px;
   cursor: pointer;
@@ -2119,4 +2120,13 @@ h2#profileName {
 @keyframes popIn {
   from { transform: scale(0.9); opacity: 0; }
   to { transform: scale(1); opacity: 1; }
+}
+
+footer a {
+  color: orange;
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: underline;
 }
