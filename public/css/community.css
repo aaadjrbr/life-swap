@@ -1376,8 +1376,6 @@ input:focus, textarea:focus, select:focus {
   .post-filter-bar {
       margin-bottom: 5px;
       padding: 9px;
-      background-color: #f8f9fa;
-      border: 1px solid #ddd;
       border-radius: 4px;
       display: flex;
       flex-wrap: wrap;
@@ -1390,7 +1388,7 @@ input:focus, textarea:focus, select:focus {
   flex: 1;
   min-width: 200px;
   padding: 8px;
-  border: 1px solid #ccc;
+  border: 1px solid #444;
   border-radius: 4px;
 }
 
@@ -1426,7 +1424,7 @@ div#posts div.search-bar {
 .search-bar input[type="text"] {
   width: 100%;
   padding: 8px;
-  border: 1px solid #ccc;
+  border: 1px solid #444;
   border-radius: 4px;
 }
 
@@ -1434,7 +1432,7 @@ div#posts div.search-bar {
   width: 100%;
   padding: 8px;
   margin: 5px 0 10px 0;
-  border: 1px solid #ccc;
+  border: 1px solid #444;
   border-radius: 4px;
 }
 
@@ -1890,15 +1888,15 @@ background-color: #0056b3;
 
 .notification-item {
   padding: 10px;
-  border-bottom: 1px solid #eee;
+  border: 2px solid #ffffff8f;
   display: flex;
   align-items: stretch;
   flex-direction: column;
   margin-bottom: 5px;
   border-radius: 8px;
   cursor: pointer;
-  box-shadow: inset -2px 2px 3px rgba(0, 0, 0, 0.1);
-  background-color: #e8e9ea;
+  box-shadow: inset -2px 2px 3px rgb(0 0 0 / 65%);
+  background-color: #222;
 }
 
 .clickable-profile {
