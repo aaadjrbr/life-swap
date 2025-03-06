@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="./favicon.png" type="image/x-icon">
+    <title>Dashboard - Life Swap</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            background: #111;
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+
+        .dashboard-container {
+            background: #222;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 2rem;
+        }
+
+        .logo span {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .stats-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .stats-header h1 {
+            font-size: 1.8rem;
+            color: #fff;
+        }
+
+        .refresh-btn {
+            background: #333;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.3s ease;
+        }
+
+        .refresh-btn:hover {
+            background: #444;
+        }
+
+        .stats-section {
+            margin-bottom: 2rem;
+        }
+
+        .stats-section h2 {
+            color: #fff;
+            margin-bottom: 1rem;
+            font-size: 1.4rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toggle-btn {
+            background: none;
+            border: none;
+            color: #fff;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            max-height: 400px;
+            overflow-y: auto;
+            display: none; /* Hidden by default */
+        }
+
+        .stats-grid.visible {
+            display: grid;
+        }
+
+        .stat-card {
+            background: #333;
+            padding: 1rem;
+            border-radius: 10px;
+            color: #fff;
+        }
+
+        .stat-card p {
+            margin: 0.5rem 0;
+            font-size: 0.9rem;
+        }
+
+        .count {
+            font-size: 2rem;
+            font-weight: 600;
+            color: rgba(172, 255, 47, 0.881);
+            margin-bottom: 1rem;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 1rem;
+        }
+
+        .pagination button {
+            background: #333;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+
+        .pagination button:hover {
+            background: #444;
+        }
+
+        .pagination button:disabled {
+            background: #222;
+            cursor: not-allowed;
+        }
+
+        a {
+            color: orange;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="logo">
+            <i class="fa-solid fa-leaf" style="font-size: 40px; color: rgba(172, 255, 47, 0.881);"></i>
+            <span style="color: rgba(172, 255, 47, 0.881);">Life</span> Swap
+        </div>
+        <div class="stats-header">
+            <h1>Admin Dashboard</h1>
+            <button class="refresh-btn" id="refreshBtn">Refresh Data</button>
+        </div>
+
+        <p><a href="./index.html">Home</a> | <a href="./start.html">Communities</a></p>
+        <br/>
+
+        <div class="stats-section" id="usersSection">
+            <h2>Users (<span id="userCount">0</span>) <button class="toggle-btn" id="toggleUsers">Show</button></h2>
+            <div class="stats-grid" id="usersGrid"></div>
+            <div class="pagination" id="usersPagination">
+                <button id="prevUsers">Previous</button>
+                <button id="nextUsers">Next</button>
+            </div>
+        </div>
+
+        <div class="stats-section" id="communitiesSection">
+            <h2>Communities (<span id="communityCount">0</span>) <button class="toggle-btn" id="toggleCommunities">Show</button></h2>
+            <div class="stats-grid"/compiler directives id="communitiesGrid"></div>
+            <div class="pagination" id="communitiesPagination">
+                <button id="prevCommunities">Previous</button>
+                <button id="nextCommunities">Next</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { 
+            db, 
+            collection, 
+            getDocs, 
+            query, 
+            limit, 
+            startAfter, 
+            getDoc, 
+            doc 
+        } from './js/firebaseConfig.js'; // Adjust path as needed
+
+        class CacheManager {
+            static set(key, value, ttl = 3600) {
+                const now = new Date();
+                const item = { value, expiry: now.getTime() + ttl * 1000 };
+                localStorage.setItem(key, JSON.stringify(item));
+            }
+            static get(key) {
+                const itemStr = localStorage.getItem(key);
+                if (!itemStr) return null;
+                const item = JSON.parse(itemStr);
+                const now = new Date();
+                if (now.getTime() > item.expiry) {
+                    localStorage.removeItem(key);
+                    return null;
+                }
+                return item.value;
+            }
+        }
+
+        class DashboardManager {
+            constructor() {
+                this.usersCollection = collection(db, 'users');
+                this.communitiesCollection = collection(db, 'communities');
+                this.counterDocRef = doc(db, 'counters', 'users');
+                this.pageSize = 10; // Number of items per page
+                this.lastUserDoc = null;
+                this.lastCommunityDoc = null;
+                this.users = [];
+                this.communities = [];
+                this.currentUserPage = 0;
+                this.currentCommunityPage = 0;
+                this.initEventListeners();
+                this.loadData(); // Initial load
+            }
+
+            initEventListeners() {
+                document.getElementById('refreshBtn').addEventListener('click', () => this.loadData(true));
+                document.getElementById('toggleUsers').addEventListener('click', () => this.toggleSection('usersGrid', 'toggleUsers'));
+                document.getElementById('toggleCommunities').addEventListener('click', () => this.toggleSection('communitiesGrid', 'toggleCommunities'));
+                document.getElementById('prevUsers').addEventListener('click', () => this.changePage('users', -1));
+                document.getElementById('nextUsers').addEventListener('click', () => this.changePage('users', 1));
+                document.getElementById('prevCommunities').addEventListener('click', () => this.changePage('communities', -1));
+                document.getElementById('nextCommunities').addEventListener('click', () => this.changePage('communities', 1));
+            }
+
+            toggleSection(gridId, toggleBtnId) {
+                const grid = document.getElementById(gridId);
+                const btn = document.getElementById(toggleBtnId);
+                grid.classList.toggle('visible');
+                btn.textContent = grid.classList.contains('visible') ? 'Hide' : 'Show';
+            }
+
+            async fetchUserCount() {
+                const cacheKey = 'user_count';
+                const cached = CacheManager.get(cacheKey);
+                if (cached && !this.forceRefresh) return cached;
+
+                const counterDoc = await getDoc(this.counterDocRef);
+                const count = counterDoc.exists() ? counterDoc.data().count || 0 : 0;
+                CacheManager.set(cacheKey, count, 300); // Cache for 5 minutes
+                return count;
+            }
+
+            async fetchReverseGeocode(lat, lon) {
+                const cacheKey = `geocode_${lat}_${lon}`;
+                const cached = CacheManager.get(cacheKey);
+                if (cached) return cached;
+
+                try {
+                    const response = await fetch(
+                        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+                        { headers: { "User-Agent": "LifeSwap/1.0 (aaadjrbr@gmail.com)" } }
+                    );
+                    const data = await response.json();
+                    const location = data.address?.city || data.address?.town || data.address?.village || data.display_name;
+                    CacheManager.set(cacheKey, location, 24 * 3600); // Cache for 24 hours
+                    return location;
+                } catch (error) {
+                    console.error('Geocoding error:', error);
+                    return 'Unknown Location';
+                }
+            }
+
+            async fetchUsers(startAfterDoc = null) {
+                const cacheKey = `users_page_${this.currentUserPage}`;
+                const cached = CacheManager.get(cacheKey);
+                if (cached && !this.forceRefresh) return cached;
+
+                let q = query(this.usersCollection, limit(this.pageSize));
+                if (startAfterDoc) q = query(this.usersCollection, startAfter(startAfterDoc), limit(this.pageSize));
+
+                const snapshot = await getDocs(q);
+                this.lastUserDoc = snapshot.docs[snapshot.docs.length - 1];
+                const users = snapshot.docs.map(doc => ({
+                    username: doc.data().username || 'N/A',
+                    email: doc.data().email || 'N/A',
+                    joinedAt: doc.data().joinedAt?.toDate().toLocaleDateString() || 'N/A',
+                    city: doc.data().city || 'N/A'
+                }));
+                CacheManager.set(cacheKey, users, 300); // Cache for 5 minutes
+                return users;
+            }
+
+            async fetchCommunities(startAfterDoc = null) {
+                const cacheKey = `communities_page_${this.currentCommunityPage}`;
+                const cached = CacheManager.get(cacheKey);
+                if (cached && !this.forceRefresh) return cached;
+
+                let q = query(this.communitiesCollection, limit(this.pageSize));
+                if (startAfterDoc) q = query(this.communitiesCollection, startAfter(startAfterDoc), limit(this.pageSize));
+
+                const snapshot = await getDocs(q);
+                this.lastCommunityDoc = snapshot.docs[snapshot.docs.length - 1];
+                const communities = await Promise.all(snapshot.docs.map(async doc => {
+                    const data = doc.data();
+                    const location = data.location && data.location.latitude && data.location.longitude
+                        ? await this.fetchReverseGeocode(data.location.latitude, data.location.longitude)
+                        : 'N/A';
+                    return {
+                        name: data.name || 'N/A',
+                        location: location,
+                        memberCount: data.memberCount || 0
+                    };
+                }));
+                CacheManager.set(cacheKey, communities, 300); // Cache for 5 minutes
+                return communities;
+            }
+
+            async changePage(type, direction) {
+                if (type === 'users') {
+                    this.currentUserPage += direction;
+                    if (this.currentUserPage < 0) this.currentUserPage = 0;
+                    const users = await this.fetchUsers(direction > 0 ? this.lastUserDoc : null);
+                    this.users = users;
+                    this.renderUsers();
+                    this.updatePagination('users');
+                } else if (type === 'communities') {
+                    this.currentCommunityPage += direction;
+                    if (this.currentCommunityPage < 0) this.currentCommunityPage = 0;
+                    const communities = await this.fetchCommunities(direction > 0 ? this.lastCommunityDoc : null);
+                    this.communities = communities;
+                    this.renderCommunities();
+                    this.updatePagination('communities');
+                }
+            }
+
+            renderUsers() {
+                const usersGrid = document.getElementById('usersGrid');
+                usersGrid.innerHTML = this.users.map(user => `
+                    <div class="stat-card">
+                        <p><strong>Username:</strong> ${user.username}</p>
+                        <p><strong>Email:</strong> ${user.email}</p>
+                        <p><strong>Joined:</strong> ${user.joinedAt}</p>
+                        <p><strong>City:</strong> ${user.city}</p>
+                    </div>
+                `).join('');
+            }
+
+            renderCommunities() {
+                const communitiesGrid = document.getElementById('communitiesGrid');
+                communitiesGrid.innerHTML = this.communities.map(community => `
+                    <div class="stat-card">
+                        <p><strong>Name:</strong> ${community.name}</p>
+                        <p><strong>Location:</strong> ${community.location}</p>
+                        <p><strong>Members:</strong> ${community.memberCount}</p>
+                    </div>
+                `).join('');
+            }
+
+            updatePagination(type) {
+                const prevBtn = document.getElementById(`prev${type.charAt(0).toUpperCase() + type.slice(1)}`);
+                const nextBtn = document.getElementById(`next${type.charAt(0).toUpperCase() + type.slice(1)}`);
+                prevBtn.disabled = this[`current${type.charAt(0).toUpperCase() + type.slice(1)}Page`] === 0;
+                nextBtn.disabled = this[type].length < this.pageSize;
+            }
+
+            async loadData(forceRefresh = false) {
+                this.forceRefresh = forceRefresh;
+
+                // User count from counter
+                const userCount = await this.fetchUserCount();
+                document.getElementById('userCount').textContent = userCount;
+
+                // Initial users page
+                this.users = await this.fetchUsers();
+                this.renderUsers();
+                this.updatePagination('users');
+
+                // Initial communities page
+                this.communities = await this.fetchCommunities();
+                this.renderCommunities();
+                this.updatePagination('communities');
+
+                document.getElementById('communityCount').textContent = this.communities.length; // Note: This is just the current page; total count requires another counter
+
+                this.forceRefresh = false;
+            }
+        }
+
+        // Initialize the dashboard
+        const dashboard = new DashboardManager();
+    </script>
+</body>
+</html>
