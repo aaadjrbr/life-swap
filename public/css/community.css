@@ -1,6 +1,6 @@
 /* General Layout */
 body {
-  font-family: 'Lexend', sans-serif;
+  font-family: 'Figtree', sans-serif;
   margin: 0;
   padding: 0;
   background: #efeeee;
@@ -23,7 +23,7 @@ body.deleting::before {
 }
 
 button, input, textarea, label, select, h3, h4, h5, h6, h2 {
-  font-family: 'Lexend', sans-serif;
+  font-family: 'Figtree', sans-serif;
 }
 
 .community-page {
@@ -501,7 +501,7 @@ img.lazy[src] {
 
 /* Posts */
 .post {
-  padding: 20px;
+  padding: 10px;
   margin: 10px 0;
   min-height: 300px;
   border-radius: 15px;
@@ -654,7 +654,7 @@ button#viewRequestsBtn {
   background: #f1f3f4;
   border-radius: 15px;
   padding: 10px;
-  max-width: 80%;
+  max-width: 90%;
   opacity: 1;
   transition: opacity 0.2s ease-in-out;
 }
@@ -683,6 +683,7 @@ button#viewRequestsBtn {
 .comment-text p {
   margin: 5px 0;
   word-wrap: break-word;
+  font-size: 1em !important;
 }
 
 .comment-actions {
@@ -707,7 +708,7 @@ button#viewRequestsBtn {
   background: #d5d9dc;
   border-radius: 15px;
   padding: 8px;
-  max-width: 80%;
+  max-width: 90%;
 }
 
 .reply-text {
@@ -722,6 +723,7 @@ button#viewRequestsBtn {
 .reply-text p {
   margin: 5px 0;
   word-wrap: break-word;
+  font-size: 1em !important;
 }
 
 .comment-form, .reply-form {
@@ -1825,15 +1827,16 @@ background-color: #0056b3;
 }
 
 .notification-item {
-padding: 10px;
-border-bottom: 1px solid #eee;
-display: flex;
-align-items: stretch;
-flex-direction: column;
-background: yellow;
-margin-bottom: 5px;
-border-radius: 8px;
-cursor: pointer;
+  padding: 10px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: stretch;
+  flex-direction: column;
+  margin-bottom: 5px;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: inset -2px 2px 3px rgba(0, 0, 0, 0.1);
+  background-color: #e8e9ea;
 }
 
 .clickable-profile {

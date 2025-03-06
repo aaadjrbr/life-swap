@@ -1,65 +1,87 @@
 <!DOCTYPE html>
 <html lang="en">
-<!-- Special thanks to Jhey and his theme: https://x.com/intent/follow?screen_name=jh3yy&mx=2 theme ref: https://codepen.io/jh3y/pen/MYgaaem -->
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Life Swap</title>
-    <link rel="stylesheet" href="./css/index.css">
-    <script type="module" src="./js/homePage.js"></script> <!-- ✅ Removed defer -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="./favicon.png" type="image/x-icon">
+  <title>Life Swap</title>
+  <!-- Google Figtree Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&display=swap" rel="stylesheet" />
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
+
+  <!-- Animate.css -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+  <link rel="stylesheet" href="./css/index.css">
 </head>
 <body>
+  <header>
+    <div class="logo">Life Swap</div>
+    <nav>
+      <ul>
+        <li><a href="#home">Home</a></li>
+        <li><a href="#about">About</a></li>
+        <li><a href="#features">How It Works</a></li>
 
-    <header>
-        <h1 class="fluid">Life Swap <br />
-        <span style="font-size: 0.6em;">
-            Your new way to <span class="strike">buy</span>?<br /> Swap instead!
-        </span style="font-size: 1.6em;">
-            <br/>
-            <a style="font-size: 0.5em; color: orange; text-decoration: none;" href="./login.html">Get Started</a> <span style="font-size: 0.5em;">or</span>
-            <br/> <a style="font-size: 0.5em; color: orange; text-decoration: none;" href="./start.html">Communities</a>  
-        </h1>   
-    </header>
-
-    <main>
-        <section class="content fluid">
-            <h2><span aria-hidden="true">you can&nbsp;</span>
-                <span class="sr-only">you can swap things.</span>
-            </h2>
-            <ul aria-hidden="true" style="--count: 22"> <!-- 🔢 Match actual <li> count -->
-                <li>swap.</li>
-                <li>trade.</li>
-                <li>barter.</li>
-                <li>exchange.</li>
-                <li>connect.</li>
-                <li>share.</li>
-                <li>give.</li>
-                <li>receive.</li>
-                <li>donate.</li>
-                <li>trade skills.</li>
-                <li>swap time.</li>
-                <li>learn.</li>
-                <li>teach.</li>
-                <li>collaborate.</li>
-                <li>repurpose.</li>
-                <li>declutter.</li>
-                <li>upgrade.</li>
-                <li>reuse.</li>
-                <li>support.</li>
-                <li>grow.</li>
-                <li>find value.</li>
-            </ul>
-        </section>
-        
-        <section>
-            <h2 style="font-size: 1.8em;" class="fluid">Beta version, out now:<br/><br/>
-                 <a style="text-decoration: none; color: orange;" href="./login.html">Create Account</a>
-                <br/>
-            <br/> <a style="text-decoration: none; color: orange;" href="./start.html">Already a member? Communities</a></h2>
-    
-        </section>
-    </main>
-
-    <footer>Life Swap &copy; 2025</footer>
+        <li><a href="./start.html">I'm a Member</a></li>
+      </ul>
+    </nav>
+  </header>
+  
+  <section class="hero" id="home">
+    <div class="hero-content">
+      <h1 class="animate__animated animate__fadeInDown">One swap at a time</h1>
+      <p class="animate__animated animate__fadeInUp">Swap things you don’t need for things you do need.</p>
+      <a href="./login.html" class="btn animate__animated animate__fadeInUp">Get Started</a>
+    </div>
+  </section>
+  
+  <section id="about">
+    <h2>About Life Swap</h2>
+    <p>Life Swap is more than a platform—it’s a community-driven movement.
+        Here, individuals exchange items they no longer need for things they do,
+        fostering connections over transactions. It’s not about money; it’s about
+        building meaningful relationships through sharing. In a society focused
+        on possession, Life Swap encourages giving, growth, and collaboration,
+        creating a network that thrives on mutual support, one swap at a time.</p>
+  </section>
+  
+  <section id="features">
+    <h2>How It Works</h2>
+    <div class="features">
+      <div class="feature-item">
+        <i class="fas fa-handshake"></i>
+        <h3>Connect</h3>
+        <p>
+          Meet like-minded people from all over who are ready to trade. No money, just the genuine desire to exchange skills, time, and items.
+        </p>
+      </div>
+      <div class="feature-item">
+        <i class="fas fa-sync-alt"></i>
+        <h3>Swap</h3>
+        <p>
+          Exchange what you don't need for what you do—be it skills, experiences, or tangible items. It’s a true barter system.
+        </p>
+      </div>
+      <div class="feature-item">
+        <i class="fas fa-smile"></i>
+        <h3>Thrive</h3>
+        <p>
+          Enjoy a richer life full of new experiences and valuable connections. Grow and thrive through a community built on mutual support.
+        </p>
+      </div>
+    </div>
+  </section>  
+  
+  <section id="contact">
+    <h2>Stay in Touch</h2>
+    <p>Have questions? Reach out to us and start your life swap journey today!</p>
+    <br>
+    <a href="mailto:contact@lifeswap.com" class="btn">Contact Us</a>
+  </section>
+  
+  <footer>
+    &copy; 2025 Life Swap. All rights reserved.
+  </footer>
 </body>
 </html>
