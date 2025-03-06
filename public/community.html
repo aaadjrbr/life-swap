@@ -17,14 +17,14 @@
       <div class="community-info">
         <h2 id="communityName"></h2>
         <p id="communityMeta">Created: <span id="createdAt"></span> by <span id="creatorName"></span></p>
-        <h3 class="life-swap">Life Swap. One swap at a time. <a href="#" style="text-decoration: none;">Donate 💙</a></h3>
+        <h3 class="life-swap">Life Swap. One swap at a time. <a href="#" style="text-decoration: none; color: rgb(29, 155, 240);">Donate 💙</a></h3>
       </div>
       <button id="viewCommunitiesBtn">Your Communities</button>
       <button id="viewNotificationsBtn">🔔 Notifications <span id="notificationCount" class="notification-badge"></span></button>
     </div>
     <p id="communityId"></p>
     <button class="copy-btn" id="copyCommunityIdBtn">Copy Community ID</button>
-    <p style="color: #0056b3; text-align: center;">Total Users: <span id="totalUsers">0</span> | Banned Users: <span id="bannedUsers">0</span> | <span id="profileRequestsBtn"></span></p>
+    <p style="color: #fff; text-align: center;">Total Users: <span id="totalUsers">0</span> | Banned Users: <span id="bannedUsers">0</span> | <span id="profileRequestsBtn"></span></p>
     <div id="userSwapInfo" class="user-swap-info">
       Username: <span id="userNameCopy" class="clickable">⏳ Loading...</span> | 🤝 Your Swaps: <span id="swapCount">0</span>
     </div>
@@ -37,12 +37,33 @@
       <summary>New Post </summary>
       <div>
         <form id="newPostForm">
+          <label>Title</label>
           <input type="text" id="postTitle" placeholder="Title" required>
+          <label>Description</label>
           <textarea id="postDescription" placeholder="Description" required></textarea>
+          <label for="category">Category (For your item/skill/time):</label>
+          <select id="category" required>
+            <option value="" disabled selected>Select Category</option>
+            <option value="clothing_accessories">Clothing & Accessories</option>
+            <option value="electronics">Electronics & Gadgets</option>
+            <option value="furniture_decor">Furniture & Home Decor</option>
+            <option value="kitchen_dining">Kitchen & Dining</option>
+            <option value="tools_diy">Tools & DIY</option>
+            <option value="books_media">Books, Movies & Music</option>
+            <option value="arts_crafts">Arts & Crafts</option>
+            <option value="toys_games">Toys & Games</option>
+            <option value="sports_outdoors">Sports & Outdoors</option>
+            <option value="health_beauty">Health & Beauty</option>
+            <option value="baby_kids">Baby & Kids</option>
+            <option value="pet_supplies">Pet Supplies</option>
+            <option value="misc">Miscellaneous</option>
+          </select>
+          <label>Photos (Up to 5):</label>
           <input type="file" id="postPhotos" multiple accept="image/*">
+          <label>Location:</label>
           <input type="text" id="postLocation" placeholder="Location" required>
           <div id="postLocationSuggestions" class="suggestions"></div>
-          <p style="color: red; font-size: 0.9em"><em>*You need to click in one of the suggestions</em></p>
+          <p style="color: orange; font-size: 0.9em"><em>*You need to click in one of the suggestions</em></p>
           <div class="community-checkbox-container">
             <label>Post to Communities:</label>
             <div id="communityCheckboxes" class="community-checkboxes">
@@ -63,23 +84,7 @@
             <option value="Skill">Skill</option>
             <option value="Item">Item</option>
           </select>
-          <label for="category">Category:</label>
-          <select id="category" required>
-            <option value="" disabled selected>Select Category</option>
-            <option value="clothing_accessories">Clothing & Accessories</option>
-            <option value="electronics">Electronics & Gadgets</option>
-            <option value="furniture_decor">Furniture & Home Decor</option>
-            <option value="kitchen_dining">Kitchen & Dining</option>
-            <option value="tools_diy">Tools & DIY</option>
-            <option value="books_media">Books, Movies & Music</option>
-            <option value="arts_crafts">Arts & Crafts</option>
-            <option value="toys_games">Toys & Games</option>
-            <option value="sports_outdoors">Sports & Outdoors</option>
-            <option value="health_beauty">Health & Beauty</option>
-            <option value="baby_kids">Baby & Kids</option>
-            <option value="pet_supplies">Pet Supplies</option>
-            <option value="misc">Miscellaneous</option>
-          </select>
+          <br/><br/>
           <button type="button" id="createPostBtn">Create Post</button>
         </form>
       </div>

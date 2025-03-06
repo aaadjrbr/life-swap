@@ -2419,7 +2419,7 @@ postDiv.id = `post-${postId}`;
 postDiv.innerHTML = `
   <div class="post-header">
     <img loading="lazy" src="${userData.profilePhoto}" class="profile-photo" alt="Profile">
-    <h3><span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
+    <h3><span class="username" data-uid="${post.userId}">${userData.name}</span> <span class="at-user">@${userData.username}</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
   </div>
   <h3>${post.title || 'Untitled'}</h3>
   <p class="post-description">${post.description || ''}</p>
@@ -2686,7 +2686,7 @@ try {
     postDiv.innerHTML = `
       <div class="post-header">
         <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
-        <h3><span class="username" data-uid="${post.userId}">${userData.name} (${userData.username})</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
+        <h3><span class="username" data-uid="${post.userId}">${userData.name}</span> <span class="at-user">@${userData.username}</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
       </div>
       <h3>${post.title}</h3>
       <p class="post-description">${post.description}</p>
