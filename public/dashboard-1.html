@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="./favicon.png" type="image/x-icon">
+    <link rel="icon" href="./leaf-solid.svg" type="image/x-icon">
     <title>Dashboard - Life Swap</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -203,7 +203,7 @@
             startAfter, 
             getDoc, 
             doc 
-        } from './js/firebaseConfig.js'; // Adjust path as needed
+        } from './js/firebaseConfig.js';
 
         class CacheManager {
             static set(key, value, ttl = 3600) {
@@ -226,36 +226,51 @@
 
         class DashboardManager {
             constructor() {
+                console.log('DashboardManager initialized');
                 this.usersCollection = collection(db, 'users');
                 this.communitiesCollection = collection(db, 'communities');
                 this.userCounterRef = doc(db, 'counters', 'users');
                 this.communityCounterRef = doc(db, 'counters', 'communities');
                 this.pageSize = 10;
-                this.userPages = new Map(); // Cache for user pages
-                this.communityPages = new Map(); // Cache for community pages
+                this.userPages = new Map();
+                this.communityPages = new Map();
+                this.users = [];
+                this.communities = [];
                 this.currentUserPage = 0;
                 this.currentCommunityPage = 0;
+                this.isFetching = { users: false, communities: false }; // Prevent race conditions
                 this.initEventListeners();
-                this.loadCounts(); // Initial load of counts only
+                this.loadCounts();
             }
 
             initEventListeners() {
                 document.getElementById('refreshBtn').addEventListener('click', () => this.refreshData());
-                document.getElementById('toggleUsers').addEventListener('click', () => this.toggleSection('users', 'usersGrid', 'toggleUsers'));
-                document.getElementById('toggleCommunities').addEventListener('click', () => this.toggleSection('communities', 'communitiesGrid', 'toggleCommunities'));
+                document.getElementById('toggleUsers').addEventListener('click', this.toggleSection.bind(this, 'users', 'usersGrid', 'toggleUsers'));
+                document.getElementById('toggleCommunities').addEventListener('click', this.toggleSection.bind(this, 'communities', 'communitiesGrid', 'toggleCommunities'));
                 document.getElementById('prevUsers').addEventListener('click', () => this.changePage('users', -1));
                 document.getElementById('nextUsers').addEventListener('click', () => this.changePage('users', 1));
                 document.getElementById('prevCommunities').addEventListener('click', () => this.changePage('communities', -1));
                 document.getElementById('nextCommunities').addEventListener('click', () => this.changePage('communities', 1));
             }
 
-            toggleSection(type, gridId, toggleBtnId) {
+            async toggleSection(type, gridId, toggleBtnId) {
                 const grid = document.getElementById(gridId);
                 const btn = document.getElementById(toggleBtnId);
                 const isVisible = grid.classList.toggle('visible');
                 btn.textContent = isVisible ? 'Hide' : 'Show';
-                if (isVisible && !this[`${type}Pages`].has(this[`current${type.charAt(0).toUpperCase() + type.slice(1)}Page`])) {
-                    this.fetchPage(type, this[`current${type.charAt(0).toUpperCase() + type.slice(1)}Page`]);
+                const pages = type === 'users' ? this.userPages : this.communityPages;
+                const currentPage = type === 'users' ? this.currentUserPage : this.currentCommunityPage;
+
+                if (isVisible) {
+                    let pageData;
+                    if (!pages.has(currentPage)) {
+                        pageData = await this.fetchPage(type, currentPage);
+                    } else {
+                        pageData = pages.get(currentPage);
+                    }
+                    this[type === 'users' ? 'users' : 'communities'] = pageData.items;
+                    this[`render${type.charAt(0).toUpperCase() + type.slice(1)}`]();
+                    this.updatePagination(type);
                 }
             }
 
@@ -290,12 +305,16 @@
             }
 
             async fetchPage(type, page) {
+                if (this.isFetching[type]) return this[type === 'users' ? 'userPages' : 'communityPages'].get(page); // Prevent duplicate fetches
+                this.isFetching[type] = true;
+
                 const collection = type === 'users' ? this.usersCollection : this.communitiesCollection;
                 const pages = type === 'users' ? this.userPages : this.communityPages;
                 const cacheKey = `${type}_page_${page}`;
                 const cached = CacheManager.get(cacheKey);
                 if (cached && !this.forceRefresh) {
                     pages.set(page, cached);
+                    this.isFetching[type] = false;
                     return cached;
                 }
 
@@ -331,14 +350,23 @@
 
                 const pageData = { items: data, lastDoc: lastDocInPage };
                 pages.set(page, pageData);
-                CacheManager.set(cacheKey, pageData, 300); // 5-minute TTL
+                CacheManager.set(cacheKey, pageData, 300);
+                this.isFetching[type] = false;
                 return pageData;
             }
 
             async changePage(type, direction) {
                 const currentPageKey = `current${type.charAt(0).toUpperCase() + type.slice(1)}Page`;
                 const newPage = this[currentPageKey] + direction;
-                if (newPage < 0) return;
+                if (newPage < 0) return; // Prevent negative pages
+
+                const pages = type === 'users' ? this.userPages : this.communityPages;
+                const totalItems = type === 'users' 
+                    ? parseInt(document.getElementById('userCount').textContent) 
+                    : parseInt(document.getElementById('communityCount').textContent);
+                const maxPage = Math.ceil(totalItems / this.pageSize) - 1;
+
+                if (newPage > maxPage && pages.get(this[currentPageKey])?.items.length < this.pageSize) return; // No more data
 
                 this[currentPageKey] = newPage;
                 const pageData = await this.fetchPage(type, newPage);
@@ -348,6 +376,7 @@
             }
 
             renderUsers() {
+                console.log('Rendering users:', this.users.length, 'items');
                 document.getElementById('usersGrid').innerHTML = this.users.map(user => `
                     <div class="stat-card">
                         <p><strong>Username:</strong> ${user.username}</p>
@@ -359,6 +388,7 @@
             }
 
             renderCommunities() {
+                console.log('Rendering communities:', this.communities.length, 'items');
                 document.getElementById('communitiesGrid').innerHTML = this.communities.map(community => `
                     <div class="stat-card">
                         <p><strong>Name:</strong> ${community.name}</p>
@@ -374,8 +404,13 @@
                 const nextBtn = document.getElementById(`next${prefix}`);
                 const currentPage = this[`current${prefix}Page`];
                 const pages = type === 'users' ? this.userPages : this.communityPages;
+                const totalItems = type === 'users' 
+                    ? parseInt(document.getElementById('userCount').textContent) 
+                    : parseInt(document.getElementById('communityCount').textContent);
+                const maxPage = Math.ceil(totalItems / this.pageSize) - 1;
+
                 prevBtn.disabled = currentPage === 0;
-                nextBtn.disabled = pages.get(currentPage)?.items.length < this.pageSize;
+                nextBtn.disabled = currentPage >= maxPage || (pages.get(currentPage)?.items.length < this.pageSize && pages.get(currentPage)?.items.length > 0);
             }
 
             async loadCounts() {
@@ -391,12 +426,14 @@
                 this.communityPages.clear();
                 await this.loadCounts();
                 if (document.getElementById('usersGrid').classList.contains('visible')) {
-                    await this.fetchPage('users', this.currentUserPage);
+                    const pageData = await this.fetchPage('users', this.currentUserPage);
+                    this.users = pageData.items;
                     this.renderUsers();
                     this.updatePagination('users');
                 }
                 if (document.getElementById('communitiesGrid').classList.contains('visible')) {
-                    await this.fetchPage('communities', this.currentCommunityPage);
+                    const pageData = await this.fetchPage('communities', this.currentCommunityPage);
+                    this.communities = pageData.items;
                     this.renderCommunities();
                     this.updatePagination('communities');
                 }
