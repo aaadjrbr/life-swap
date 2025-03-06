@@ -185,7 +185,7 @@ async function generateShareContent(communityId) {
 
     const { latitude, longitude } = commData.location;
     const locationName = await getLocationName(latitude, longitude);
-    const qrUrl = `${window.location.origin}/new/join.html?id=${communityId}`;
+    const qrUrl = `${window.location.origin}/join.html?id=${communityId}`;
 
     // Generate QR code
     const qrCanvas = document.createElement("canvas");
