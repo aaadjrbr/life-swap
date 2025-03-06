@@ -10,11 +10,12 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/js/all.min.js"></script>
 </head>
 <body>
   <div class="community-picker">
-    <h1>Welcome to Life Swap</h1>
-    <p><a href="./index.html">Home</a> | <a href="#">Contact</a> | <a href="./edit-profile.html">Edit Profile</a></p>
+    <h1><i class="fa-solid fa-leaf" style="font-size: 40px; color: rgba(172, 255, 47, 0.881);"></i> <span style="color: rgba(172, 255, 47, 0.881);">Life</span> Swap</h1>
+    <p><a href="./index.html">Home</a> | <a href="./contact.html">Contact</a> | <a href="./edit-profile.html">Edit Profile</a></p>
     <p>Pick or <a href="#createCommunityBtn">create a community</a> to start swapping!</p>
 
     <div id="yourCommunities">
@@ -53,7 +54,7 @@
         <p style="color: orange; font-size: 0.9em"><em>*You need to click in one of the suggestions</em></p>
         <label style="display: flex; align-items: center; margin: 10px 0; font-size: 0.9em;">
           <input type="checkbox" id="termsCheckbox" style="margin-right: 8px; width: auto;"> 
-          <span>By creating a community you agree with the <a href="/terms.html" target="_blank" style="color: #007bff; text-decoration: underline;">terms</a></span>
+          <span>By creating a community you agree with the <a href="./legal/terms.html" target="_blank" style="color: #007bff; text-decoration: underline;">terms</a></span>
         </label>
         <button id="submitCommunityBtn" disabled>Create Community</button>
         <button id="cancelCreateBtn">Cancel</button>

@@ -427,7 +427,7 @@ button:disabled {
   user-select: none;
   display: inline-block;
   background: linear-gradient(135deg, #ffff19, #fdff84); /* Gradient from blue to cyan */
-  color: rgb(255, 50, 50);
+  color: rgb(255, 50, 50) !important;
   padding: 3px 8px; /* Slightly bigger for presence */
   border-radius: 14px; /* Softer curve */
   font-size: 12px;
@@ -940,7 +940,7 @@ button#viewProfileViewRequestsBtn {
 div#notificationsModal button.copy-id-btn2,
 button.mark-seen-btn2 {
   background: none;
-  color: #007bff;
+  color: rgb(152 213 255);
   padding: 5px;
 }
 
