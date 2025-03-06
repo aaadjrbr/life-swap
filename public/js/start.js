@@ -733,8 +733,14 @@ async function loadCommunitiesInView(map, markers) {
   const zoomLevel = map.getZoom();
   const center = map.getCenter();
   const bounds = map.getBounds();
+  const user = auth.currentUser;
 
-  // Handle zoom < 9 (we’ll fix the removeChild error later)
+  if (!user) {
+    console.log("No user logged in, skipping community load");
+    return;
+  }
+
+  // Handle zoom < 9
   if (zoomLevel < 9) {
     markers.clearLayers();
     console.log("Zoom level too low (<9), clearing markers, no fetch/cache");
@@ -766,6 +772,11 @@ async function loadCommunitiesInView(map, markers) {
   const broadKey = getBroadCacheKey(center);
   const cachedCommunities = sessionCache.get(broadKey);
 
+  // Fetch user's community IDs once
+  const userRef = doc(db, "users", user.uid);
+  const userDoc = await getDoc(userRef);
+  const userCommunityIds = userDoc.exists() ? userDoc.data().communityIds || [] : [];
+
   // Check last fetch position and distance
   const lastFetch = map._lastFetch || { lat: null, lng: null, zoom: null };
   const distanceMoved = lastFetch.lat && lastFetch.lng
@@ -788,11 +799,26 @@ async function loadCommunitiesInView(map, markers) {
     communities.forEach(comm => {
       if (!comm.marker) {
         const shortName = comm.name.length > 10 ? `${comm.name.substring(0, 10)}...` : comm.name;
+        const isMember = userCommunityIds.includes(comm.id);
+        const buttonText = isMember ? "Member (Go)" : "Join";
+        const buttonClass = isMember ? "map-go-btn" : "map-join-btn";
+
         comm.marker = L.marker([comm.location.latitude, comm.location.longitude])
-          .bindPopup(`<b>${comm.name}</b><br><button class="map-join-btn" data-community-id="${comm.id}">Join</button>`)
+          .bindPopup(`<b>${comm.name}</b><br><button class="${buttonClass}" data-community-id="${comm.id}">${buttonText}</button>`)
           .bindTooltip(shortName, { permanent: true, direction: "top", offset: [-15, -5] });
+
         comm.marker.on("popupopen", () => {
-          comm.marker.getPopup().getElement().querySelector(".map-join-btn")?.addEventListener("click", () => joinCommunity(comm.id));
+          const popupElement = comm.marker.getPopup().getElement();
+          const btn = popupElement.querySelector(`.${buttonClass}`);
+          if (btn) {
+            btn.addEventListener("click", () => {
+              if (isMember) {
+                goToCommunity(comm.id);
+              } else {
+                joinCommunity(comm.id);
+              }
+            });
+          }
         });
       }
       markers.addLayer(comm.marker);
@@ -820,11 +846,26 @@ async function loadCommunitiesInView(map, markers) {
     const visibleCommunities = communities.filter(comm => bounds.contains([comm.location.latitude, comm.location.longitude]));
     visibleCommunities.forEach(comm => {
       const shortName = comm.name.length > 10 ? `${comm.name.substring(0, 10)}...` : comm.name;
+      const isMember = userCommunityIds.includes(comm.id);
+      const buttonText = isMember ? "Member (Go)" : "Join";
+      const buttonClass = isMember ? "map-go-btn" : "map-join-btn";
+
       comm.marker = L.marker([comm.location.latitude, comm.location.longitude])
-        .bindPopup(`<b>${comm.name}</b><br><button class="map-join-btn" data-community-id="${comm.id}">Join</button>`)
+        .bindPopup(`<b>${comm.name}</b><br><button class="${buttonClass}" data-community-id="${comm.id}">${buttonText}</button>`)
         .bindTooltip(shortName, { permanent: true, direction: "top", offset: [-15, -5] });
+
       comm.marker.on("popupopen", () => {
-        comm.marker.getPopup().getElement().querySelector(".map-join-btn")?.addEventListener("click", () => joinCommunity(comm.id));
+        const popupElement = comm.marker.getPopup().getElement();
+        const btn = popupElement.querySelector(`.${buttonClass}`);
+        if (btn) {
+          btn.addEventListener("click", () => {
+            if (isMember) {
+              goToCommunity(comm.id);
+            } else {
+              joinCommunity(comm.id);
+            }
+          });
+        }
       });
       markers.addLayer(comm.marker);
     });
