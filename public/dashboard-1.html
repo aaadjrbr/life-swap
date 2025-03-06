@@ -185,7 +185,7 @@
 
         <div class="stats-section" id="communitiesSection">
             <h2>Communities (<span id="communityCount">0</span>) <button class="toggle-btn" id="toggleCommunities">Show</button></h2>
-            <div class="stats-grid"/compiler directives id="communitiesGrid"></div>
+            <div class="stats-grid" id="communitiesGrid"></div>
             <div class="pagination" id="communitiesPagination">
                 <button id="prevCommunities">Previous</button>
                 <button id="nextCommunities">Next</button>
@@ -228,43 +228,44 @@
             constructor() {
                 this.usersCollection = collection(db, 'users');
                 this.communitiesCollection = collection(db, 'communities');
-                this.counterDocRef = doc(db, 'counters', 'users');
-                this.pageSize = 10; // Number of items per page
-                this.lastUserDoc = null;
-                this.lastCommunityDoc = null;
-                this.users = [];
-                this.communities = [];
+                this.userCounterRef = doc(db, 'counters', 'users');
+                this.communityCounterRef = doc(db, 'counters', 'communities');
+                this.pageSize = 10;
+                this.userPages = new Map(); // Cache for user pages
+                this.communityPages = new Map(); // Cache for community pages
                 this.currentUserPage = 0;
                 this.currentCommunityPage = 0;
                 this.initEventListeners();
-                this.loadData(); // Initial load
+                this.loadCounts(); // Initial load of counts only
             }
 
             initEventListeners() {
-                document.getElementById('refreshBtn').addEventListener('click', () => this.loadData(true));
-                document.getElementById('toggleUsers').addEventListener('click', () => this.toggleSection('usersGrid', 'toggleUsers'));
-                document.getElementById('toggleCommunities').addEventListener('click', () => this.toggleSection('communitiesGrid', 'toggleCommunities'));
+                document.getElementById('refreshBtn').addEventListener('click', () => this.refreshData());
+                document.getElementById('toggleUsers').addEventListener('click', () => this.toggleSection('users', 'usersGrid', 'toggleUsers'));
+                document.getElementById('toggleCommunities').addEventListener('click', () => this.toggleSection('communities', 'communitiesGrid', 'toggleCommunities'));
                 document.getElementById('prevUsers').addEventListener('click', () => this.changePage('users', -1));
                 document.getElementById('nextUsers').addEventListener('click', () => this.changePage('users', 1));
                 document.getElementById('prevCommunities').addEventListener('click', () => this.changePage('communities', -1));
                 document.getElementById('nextCommunities').addEventListener('click', () => this.changePage('communities', 1));
             }
 
-            toggleSection(gridId, toggleBtnId) {
+            toggleSection(type, gridId, toggleBtnId) {
                 const grid = document.getElementById(gridId);
                 const btn = document.getElementById(toggleBtnId);
-                grid.classList.toggle('visible');
-                btn.textContent = grid.classList.contains('visible') ? 'Hide' : 'Show';
+                const isVisible = grid.classList.toggle('visible');
+                btn.textContent = isVisible ? 'Hide' : 'Show';
+                if (isVisible && !this[`${type}Pages`].has(this[`current${type.charAt(0).toUpperCase() + type.slice(1)}Page`])) {
+                    this.fetchPage(type, this[`current${type.charAt(0).toUpperCase() + type.slice(1)}Page`]);
+                }
             }
 
-            async fetchUserCount() {
-                const cacheKey = 'user_count';
+            async fetchCount(counterRef, cacheKey) {
                 const cached = CacheManager.get(cacheKey);
                 if (cached && !this.forceRefresh) return cached;
 
-                const counterDoc = await getDoc(this.counterDocRef);
+                const counterDoc = await getDoc(counterRef);
                 const count = counterDoc.exists() ? counterDoc.data().count || 0 : 0;
-                CacheManager.set(cacheKey, count, 300); // Cache for 5 minutes
+                CacheManager.set(cacheKey, count, 300); // 5-minute TTL
                 return count;
             }
 
@@ -280,7 +281,7 @@
                     );
                     const data = await response.json();
                     const location = data.address?.city || data.address?.town || data.address?.village || data.display_name;
-                    CacheManager.set(cacheKey, location, 24 * 3600); // Cache for 24 hours
+                    CacheManager.set(cacheKey, location, 24 * 3600); // 24-hour TTL
                     return location;
                 } catch (error) {
                     console.error('Geocoding error:', error);
@@ -288,72 +289,66 @@
                 }
             }
 
-            async fetchUsers(startAfterDoc = null) {
-                const cacheKey = `users_page_${this.currentUserPage}`;
+            async fetchPage(type, page) {
+                const collection = type === 'users' ? this.usersCollection : this.communitiesCollection;
+                const pages = type === 'users' ? this.userPages : this.communityPages;
+                const cacheKey = `${type}_page_${page}`;
                 const cached = CacheManager.get(cacheKey);
-                if (cached && !this.forceRefresh) return cached;
+                if (cached && !this.forceRefresh) {
+                    pages.set(page, cached);
+                    return cached;
+                }
 
-                let q = query(this.usersCollection, limit(this.pageSize));
-                if (startAfterDoc) q = query(this.usersCollection, startAfter(startAfterDoc), limit(this.pageSize));
+                const lastDoc = page > 0 ? pages.get(page - 1)?.lastDoc : null;
+                let q = query(collection, limit(this.pageSize));
+                if (lastDoc) q = query(collection, startAfter(lastDoc), limit(this.pageSize));
 
                 const snapshot = await getDocs(q);
-                this.lastUserDoc = snapshot.docs[snapshot.docs.length - 1];
-                const users = snapshot.docs.map(doc => ({
-                    username: doc.data().username || 'N/A',
-                    email: doc.data().email || 'N/A',
-                    joinedAt: doc.data().joinedAt?.toDate().toLocaleDateString() || 'N/A',
-                    city: doc.data().city || 'N/A'
-                }));
-                CacheManager.set(cacheKey, users, 300); // Cache for 5 minutes
-                return users;
-            }
+                const docs = snapshot.docs;
+                const lastDocInPage = docs.length > 0 ? docs[docs.length - 1] : null;
 
-            async fetchCommunities(startAfterDoc = null) {
-                const cacheKey = `communities_page_${this.currentCommunityPage}`;
-                const cached = CacheManager.get(cacheKey);
-                if (cached && !this.forceRefresh) return cached;
+                let data;
+                if (type === 'users') {
+                    data = docs.map(doc => ({
+                        username: doc.data().username || 'N/A',
+                        email: doc.data().email || 'N/A',
+                        joinedAt: doc.data().joinedAt?.toDate().toLocaleDateString() || 'N/A',
+                        city: doc.data().city || 'N/A'
+                    }));
+                } else {
+                    data = await Promise.all(docs.map(async doc => {
+                        const d = doc.data();
+                        const location = d.location && d.location.latitude && d.location.longitude
+                            ? await this.fetchReverseGeocode(d.location.latitude, d.location.longitude)
+                            : 'N/A';
+                        return {
+                            name: d.name || 'N/A',
+                            location: location,
+                            memberCount: d.memberCount || 0
+                        };
+                    }));
+                }
 
-                let q = query(this.communitiesCollection, limit(this.pageSize));
-                if (startAfterDoc) q = query(this.communitiesCollection, startAfter(startAfterDoc), limit(this.pageSize));
-
-                const snapshot = await getDocs(q);
-                this.lastCommunityDoc = snapshot.docs[snapshot.docs.length - 1];
-                const communities = await Promise.all(snapshot.docs.map(async doc => {
-                    const data = doc.data();
-                    const location = data.location && data.location.latitude && data.location.longitude
-                        ? await this.fetchReverseGeocode(data.location.latitude, data.location.longitude)
-                        : 'N/A';
-                    return {
-                        name: data.name || 'N/A',
-                        location: location,
-                        memberCount: data.memberCount || 0
-                    };
-                }));
-                CacheManager.set(cacheKey, communities, 300); // Cache for 5 minutes
-                return communities;
+                const pageData = { items: data, lastDoc: lastDocInPage };
+                pages.set(page, pageData);
+                CacheManager.set(cacheKey, pageData, 300); // 5-minute TTL
+                return pageData;
             }
 
             async changePage(type, direction) {
-                if (type === 'users') {
-                    this.currentUserPage += direction;
-                    if (this.currentUserPage < 0) this.currentUserPage = 0;
-                    const users = await this.fetchUsers(direction > 0 ? this.lastUserDoc : null);
-                    this.users = users;
-                    this.renderUsers();
-                    this.updatePagination('users');
-                } else if (type === 'communities') {
-                    this.currentCommunityPage += direction;
-                    if (this.currentCommunityPage < 0) this.currentCommunityPage = 0;
-                    const communities = await this.fetchCommunities(direction > 0 ? this.lastCommunityDoc : null);
-                    this.communities = communities;
-                    this.renderCommunities();
-                    this.updatePagination('communities');
-                }
+                const currentPageKey = `current${type.charAt(0).toUpperCase() + type.slice(1)}Page`;
+                const newPage = this[currentPageKey] + direction;
+                if (newPage < 0) return;
+
+                this[currentPageKey] = newPage;
+                const pageData = await this.fetchPage(type, newPage);
+                this[type === 'users' ? 'users' : 'communities'] = pageData.items;
+                this[`render${type.charAt(0).toUpperCase() + type.slice(1)}`]();
+                this.updatePagination(type);
             }
 
             renderUsers() {
-                const usersGrid = document.getElementById('usersGrid');
-                usersGrid.innerHTML = this.users.map(user => `
+                document.getElementById('usersGrid').innerHTML = this.users.map(user => `
                     <div class="stat-card">
                         <p><strong>Username:</strong> ${user.username}</p>
                         <p><strong>Email:</strong> ${user.email}</p>
@@ -364,8 +359,7 @@
             }
 
             renderCommunities() {
-                const communitiesGrid = document.getElementById('communitiesGrid');
-                communitiesGrid.innerHTML = this.communities.map(community => `
+                document.getElementById('communitiesGrid').innerHTML = this.communities.map(community => `
                     <div class="stat-card">
                         <p><strong>Name:</strong> ${community.name}</p>
                         <p><strong>Location:</strong> ${community.location}</p>
@@ -375,31 +369,37 @@
             }
 
             updatePagination(type) {
-                const prevBtn = document.getElementById(`prev${type.charAt(0).toUpperCase() + type.slice(1)}`);
-                const nextBtn = document.getElementById(`next${type.charAt(0).toUpperCase() + type.slice(1)}`);
-                prevBtn.disabled = this[`current${type.charAt(0).toUpperCase() + type.slice(1)}Page`] === 0;
-                nextBtn.disabled = this[type].length < this.pageSize;
+                const prefix = type.charAt(0).toUpperCase() + type.slice(1);
+                const prevBtn = document.getElementById(`prev${prefix}`);
+                const nextBtn = document.getElementById(`next${prefix}`);
+                const currentPage = this[`current${prefix}Page`];
+                const pages = type === 'users' ? this.userPages : this.communityPages;
+                prevBtn.disabled = currentPage === 0;
+                nextBtn.disabled = pages.get(currentPage)?.items.length < this.pageSize;
             }
 
-            async loadData(forceRefresh = false) {
-                this.forceRefresh = forceRefresh;
-
-                // User count from counter
-                const userCount = await this.fetchUserCount();
+            async loadCounts() {
+                const userCount = await this.fetchCount(this.userCounterRef, 'user_count');
+                const communityCount = await this.fetchCount(this.communityCounterRef, 'community_count');
                 document.getElementById('userCount').textContent = userCount;
+                document.getElementById('communityCount').textContent = communityCount;
+            }
 
-                // Initial users page
-                this.users = await this.fetchUsers();
-                this.renderUsers();
-                this.updatePagination('users');
-
-                // Initial communities page
-                this.communities = await this.fetchCommunities();
-                this.renderCommunities();
-                this.updatePagination('communities');
-
-                document.getElementById('communityCount').textContent = this.communities.length; // Note: This is just the current page; total count requires another counter
-
+            async refreshData() {
+                this.forceRefresh = true;
+                this.userPages.clear();
+                this.communityPages.clear();
+                await this.loadCounts();
+                if (document.getElementById('usersGrid').classList.contains('visible')) {
+                    await this.fetchPage('users', this.currentUserPage);
+                    this.renderUsers();
+                    this.updatePagination('users');
+                }
+                if (document.getElementById('communitiesGrid').classList.contains('visible')) {
+                    await this.fetchPage('communities', this.currentCommunityPage);
+                    this.renderCommunities();
+                    this.updatePagination('communities');
+                }
                 this.forceRefresh = false;
             }
         }

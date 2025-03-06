@@ -74,7 +74,7 @@ button {
   border-radius: 4px;
   cursor: pointer;
   margin: 5px;
-  font-size: 0.9em;
+  font-size: 1em;
   font-weight: 400;
 }
 
@@ -179,12 +179,12 @@ button:hover {
 }
 
 .share-btn {
-  background: #f39c12;
+  background: #1273f3 !important;
   margin-left: 5px;
 }
 
 .share-btn:hover {
-  background: #e67e22;
+  background: #1273f3c3 !important;
 }
 
 #shareModal {
@@ -230,7 +230,7 @@ a:hover {
 #shareModal button {
   padding: 10px 20px;
   margin: 5px;
-  background: #f39c12;
+  background: #1273f3;
   color: white;
   border: none;
   border-radius: 4px;
@@ -238,7 +238,7 @@ a:hover {
 }
 
 #shareModal button:hover {
-  background: #e67e22;
+  background: #1273f3c0;
 }
 
 #shareModal #cancelOption {
