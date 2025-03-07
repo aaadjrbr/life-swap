@@ -104,8 +104,8 @@
         left: 22px;
     }
 
-    .hidden2 {
-        display: none;
+    .hidden-2 {
+        display: none !important;
     }
 
 </style>
@@ -261,7 +261,7 @@
   </script>
 
 
-<div id="cookie-consent" class="hidden2">
+<div id="cookie-consent" class="hidden-2">
   <br/>
   <div>
       <img src="" style="width: 120px; height: auto;"> 
@@ -284,13 +284,13 @@
   const hasConsent = localStorage.getItem('cookieConsent');
   
   if (!hasConsent) {
-      consentBanner.classList.remove('hidden2');
+      consentBanner.classList.remove('hidden-2');
   }
 
   // Accept Button Click Event
   document.getElementById('accept-cookies').addEventListener('click', function() {
       localStorage.setItem('cookieConsent', 'accepted');
-      consentBanner.classList.add('hidden2');
+      consentBanner.classList.add('hidden-2');
   });
 
   // Toggle Switch
