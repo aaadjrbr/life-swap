@@ -1,7 +1,7 @@
 /* General body styling */
 body {
-    font-family: 'Lexend', sans-serif;
-    background-color: #f5f6f5; /* Subtle off-white background */
+    font-family: 'Figtree', sans-serif;
+    background-color: #111; /* Subtle off-white background */
     margin: 0;
     padding: 0;
     display: flex;
@@ -12,7 +12,8 @@ body {
 
 /* Container for the action content */
 .container {
-    background-color: #fff;
+    background-color: #222;
+    border: 2px solid #444;
     padding: 30px;
     border-radius: 25px;
     width: 40%;
@@ -23,8 +24,8 @@ body {
 
 /* Headings */
 h1, h2 {
-    color: #2c3e50;
-    font-family: 'Lexend', sans-serif;
+    color: #ffffff;
+    font-family: 'Figtree', sans-serif;
     margin-bottom: 20px;
 }
 
@@ -43,7 +44,7 @@ input {
     background-color: #f9f9f9;
     font-size: 16px;
     transition: all 0.3s ease;
-    font-family: 'Lexend', sans-serif;
+    font-family: 'Figtree', sans-serif;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
@@ -55,28 +56,28 @@ input:focus {
 }
 
 a.button {
-    background-color: #2980b9; /* Professional blue */
+    background: #f39c12;
     color: white;
     padding: 10px 20px;
     text-decoration: none;
     border-radius: 5px;
     display: inline-block;
-    font-family: 'Lexend', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-size: 1em;
     text-align: center;
 }
 
 a.button:hover {
-    background-color: #1f6391; /* Darker blue on hover */
+    background: #f39d12cc;
 }
 
 button {
     cursor: pointer;
-    font-family: 'Lexend', sans-serif;
+    font-family: 'Figtree', sans-serif;
     font-weight: 600;
     color: #ffffff;
-    background: #0d6dfdec;
-    border: 3px solid #0d6dfd;
+    background: #f39c12;
+    border: 3px solid #222;
     padding: 15px;
     font-size: 1.1em;
     border-radius: 35px;
@@ -86,24 +87,34 @@ button {
 }
 
 button:hover {
-    background-image: linear-gradient(to right, #ffffff57, #ffffff6e);
-    border: 3px solid #0d6efd;
-    transform: scale(1.05);
+    background: #f39d12ba;
     transition: background-color 0.3s;
 }
 
 /* Error Message Styles */
 #reset-error-message {
+    background: #fff;
+    padding: 10px;
+    border-radius: 20px;
+    box-shadow: inset -5px 5px 9px rgba(0, 0, 0, 0.5);
     color: red;
     font-size: 14px;
     margin-top: 10px;
 }
 
 #email-verification-success {
+    background: #fff;
+    padding: 10px;
+    border-radius: 20px;
+    box-shadow: inset -5px 5px 9px rgba(0, 0, 0, 0.5);
     display: none;
 }
 
 #message {
+    background: #fff;
+    padding: 10px;
+    border-radius: 20px;
+    box-shadow: inset -5px 5px 9px rgba(0, 0, 0, 0.5);
     margin-bottom: 20px;
     font-size: 1.1em;
 }
