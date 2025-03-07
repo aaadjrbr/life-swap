@@ -7,7 +7,6 @@ function createFooter() {
     <div class="footer-content">
       <p>&copy; ${new Date().getFullYear()} <span style="color: rgba(172, 255, 47, 0.881);">Life Swap</span>. All rights reserved.</p>
       <p>Swap your way, no money, just value.</p>
-      <p>Need help? <a href="./contact.html">Contact</a> | <a href="./index.html">Home</a> </p>
     </div>
   `;
   document.body.appendChild(footer);
