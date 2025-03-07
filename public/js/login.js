@@ -15,7 +15,33 @@ const resetSuccessMessage = document.getElementById('reset-success-message');
 const createSuccessMessage = document.getElementById('create-success-message');
 const resendVerificationLink = document.getElementById('resend-verification-link');
 
-// Utility function to retry an operation with error handling
+// **Helper function to turn Firebase errors into user-friendly messages**
+function getUserFriendlyErrorMessage(errorCode) {
+    switch (errorCode) {
+        case 'auth/invalid-email':
+            return 'The email address isn’t valid.';
+        case 'auth/user-disabled':
+            return 'This account has been disabled.';
+        case 'auth/user-not-found':
+            return 'No account found with this email.';
+        case 'auth/wrong-password':
+            return 'Incorrect password. Try again.';
+        case 'auth/email-already-in-use':
+            return 'This email is already taken.';
+        case 'auth/weak-password':
+            return 'Your password is too weak. Make it stronger.';
+        case 'auth/operation-not-allowed':
+            return 'This sign-in method isn’t allowed.';
+        case 'auth/too-many-requests':
+            return 'Too many tries. Wait a bit and try again.';
+        case 'auth/network-request-failed':
+            return 'Network issue. Check your connection.';
+        default:
+            return 'Something went wrong. Please try again.';
+    }
+}
+
+// Utility function to retry an operation
 async function retryOperation(operation, retries = 3) {
     let lastError;
     for (let i = 0; i < retries; i++) {
@@ -25,19 +51,18 @@ async function retryOperation(operation, retries = 3) {
         } catch (error) {
             lastError = error;
             console.error(`Attempt ${i + 1} failed:`, error);
-            if (i < retries - 1) await new Promise(resolve => setTimeout(resolve, 1000)); // Delay between retries
+            if (i < retries - 1) await new Promise(resolve => setTimeout(resolve, 1000));
         }
     }
     throw lastError;
 }
 
-// Countdown timer for resend functionality
+// Countdown timer for resend button
 function startCountdown(buttonElement, messageElement, initialSeconds) {
     let seconds = initialSeconds;
     buttonElement.textContent = `Resend Verification Email (${seconds}s)`;
     buttonElement.disabled = true;
     buttonElement.style.backgroundColor = "#ccc";
-
     messageElement.textContent = `Please wait ${seconds} seconds to resend.`;
 
     const interval = setInterval(() => {
@@ -73,7 +98,7 @@ toggleCreateAccountButton.addEventListener('click', () => {
     createAccountForm.style.display = createAccountForm.style.display === 'none' ? 'block' : 'none';
 });
 
-// Monitor auth state to show/hide resend link
+// Monitor auth state for resend link
 auth.onAuthStateChanged((user) => {
     if (user) {
         console.log('Auth state changed: User signed in:', user.email, 'Verified:', user.emailVerified);
@@ -88,9 +113,10 @@ auth.onAuthStateChanged((user) => {
     }
 });
 
-// Handle login form submission
+// **Login Form Submission**
 loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    errorMessage.style.display = 'none'; // Clear old message
     const email = loginForm['email'].value;
     const password = loginForm['password'].value;
 
@@ -106,43 +132,45 @@ loginForm.addEventListener('submit', async (e) => {
             resendVerificationLink.style.display = 'block';
         }
     } catch (error) {
-        displayErrorMessage(errorMessage, `Login failed: ${error.message}`);
+        const friendlyMessage = getUserFriendlyErrorMessage(error.code);
+        displayErrorMessage(errorMessage, friendlyMessage);
         resendVerificationLink.style.display = 'none';
         console.error('Login error:', error);
     }
 });
 
-// Google Sign-In
+// **Google Sign-In**
 const googleProvider = new GoogleAuthProvider();
 document.getElementById('google-login-btn').addEventListener('click', async () => {
+    errorMessage.style.display = 'none'; // Clear old message
     try {
         await signInWithPopup(auth, googleProvider);
         console.log('Google sign-in successful');
         window.location.href = 'loading.html';
     } catch (error) {
-        displayErrorMessage(errorMessage, `Google sign-in failed: ${error.message}`);
+        const friendlyMessage = getUserFriendlyErrorMessage(error.code);
+        displayErrorMessage(errorMessage, friendlyMessage);
         console.error('Google sign-in error:', error);
     }
 });
 
-// Handle Create Account form submission
+// **Create Account Form Submission**
 createAccountForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    createErrorMessage.style.display = 'none'; // Clear old messages
+    createSuccessMessage.style.display = 'none';
     const newEmail = createAccountForm['new-email'].value;
     const newPassword = createAccountForm['new-account-password'].value;
     const confirmPassword = createAccountForm['confirm-account-password'].value;
     const termsCheckbox = document.getElementById('agreeTerms');
 
-    createErrorMessage.style.display = 'none';
-    createSuccessMessage.style.display = 'none';
-
     if (newPassword !== confirmPassword) {
-        displayErrorMessage(createErrorMessage, 'Passwords do not match.');
+        displayErrorMessage(createErrorMessage, 'Passwords don’t match.');
         return;
     }
 
     if (!termsCheckbox.checked) {
-        displayErrorMessage(createErrorMessage, 'You must agree to the Terms of Service.');
+        displayErrorMessage(createErrorMessage, 'You need to agree to the Terms of Service.');
         return;
     }
 
@@ -155,7 +183,7 @@ createAccountForm.addEventListener('submit', async (e) => {
         console.log('Verification email sent to:', user.email);
 
         createSuccessMessage.innerHTML = `
-            Account created! Please check your email to verify your account before logging in.
+            Account created! Check your email to verify your account before logging in.
             <br><a href="#" id="resend-verification">Resend Verification Email</a>
         `;
         createSuccessMessage.style.display = 'block';
@@ -165,33 +193,36 @@ createAccountForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             if (resendButton.disabled) return;
 
+            createErrorMessage.style.display = 'none'; // Clear old message
             try {
                 const currentUser = auth.currentUser;
                 if (!currentUser) {
-                    displayErrorMessage(createErrorMessage, 'User not signed in. Please log in again.');
+                    displayErrorMessage(createErrorMessage, 'You’re not signed in. Log in again.');
                     return;
                 }
                 await retryOperation(() => sendEmailVerification(currentUser));
-                displaySuccessMessage(createSuccessMessage, 'Verification email sent. Please check your inbox.');
+                displaySuccessMessage(createSuccessMessage, 'Verification email sent. Check your inbox.');
                 console.log('Resend verification email sent to:', currentUser.email);
-                startCountdown(resendButton, createErrorMessage, 30); // 30-second countdown
+                startCountdown(resendButton, createErrorMessage, 30);
             } catch (error) {
                 if (error.code === 'auth/too-many-requests') {
-                    displayErrorMessage(createErrorMessage, 'Too many requests. Please wait before resending.');
+                    displayErrorMessage(createErrorMessage, 'Too many requests. Wait before resending.');
                     startCountdown(resendButton, createErrorMessage, 30);
                 } else {
-                    displayErrorMessage(createErrorMessage, `Failed to resend verification email: ${error.message}`);
+                    const friendlyMessage = getUserFriendlyErrorMessage(error.code);
+                    displayErrorMessage(createErrorMessage, friendlyMessage);
                 }
                 console.error('Resend verification error:', error);
             }
         });
     } catch (error) {
-        displayErrorMessage(createErrorMessage, `Account creation failed: ${error.message}`);
+        const friendlyMessage = getUserFriendlyErrorMessage(error.code);
+        displayErrorMessage(createErrorMessage, friendlyMessage);
         console.error('Account creation error:', error);
     }
 });
 
-// Handle password reset form
+// **Password Reset Form**
 forgotPasswordLink.addEventListener('click', () => {
     passwordResetForm.style.display = 'block';
     loginForm.style.display = 'none';
@@ -206,57 +237,59 @@ Iremember.addEventListener('click', () => {
 
 passwordResetForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const resetEmail = passwordResetForm['reset-email'].value;
-
-    resetErrorMessage.style.display = 'none';
+    resetErrorMessage.style.display = 'none'; // Clear old messages
     resetSuccessMessage.style.display = 'none';
+    const resetEmail = passwordResetForm['reset-email'].value;
 
     try {
         await retryOperation(() => sendPasswordResetEmail(auth, resetEmail));
-        displaySuccessMessage(resetSuccessMessage, 'Password reset email sent. Please check your inbox.');
+        displaySuccessMessage(resetSuccessMessage, 'If an account exists for this email, we’ve sent a reset link.');
         console.log('Password reset email sent to:', resetEmail);
     } catch (error) {
-        displayErrorMessage(resetErrorMessage, `Failed to send reset email: ${error.message}`);
+        const friendlyMessage = getUserFriendlyErrorMessage(error.code);
+        displayErrorMessage(resetErrorMessage, friendlyMessage);
         console.error('Password reset error:', error);
     }
 });
 
-// Handle resend verification email on login page
+// **Resend Verification Email on Login Page**
 resendVerificationLink.addEventListener('click', async (e) => {
     e.preventDefault();
     if (resendVerificationLink.disabled) return;
 
+    errorMessage.style.display = 'none'; // Clear old message
     const user = auth.currentUser;
 
     if (!user) {
-        displayErrorMessage(errorMessage, 'User not signed in. Please log in again.');
+        displayErrorMessage(errorMessage, 'You’re not signed in. Log in again.');
         console.log('Resend attempted but no user signed in');
         return;
     }
 
     if (user.emailVerified) {
-        displayErrorMessage(errorMessage, 'Email already verified. Please proceed to login.');
+        displayErrorMessage(errorMessage, 'Your email is already verified. Just log in.');
         resendVerificationLink.style.display = 'none';
         return;
     }
 
     try {
         await retryOperation(() => sendEmailVerification(user));
-        displaySuccessMessage(errorMessage, 'Verification email sent. Please check your inbox.');
+        displaySuccessMessage(errorMessage, 'Verification email sent. Check your inbox.');
         console.log('Resend verification email sent to:', user.email);
-        startCountdown(resendVerificationLink, errorMessage, 30); // 30-second countdown
+        startCountdown(resendVerificationLink, errorMessage, 30);
     } catch (error) {
         if (error.code === 'auth/too-many-requests') {
-            displayErrorMessage(errorMessage, 'Too many requests. Please wait before resending.');
+            displayErrorMessage(errorMessage, 'Too many requests. Wait before resending.');
             startCountdown(resendVerificationLink, errorMessage, 30);
         } else {
-            displayErrorMessage(errorMessage, `Failed to resend verification email: ${error.message}`);
+            const friendlyMessage = getUserFriendlyErrorMessage(error.code);
+            displayErrorMessage(errorMessage, friendlyMessage);
         }
         console.error('Resend verification error:', error);
     }
 });
 
-// Password visibility toggle
+// Password visibility toggle (unchanged, just keeping it here)
 document.querySelectorAll('.toggle-password').forEach(togglePassword => {
     togglePassword.addEventListener('click', () => {
         const passwordField = togglePassword.previousElementSibling;

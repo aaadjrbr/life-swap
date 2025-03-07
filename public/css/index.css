@@ -82,7 +82,16 @@
       cursor: pointer;
       transition: background 0.3s;
       text-decoration: none;
+      width: 25%;
+      margin: auto;
     }
+    
+    @media (max-width: 600px) {
+      .btn {
+        width: 65%;
+      }
+    }
+
     .btn:hover {
       background: #e67e22;
     }
