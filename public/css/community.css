@@ -923,6 +923,10 @@ button#viewProfileViewRequestsBtn {
 .notification-list {
   max-height: 300px;
   overflow-y: auto;
+  border-radius: 20px;
+  border: 2px solid #555;
+  padding: 5px;
+  background: #111;
 }
 
 .notification-item {
