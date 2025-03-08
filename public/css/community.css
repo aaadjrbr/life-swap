@@ -895,7 +895,7 @@ button#viewProfileViewRequestsBtn {
 }
 
 .user-item:hover {
-  background: #f0f0f0;
+  background: #f0f0f04d;
 }
 
 .user-item button {

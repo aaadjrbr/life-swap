@@ -171,7 +171,7 @@ async function openChat(targetUid, communityId = null) {
         unsubscribe = null;
       }
     } else if (isBlockedByTarget) {
-      blockBtn.textContent = "Block User";
+      blockBtn.textContent = "🚫 Block User";
       messageContainer.innerHTML = `<p>${freshTargetUserData.name || "User"} blocked you. You can't send messages.</p>`;
       chatForm.style.display = "none";
       if (unsubscribe) {
@@ -179,7 +179,7 @@ async function openChat(targetUid, communityId = null) {
         unsubscribe = null;
       }
     } else {
-      blockBtn.textContent = "Block User";
+      blockBtn.textContent = "🚫 Block User";
       chatForm.style.display = "flex";
       if (!unsubscribe) {
         await startChatListener(); // This will replace dummies with real messages
