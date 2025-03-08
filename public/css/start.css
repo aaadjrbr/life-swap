@@ -55,6 +55,61 @@ h1, h2, h3, label, select, summary, input, textarea {
   color: #fff;
 }
 
+h1.h1-title {
+  margin-top: -5px;
+}
+
+@media (max-width: 600px) {
+  h1.h1-title {
+    margin-top: 55px;
+  }
+
+  .profile-container {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-direction: column;
+  }
+
+  .sub-title {
+    margin-top: 40px;
+  }
+
+  .profile-container {
+    position: absolute;
+    top: 20px;
+    right: 10px !important;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-direction: column;
+    margin-top: 15px;
+}
+
+  .profile-container {
+    position: absolute;
+    top: 30px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    }
+
+  .profile-name {
+    color: #fff;
+    font-size: 0.9em;
+    font-weight: 500;
+    }
+}
+
+svg.svg-inline--fa.fa-gear.settings-icon {
+  width: 20px;
+  height: 20px;
+}
+
 input, textarea {
   width: 100%;
   padding: 10px;
@@ -273,4 +328,46 @@ span {
   padding: 5px 10px;
   border-radius: 5px;
   cursor: pointer;
+}
+
+/* Profile Container */
+.profile-container {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-photo {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(172, 255, 47, 0.881); /* Matches Life Swap green */
+}
+
+.profile-name {
+  color: #fff;
+  font-size: 1em;
+  font-weight: 500;
+}
+
+.settings-link {
+  color: #f39c12; /* Matches your link color */
+  text-decoration: none;
+}
+
+.settings-icon {
+  font-size: 24px;
+}
+
+.settings-link:hover .settings-icon {
+  color: #e67e22; /* Matches your link hover color */
+}
+
+/* Ensure hidden class works for the photo */
+.hidden {
+  display: none;
 }

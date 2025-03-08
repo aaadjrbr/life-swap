@@ -41,13 +41,29 @@ document.addEventListener("DOMContentLoaded", () => {
           name: user.displayName || "New Swapper",
           email: user.email || "",
           joinedAt: new Date(),
-          communityIds: []
+          communityIds: [],
+          profilePhoto: "" // Default empty photo
         });
         userDoc = await getDoc(userRef);
       }
 
       // Check and clean communityIds on page load
       const userData = await checkAndCleanCommunityIds(user.uid, userDoc.data());
+
+      // Display profile photo and name
+      const profilePhoto = document.getElementById("profilePhoto");
+      const profileName = document.getElementById("profileName");
+      const photoUrl = userDoc.data().profilePhoto || "";
+      const name = userDoc.data().name || "New Swapper";
+
+      if (photoUrl) {
+        profilePhoto.src = photoUrl;
+        profilePhoto.classList.remove("hidden");
+      } else {
+        profilePhoto.classList.add("hidden"); // Ensure it stays hidden if no photo
+      }
+      profileName.textContent = name;
+
       setupCommunityPicker(userData);
     } catch (error) {
       console.error("Auth setup failed:", error);

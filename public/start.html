@@ -14,9 +14,19 @@
 </head>
 <body>
   <div class="community-picker">
-    <h1><i class="fa-solid fa-leaf" style="font-size: 40px; color: rgba(172, 255, 47, 0.881);"></i> <span style="color: rgba(172, 255, 47, 0.881);">Life</span> Swap</h1>
-    <p><a href="./index.html">Home</a> | <a href="./contact.html">Contact</a> | <a href="./edit-profile.html">Edit Profile</a></p>
-    <p>Pick or <a href="#createCommunityBtn">create a community</a> to start swapping!</p>
+    <h1 class="h1-title"><i class="fa-solid fa-leaf" style="font-size: 40px; color: rgba(172, 255, 47, 0.881);"></i> <span style="color: rgba(172, 255, 47, 0.881);">Life</span> Swap</h1>
+    <p><a href="./index.html">Home</a> | <a href="./contact.html">Contact</a></p>
+    
+    <!-- Add Profile Photo and Gear Icon Container -->
+    <div class="profile-container">
+      <img id="profilePhoto" src="" alt="Profile Photo" class="profile-photo hidden">
+      <span id="profileName" class="profile-name"></span>
+      <a href="./edit-profile.html" class="settings-link">
+        <i class="fa-solid fa-gear settings-icon" class="gear-icon"></i>
+      </a>
+    </div>
+
+    <p class="sub-title">Pick or <a href="#createCommunityBtn">create a community</a> to start swapping!</p>
 
     <div id="yourCommunities">
       <h3>🤝 Your Communities</h3>
