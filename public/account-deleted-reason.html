@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="./leaf-solid.svg" type="image/x-icon">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+    <title>Account Deletion Reasons - Life Swap</title>
+    <style>
+        body {
+            background: #111;
+            color: #fff;
+            font-family: 'Poppins', sans-serif;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: #222;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .header {
+            margin-bottom: 20px;
+            border-bottom: 1px solid #555;
+            padding-bottom: 10px;
+        }
+
+        button {
+            font-family: 'Poppins', sans-serif;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .refresh-btn, .delete-all-btn, .delete-btn {
+            background: #f39c12;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .refresh-btn:hover, .delete-all-btn:hover, .delete-btn:hover {
+            background: #e68a00;
+        }
+        .refresh-btn:disabled, .delete-all-btn:disabled, .delete-btn:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        .reason {
+            border-bottom: 1px solid #555;
+            padding: 15px;
+            background: #333;
+            margin-bottom: 10px;
+            border-radius: 3px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .reason-content p {
+            margin: 5px 0;
+        }
+        .error {
+            color: #ff4444;
+            text-align: center;
+            padding: 10px;
+            background: #550000;
+            border-radius: 3px;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            display: none;
+        }
+        .no-data {
+            text-align: center;
+            color: #f39c12;
+            padding: 20px;
+        }
+        .reason strong {
+            color: #f39c12;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .pagination button {
+            background: #555;
+            padding: 5px 10px;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        .pagination button:hover:not(:disabled) {
+            background: #f39c12;
+        }
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h2>Account Deletion Reasons</h2>
+            <p><a href="./dashboard-1.html" style="color: #f39c12;">Dashboard (Go back)</a></p>
+            <p>View and manage user account deletion feedback</p>
+        </div>
+        <div class="controls">
+            <button class="refresh-btn" id="refreshBtn">Refresh Data</button>
+            <button class="delete-all-btn" id="deleteAllBtn">Delete All Reasons</button>
+        </div>
+        <div id="loading" class="loading">Loading deletion reasons...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        <div id="reasonsList"></div>
+        <div class="pagination" id="pagination"></div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { 
+            getFirestore, 
+            collection, 
+            getDocs, 
+            deleteDoc,
+            query, 
+            orderBy, 
+            limit, 
+            startAfter,
+            writeBatch
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyB5Q0kHoViWJl-t-pWCKj_AT-ClAMadfrU",
+            authDomain: "life-swap-6065e.firebaseapp.com",
+            projectId: "life-swap-6065e",
+            storageBucket: "life-swap-6065e.firebasestorage.app",
+            messagingSenderId: "475311181000",
+            appId: "1:475311181000:web:32d03d80f70081bfb629fd",
+            measurementId: "G-CHJY2ZEYYF"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        const refreshBtn = document.getElementById('refreshBtn');
+        const deleteAllBtn = document.getElementById('deleteAllBtn');
+        const reasonsList = document.getElementById('reasonsList');
+        const errorDiv = document.getElementById('error');
+        const loadingDiv = document.getElementById('loading');
+        const paginationDiv = document.getElementById('pagination');
+
+        const ITEMS_PER_PAGE = 10;
+        let lastDoc = null;
+        let hasMore = false;
+        let currentDocs = [];
+        let currentPage = 1;
+
+        onAuthStateChanged(auth, (user) => {
+            if (!user) {
+                console.warn('No user logged in - proceeding with public access');
+                // Uncomment if you want to restrict access
+                // window.location.href = 'login.html';
+                // return;
+            }
+            loadDeletionReasons(); // Initial load
+        });
+
+        refreshBtn.addEventListener('click', () => {
+            currentPage = 1;
+            lastDoc = null;
+            loadDeletionReasons(true);
+        });
+        deleteAllBtn.addEventListener('click', deleteAllReasons);
+
+        async function loadDeletionReasons(refresh = false) {
+            toggleLoading(true);
+            clearError();
+
+            try {
+                // Base query
+                let q = query(
+                    collection(db, 'delete_reasons'),
+                    orderBy('timestamp', 'desc'),
+                    limit(ITEMS_PER_PAGE + 1) // One extra to check for more
+                );
+
+                // Add startAfter only if we have a lastDoc and not refreshing
+                if (lastDoc && !refresh) {
+                    q = query(
+                        collection(db, 'delete_reasons'),
+                        orderBy('timestamp', 'desc'),
+                        limit(ITEMS_PER_PAGE + 1),
+                        startAfter(lastDoc)
+                    );
+                }
+
+                const snapshot = await getDocs(q);
+                currentDocs = snapshot.docs;
+
+                hasMore = currentDocs.length > ITEMS_PER_PAGE;
+                const displayDocs = hasMore ? currentDocs.slice(0, ITEMS_PER_PAGE) : currentDocs;
+                lastDoc = displayDocs.length > 0 ? displayDocs[displayDocs.length - 1] : null;
+
+                renderReasons(displayDocs);
+                updatePagination();
+            } catch (error) {
+                handleError('Failed to load deletion reasons', error);
+            } finally {
+                toggleLoading(false);
+            }
+        }
+
+        async function deleteAllReasons() {
+            if (!confirm('Are you sure you want to delete ALL deletion reasons? This cannot be undone.')) {
+                return;
+            }
+
+            toggleLoading(true);
+            clearError();
+            disableButtons(true);
+
+            try {
+                const q = query(collection(db, 'delete_reasons'));
+                const snapshot = await getDocs(q);
+                
+                if (snapshot.empty) {
+                    reasonsList.innerHTML = '<div class="no-data">No deletion reasons to delete.</div>';
+                    return;
+                }
+
+                const batch = writeBatch(db);
+                snapshot.docs.forEach(doc => batch.delete(doc.ref));
+                await batch.commit();
+
+                lastDoc = null;
+                hasMore = false;
+                currentDocs = [];
+                currentPage = 1;
+                reasonsList.innerHTML = '<div class="no-data">All deletion reasons have been removed.</div>';
+                updatePagination();
+            } catch (error) {
+                handleError('Failed to delete all reasons', error);
+            } finally {
+                toggleLoading(false);
+                disableButtons(false);
+            }
+        }
+
+        async function deleteSingleReason(docId) {
+            if (!confirm('Are you sure you want to delete this deletion reason?')) {
+                return;
+            }
+
+            toggleLoading(true);
+            clearError();
+
+            try {
+                await deleteDoc(doc(db, 'delete_reasons', docId));
+                currentDocs = currentDocs.filter(doc => doc.id !== docId);
+                renderReasons(currentDocs.slice(0, ITEMS_PER_PAGE));
+                if (currentDocs.length === 0) {
+                    currentPage = 1;
+                    lastDoc = null;
+                    loadDeletionReasons(true); // Refresh if empty
+                }
+            } catch (error) {
+                handleError('Failed to delete reason', error);
+            } finally {
+                toggleLoading(false);
+            }
+        }
+
+        function renderReasons(docs) {
+            reasonsList.innerHTML = '';
+            if (docs.length === 0) {
+                reasonsList.innerHTML = '<div class="no-data">No deletion reasons found.</div>';
+                return;
+            }
+
+            docs.forEach(doc => {
+                const data = doc.data();
+                const div = document.createElement('div');
+                div.className = 'reason';
+
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'reason-content';
+                contentDiv.innerHTML = `
+                    <p><strong>Username:</strong> ${escapeHtml(data.username || 'Not set')}</p>
+                    <p><strong>Email:</strong> ${escapeHtml(data.email)}</p>
+                    <p><strong>Reason:</strong> ${formatReason(data.reason)}</p>
+                    <p><strong>Date:</strong> ${formatDate(data.timestamp)}</p>
+                `;
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.addEventListener('click', () => deleteSingleReason(doc.id));
+
+                div.appendChild(contentDiv);
+                div.appendChild(deleteBtn);
+                reasonsList.appendChild(div);
+            });
+        }
+
+        function formatReason(reason) {
+            const predefinedReasons = [
+                'privacy', 'not_useful', 'technical', 'too_expensive',
+                'found_alternative', 'not_enough_features', 'customer_support',
+                'too_many_notifications', 'security', 'temporary_leave'
+            ];
+            return predefinedReasons.includes(reason)
+                ? reason.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+                : escapeHtml(reason);
+        }
+
+        function formatDate(timestamp) {
+            try {
+                return new Date(timestamp).toLocaleString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } catch {
+                return 'Invalid Date';
+            }
+        }
+
+        function escapeHtml(unsafe) {
+            if (!unsafe) return 'Not provided';
+            return unsafe.toString()
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        function updatePagination() {
+            paginationDiv.innerHTML = '';
+            const prevBtn = document.createElement('button');
+            prevBtn.textContent = 'Previous';
+            prevBtn.disabled = currentPage === 1;
+            prevBtn.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    lastDoc = null; // Reset to start if going back
+                    loadDeletionReasons();
+                }
+            });
+
+            const nextBtn = document.createElement('button');
+            nextBtn.textContent = 'Next';
+            nextBtn.disabled = !hasMore;
+            nextBtn.addEventListener('click', () => {
+                currentPage++;
+                loadDeletionReasons();
+            });
+
+            const pageInfo = document.createElement('span');
+            pageInfo.textContent = `Page ${currentPage}`;
+            pageInfo.style.padding = '5px 10px';
+
+            paginationDiv.appendChild(prevBtn);
+            paginationDiv.appendChild(pageInfo);
+            paginationDiv.appendChild(nextBtn);
+        }
+
+        function toggleLoading(show) {
+            loadingDiv.style.display = show ? 'block' : 'none';
+            reasonsList.style.display = show ? 'none' : 'block';
+            paginationDiv.style.display = show ? 'none' : 'block';
+        }
+
+        function handleError(message, error) {
+            console.error(`${message}:`, error);
+            errorDiv.textContent = `${message}. Please try again.`;
+            errorDiv.style.display = 'block';
+        }
+
+        function clearError() {
+            errorDiv.style.display = 'none';
+            errorDiv.textContent = '';
+        }
+
+        function disableButtons(disable) {
+            refreshBtn.disabled = disable;
+            deleteAllBtn.disabled = disable;
+            document.querySelectorAll('.delete-btn').forEach(btn => btn.disabled = disable);
+        }
+    </script>
+</body>
+</html>

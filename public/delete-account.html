@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="./leaf-solid.svg" type="image/x-icon">
+    <link href="https://fonts.googleapis.com/css2?family=Figtree:ital,wght@0,300..900;1,300..900&display=swap" rel="stylesheet">
+    <title>Delete Account - Life Swap</title>
+    <style>
+        body {
+            background: #111;
+            color: #fff;
+            font-family: 'Figtree', sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #222;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .user-info {
+            background: #555;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 3px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        select, textarea, button {
+            font-family: 'Figtree', sans-serif;
+            width: 100%;
+            padding: 10px;
+            background: #555;
+            color: #fff;
+            border: none;
+            border-radius: 3px;
+            box-sizing: border-box;
+        }
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+            display: none;
+        }
+        button {
+            background: #f39c12;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #e68a00;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        .loading {
+            text-align: center;
+            display: none;
+        }
+        .error {
+            color: #ff4444;
+            margin-top: 10px;
+            text-align: center;
+        }
+        .warning {
+            color: #f39c12;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Delete Your Account</h2>
+        <p><a href="./edit-profile.html" style="color: #f39c12;">Go back (Edit Profile)</a></p>
+        <div id="userInfo" class="user-info"></div>
+        <div id="deleteForm">
+            <p class="warning">Warning: This action is permanent and cannot be undone. All your data will be deleted.</p>
+            <p>Please tell us why you're leaving:</p>
+            <div class="form-group">
+                <select id="reason" required>
+                    <option value="">Select a reason</option>
+                    <option value="privacy">Privacy concerns</option>
+                    <option value="not_useful">Not useful anymore</option>
+                    <option value="technical">Technical issues</option>
+                    <option value="too_expensive">Too expensive</option>
+                    <option value="found_alternative">Found a better alternative</option>
+                    <option value="not_enough_features">Lacks features I need</option>
+                    <option value="customer_support">Unsatisfied with customer support</option>
+                    <option value="too_many_notifications">Too many notifications/emails</option>
+                    <option value="security">Security concerns</option>
+                    <option value="temporary_leave">Just taking a break</option>
+                    <option value="other">Other (please specify)</option>
+                </select>
+                <textarea id="otherReason" placeholder="Please specify your reason..."></textarea>
+            </div>
+            <button id="deleteBtn">Delete All My Data</button>
+            <div id="error" class="error"></div>
+        </div>
+        <div id="loading" class="loading">
+            <p>Deleting your data... Please wait.</p>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+        import { 
+            getFirestore, 
+            collection, 
+            doc, 
+            getDoc,
+            getDocs, 
+            deleteDoc, 
+            setDoc, 
+            query, 
+            writeBatch 
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { 
+            getAuth, 
+            onAuthStateChanged, 
+            deleteUser 
+        } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyB5Q0kHoViWJl-t-pWCKj_AT-ClAMadfrU",
+            authDomain: "life-swap-6065e.firebaseapp.com",
+            projectId: "life-swap-6065e",
+            storageBucket: "life-swap-6065e.firebasestorage.app",
+            messagingSenderId: "475311181000",
+            appId: "1:475311181000:web:32d03d80f70081bfb629fd",
+            measurementId: "G-CHJY2ZEYYF"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        const deleteBtn = document.getElementById('deleteBtn');
+        const reasonSelect = document.getElementById('reason');
+        const otherReason = document.getElementById('otherReason');
+        const loading = document.getElementById('loading');
+        const form = document.getElementById('deleteForm');
+        const errorDiv = document.getElementById('error');
+        const userInfo = document.getElementById('userInfo');
+
+        // Handle "Other" reason textarea visibility
+        reasonSelect.addEventListener('change', () => {
+            otherReason.style.display = reasonSelect.value === 'other' ? 'block' : 'none';
+        });
+
+        onAuthStateChanged(auth, async (user) => {
+            if (!user) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            try {
+                // Fetch user data
+                const userDoc = await getDoc(doc(db, 'users', user.uid));
+                if (!userDoc.exists()) {
+                    throw new Error('User data not found');
+                }
+                const userData = userDoc.data();
+                
+                // Display user info
+                userInfo.innerHTML = `
+                    <p><strong>Account to be deleted:</strong></p>
+                    <p>Username: ${userData.username || 'Not set'}</p>
+                    <p>Email: ${user.email}</p>
+                `;
+
+                deleteBtn.addEventListener('click', async () => {
+                    const reason = reasonSelect.value;
+                    const customReason = otherReason.value.trim();
+
+                    // Validation
+                    if (!reason) {
+                        errorDiv.textContent = 'Please select a reason';
+                        return;
+                    }
+                    if (reason === 'other' && !customReason) {
+                        errorDiv.textContent = 'Please specify your reason for leaving';
+                        return;
+                    }
+
+                    // Confirmation
+                    if (!confirm(`Are you absolutely sure you want to delete your account (${userData.username || user.email})? This action cannot be undone.`)) {
+                        return;
+                    }
+
+                    deleteBtn.disabled = true;
+                    form.style.display = 'none';
+                    loading.style.display = 'block';
+                    errorDiv.textContent = '';
+
+                    try {
+                        // Save deletion reason
+                        await setDoc(doc(db, 'delete_reasons', user.uid), {
+                            uid: user.uid,
+                            username: userData.username || 'Not set',
+                            email: user.email,
+                            reason: reason === 'other' ? customReason : reason,
+                            timestamp: new Date().toISOString()
+                        });
+
+                        // Delete all user data
+                        await deleteUserData(user.uid);
+
+                        // Attempt to delete auth user
+                        try {
+                            await deleteUser(user);
+                        } catch (authError) {
+                            console.warn('Auth deletion failed:', authError);
+                            // Continue even if auth deletion fails since data is gone
+                        }
+
+                        window.location.href = 'login.html';
+                    } catch (error) {
+                        console.error('Deletion error:', error);
+                        errorDiv.textContent = error.message || 'An unexpected error occurred. Please try again.';
+                        deleteBtn.disabled = false;
+                        form.style.display = 'block';
+                        loading.style.display = 'none';
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading user data:', error);
+                errorDiv.textContent = 'Failed to load account information. Please try again.';
+            }
+        });
+
+        async function deleteUserData(userId) {
+            const userRef = doc(db, 'users', userId);
+            const batch = writeBatch(db);
+
+            try {
+                const subcollections = await listSubcollections(userRef);
+                
+                for (const subcollection of subcollections) {
+                    const q = query(collection(db, `users/${userId}/${subcollection}`));
+                    const snapshot = await getDocs(q);
+                    
+                    if (snapshot.empty) continue;
+                    
+                    snapshot.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                }
+
+                batch.delete(userRef);
+                await batch.commit();
+                await verifyAndForceDeletion(userId);
+            } catch (error) {
+                throw new Error(`Failed to delete user data: ${error.message}`);
+            }
+        }
+
+        async function listSubcollections(docRef) {
+            const knownSubcollections = [
+                'following',
+                'followers',
+                'posts',
+                'comments',
+                'likes',
+                'notifications',
+                'messages',
+                'settings'
+            ];
+            return knownSubcollections;
+        }
+
+        async function verifyAndForceDeletion(userId) {
+            let attempts = 0;
+            const maxAttempts = 5;
+
+            while (attempts < maxAttempts) {
+                try {
+                    const userDoc = await getDoc(doc(db, 'users', userId));
+                    if (!userDoc.exists()) {
+                        return;
+                    }
+
+                    const batch = writeBatch(db);
+                    batch.delete(doc(db, 'users', userId));
+                    await batch.commit();
+                    
+                    attempts++;
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                } catch (error) {
+                    if (attempts === maxAttempts - 1) {
+                        throw new Error('Failed to completely delete user data');
+                    }
+                }
+            }
+        }
+    </script>
+    <script src="./js/footer.js"></script>
+</body>
+</html>

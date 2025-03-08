@@ -137,6 +137,34 @@
       transform: translateY(-1px);
     }
 
+    .delete-btn {
+      background: #e74c3c;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 25px;
+      font-size: 0.9em;
+      font-weight: 600;
+      cursor: pointer;
+      display: block;
+      margin: 2rem auto 0;
+      width: 25%;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    @media (max-width: 600px) {
+      .delete-btn {
+        width: 70%;
+      }
+    }
+
+    .delete-btn:hover {
+      background: #c0392b;
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(246, 24, 24, 0.3);
+    }
+
     .save-all-btn {
       background: #3498db;
       color: white;
@@ -307,6 +335,7 @@
         </div>
       </div>
       <button type="button" class="save-all-btn" id="saveAllBtn">Save All Changes</button>
+      <a style="text-decoration: none;" href="./delete-account.html"class="delete-btn" >Delete Account</a>
     </form>
     <a href="./start.html" style="text-decoration: none;">
       <button id="communitiesButton" class="communities-btn" style="display: none;">
