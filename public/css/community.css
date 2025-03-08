@@ -1357,6 +1357,10 @@ textarea#postDescription {
   color: #fff;
 }
 
+select#communityFilter {
+  background: #222;
+}
+
 .highlight {
   padding: 3px;
   background-color: rgb(31 249 34 / 28%);
