@@ -21,7 +21,8 @@ import {
   addDoc, 
   startAfter,
   updateDoc, 
-  onSnapshot
+  onSnapshot,
+  deleteField // Add this
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import { 
   getAuth, 
@@ -61,7 +62,7 @@ const app = initializeApp(firebaseConfig);
 
 // Initialize Firebase Services
 const db = getFirestore(app);              // Firestore database
-export const auth = getAuth(app);                 // Authentication
+export const auth = getAuth(app);          // Authentication
 const storage = getStorage(app);           // Storage
 const analytics = getAnalytics(app);       // Analytics
 const functions = getFunctions(app);       // Cloud Functions
@@ -101,6 +102,7 @@ export {
   getDoc,
   deleteDoc,
   onSnapshot,
+  deleteField, // Add this
 
   // Authentication utilities
   onAuthStateChanged,

@@ -65,7 +65,6 @@ console.log(`Cached ${key}, expires at ${new Date(Date.now() + USER_CACHE_TTL)}`
 let currentPage = 1;
 export const postsPerPage = 10;
 let lastMemberDoc = null;
-let lastBannedDoc = null;
 export let carouselPostIds = []; // Store post IDs for navigation
 let carouselIndex = 0; // Current start index
 export const postsPerCarousel = window.innerWidth < 768 ? 2 : 4; // 2 on mobile, 4 on desktop
@@ -100,299 +99,306 @@ const categoryDisplayMap = {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-onAuthStateChanged(auth, async (user) => {
-if (!user) {
-  console.log("No user detected, redirecting to login...");
-  window.location.href = "/login.html";
-  return;
-}
-
-console.log("User authenticated:", user.uid);
-
-const urlParams = new URLSearchParams(window.location.search);
-communityId = urlParams.get("id");
-if (!communityId) {
-  console.log("No community ID, redirecting to index...");
-  window.location.href = "/index.html";
-  return;
-}
-
-// Clear caches for new community
-postCache.clear();
-loadedPostIds.clear();
-console.log(`Cleared post caches for community ${communityId}`);
-
-await initializeUserSwapInfo();
-
-const commData = await getCommData();
-if (!commData) {
-  alert("Community not found!");
-  window.location.href = "/index.html";
-  return;
-}
-
-const isMember = commData.members.includes(user.uid);
-const isBanned = (commData.bannedUsers || []).includes(user.uid);
-
-if (isBanned) {
-  let adminEmail = "No admin email available";
-  let banReason = commData.banReasons?.[user.uid] || "No reason provided";
-
-  if (commData.creatorId) {
-    const creatorDoc = await getDoc(doc(db, "users", commData.creatorId));
-    if (creatorDoc.exists() && creatorDoc.data().email) {
-      adminEmail = creatorDoc.data().email;
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      console.log("No user detected, redirecting to login...");
+      window.location.href = "/login.html";
+      return;
     }
-  }
 
-  if (adminEmail === "No admin email available" && commData.admins?.length > 0) {
-    const adminDoc = await getDoc(doc(db, "users", commData.admins[0]));
-    if (adminDoc.exists() && adminDoc.data().email) {
-      adminEmail = adminDoc.data().email;
+    console.log("User authenticated:", user.uid);
+
+    const urlParams = new URLSearchParams(window.location.search);
+    communityId = urlParams.get("id");
+    window.communityId = communityId; // Expose globally
+    if (!communityId) {
+      console.log("No community ID, redirecting to index...");
+      window.location.href = "/index.html";
+      return;
     }
-  }
 
-  document.querySelector(".community-page").innerHTML = `
-    <div class="ban-message">
-      <h2>You are banned from this community!</h2>
-      <p><strong>Reason:</strong> ${banReason}</p>
-      <p>Think this is a mistake? Send an appeal below or contact an admin at: ${adminEmail}</p>
-      <form id="banAppealForm" class="ban-appeal-form">
-        <textarea placeholder="Explain why this ban might be an error..." required></textarea>
-        <button type="submit">Send Appeal</button>
-      </form>
-      <p><a href="./start.html">Go back</a></p>
-    </div>
-  `;
-  const appealForm = document.getElementById("banAppealForm");
-  appealForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const text = appealForm.querySelector("textarea").value.trim();
-    if (text) {
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      const userData = userDoc.exists() ? userDoc.data() : { username: `user_${user.uid.slice(0, 8)}` };
+    // Clear caches for new community
+    postCache.clear();
+    loadedPostIds.clear();
+    console.log(`Cleared post caches for community ${communityId}`);
 
-      await addDoc(collection(db, "communities", communityId, "banAppeals"), {
-        userId: user.uid,
-        username: userData.username,
-        message: text,
-        timestamp: new Date()
+    await initializeUserSwapInfo();
+
+    const commData = await getCommData();
+    if (!commData) {
+      alert("Community not found!");
+      window.location.href = "/index.html";
+      return;
+    }
+
+    const isMember = commData.members.includes(user.uid);
+    const bannedUsers = commData.bannedUsers || [];
+    const banStatus = commData.banStatus || {};
+    const isBanned = bannedUsers.includes(user.uid) && (banStatus[user.uid] === "active" || !banStatus[user.uid]); // Updated to check banStatus
+
+    if (isBanned) {
+      let adminEmail = "No admin email available";
+      let banReason = commData.banReasons?.[user.uid] || "No reason provided";
+
+      // Fetch admin email (creator first, then first admin if no creator email)
+      if (commData.creatorId) {
+        const creatorDoc = await getDoc(doc(db, "users", commData.creatorId));
+        if (creatorDoc.exists() && creatorDoc.data().email) {
+          adminEmail = creatorDoc.data().email;
+        }
+      }
+      if (adminEmail === "No admin email available" && commData.admins?.length > 0) {
+        const adminDoc = await getDoc(doc(db, "users", commData.admins[0]));
+        if (adminDoc.exists() && adminDoc.data().email) {
+          adminEmail = adminDoc.data().email;
+        }
+      }
+
+      // Check if ban was reinstated (active but no banReason means it’s a reinstatement)
+      if (banStatus[user.uid] === "active" && !commData.banReasons?.[user.uid]) {
+        banReason = `An administrator has reinstated your ban. For the original or a diffrent reason. Please contact us at ${adminEmail} or submit an appeal below.`;
+      }
+
+      document.querySelector(".community-page").innerHTML = `
+        <div class="ban-message">
+          <h2>You are banned from this community!</h2>
+          <p><strong>Reason:</strong> ${banReason}</p>
+          <p>Think this is a mistake? Send an appeal below or contact an admin at: ${adminEmail}</p>
+          <form id="banAppealForm" class="ban-appeal-form">
+            <textarea placeholder="Explain why this ban might be an error..." required></textarea>
+            <button type="submit">Send Appeal</button>
+          </form>
+          <p><a href="./start.html">Go back</a></p>
+        </div>
+      `;
+      const appealForm = document.getElementById("banAppealForm");
+      appealForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const text = appealForm.querySelector("textarea").value.trim();
+        if (text) {
+          const userDoc = await getDoc(doc(db, "users", user.uid));
+          const userData = userDoc.exists() ? userDoc.data() : { username: `user_${user.uid.slice(0, 8)}` };
+
+          await addDoc(collection(db, "communities", communityId, "banAppeals"), {
+            userId: user.uid,
+            username: userData.username,
+            message: text,
+            timestamp: new Date()
+          });
+          alert("Appeal sent!");
+          appealForm.querySelector("textarea").disabled = true;
+          appealForm.querySelector("button").disabled = true;
+          appealForm.querySelector("button").textContent = "Appeal Sent";
+        }
       });
-      alert("Appeal sent!");
-      appealForm.querySelector("textarea").disabled = true;
-      appealForm.querySelector("button").disabled = true;
-      appealForm.querySelector("button").textContent = "Appeal Sent";
+      return;
+    } else if (!isMember) {
+      document.querySelector(".community-page").innerHTML = `
+        <div class="not-member-message">
+          <h2>You aren't a member of this community.</h2>
+          <p>Copy the community ID and go back to join! We are waiting for you! 💚</p>
+          <p><strong>Community ID:</strong> <span id="communityIdText">${communityId}</span> 
+             <a href="./start.html" id="copyAndJoinLink">Copy ID and Join</a></p>
+          <p><a href="./start.html">Go back</a></p>
+        </div>
+      `;
+      
+      document.getElementById("copyAndJoinLink").addEventListener("click", (e) => {
+        e.preventDefault();
+        navigator.clipboard.writeText(communityId)
+          .then(() => {
+            alert("Community ID copied to clipboard! Head back to join.");
+            setTimeout(() => {
+              window.location.href = "./start.html";
+            }, 500);
+          })
+          .catch((err) => {
+            console.error("Failed to copy community ID:", err);
+            alert("Failed to copy ID. Please copy it manually: " + communityId);
+          });
+      });
+      return;
     }
-  });
-  return;
-} else if (!isMember) {
-    document.querySelector(".community-page").innerHTML = `
-      <div class="not-member-message">
-        <h2>You aren't a member of this community.</h2>
-        <p>Copy the community ID and go back to join! We are waiting for you!</p>
-        <p><strong>Community ID:</strong> <span id="communityIdText">${communityId}</span> 
-           <a href="./start.html" id="copyAndJoinLink">Copy ID and Join</a></p>
-        <p><a href="./start.html">Go back</a></p>
-      </div>
-    `;
-    
-    // Add event listener to copy the community ID when the link is clicked
-    document.getElementById("copyAndJoinLink").addEventListener("click", (e) => {
-      e.preventDefault(); // Prevent immediate navigation
-      navigator.clipboard.writeText(communityId)
-        .then(() => {
-          alert("Community ID copied to clipboard! Head back to join.");
-          setTimeout(() => {
-            window.location.href = "./start.html"; // Navigate after a short delay
-          }, 500);
-        })
-        .catch((err) => {
-          console.error("Failed to copy community ID:", err);
-          alert("Failed to copy ID. Please copy it manually: " + communityId);
-        });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        console.log("User is back on screen, resuming checks.");
+        updateNotificationBadge(user.uid);
+        updateChatBadge(user.uid);
+      } else {
+        console.log("User is away from screen, stopping updates.");
+      }
     });
-    return;
-  }
 
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") {
-    console.log("User is back on screen, resuming checks.");
+    document.getElementById("communityName").textContent = commData.name;
+    const createdAt = commData.createdAt 
+      ? new Date(commData.createdAt.toDate()).toLocaleString('en-US', { 
+          month: 'long', 
+          day: 'numeric', 
+          year: 'numeric' 
+        }) 
+      : "N/A";
+    document.getElementById("createdAt").textContent = createdAt;
+    const creatorData = await fetchUserData(commData.creatorId);
+    document.getElementById("creatorName").textContent = creatorData.name || "Unknown";
+    document.getElementById("creatorName").addEventListener("click", () => viewProfile(commData.creatorId));
+
+    document.getElementById("communityId").textContent = `ID: ${communityId}`;
+    document.getElementById("totalUsers").textContent = commData.memberCount || commData.members.length;
+    document.getElementById("bannedUsers").textContent = (commData.bannedUsers || []).length;
+
+    const actions = document.getElementById("communityActions");
+    let profileViewRequestCount = 0;
+    if (user.uid) {
+      const profileViewRequestsQ = query(
+        collection(db, "profileRequests"),
+        where("targetId", "==", user.uid),
+        where("status", "==", "pending")
+      );
+      try {
+        const profileViewRequestsSnapshot = await getDocs(profileViewRequestsQ);
+        profileViewRequestCount = profileViewRequestsSnapshot.size;
+      } catch (error) {
+        console.error("Failed to fetch profile view requests:", error);
+      }
+    } else {
+      console.error("User UID is undefined, skipping profile requests query!");
+    }
+
+    actions.innerHTML = `
+      ${commData.creatorId === user.uid ? `<button class="delete-btn" id="deleteCommunityBtn">Delete (Community)</button>` : ""}
+      ${commData.members.includes(user.uid) && commData.creatorId !== user.uid ? `<button class="leave-btn" id="leaveCommunityBtn">Leave Community</button>` : ""}
+      ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="editNameBtn">Edit Name (Community)</button>` : ""}
+      <br><br>
+      <button id="viewMembersBtn">Members</button>
+      ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="viewBannedBtn">Banned</button>` : ""}
+      <button id="viewProfileViewRequestsBtn">Profile Requests ${profileViewRequestCount > 0 ? `<span class="request-badge">${profileViewRequestCount}</span>` : ''}</button>
+      <button id="viewSavedPostsBtn">Saved Posts</button>
+      <button id="viewChatsBtn">💬 Chats</button>
+      <button id="viewMyFollowersBtn">Followers</button>
+    `;
+
+    await new Promise(resolve => setTimeout(resolve, 0));
+    if (user.uid) {
+      await updateProfileRequestsUI(user.uid);
+    } else {
+      console.error("Skipping updateProfileRequestsUI due to undefined UID");
+    }
+
+    const postIdSearch = document.getElementById("postSearch");
+    const categoryFilter = document.getElementById("categoryFilter");
+    const lookingForFilter = document.getElementById("lookingForFilter");
+    const offeringFilter = document.getElementById("offeringFilter");
+    const carouselPrevBtn = document.getElementById("carouselPrevBtn");
+    const carouselNextBtn = document.getElementById("carouselNextBtn");
+    const copyCommunityIdBtn = document.getElementById("copyCommunityIdBtn");
+    const createPostBtn = document.getElementById("createPostBtn");
+    const viewMembersBtn = document.getElementById("viewMembersBtn");
+    const viewBannedBtn = document.getElementById("viewBannedBtn");
+    const deleteCommunityBtn = document.getElementById("deleteCommunityBtn");
+    const leaveCommunityBtn = document.getElementById("leaveCommunityBtn");
+    const viewProfileViewRequestsBtn = document.getElementById("viewProfileViewRequestsBtn");
+    const closeProfileBtn = document.getElementById("closeProfileBtn");
+    const closeMembersBtn = document.getElementById("closeMembersBtn");
+    const closeBannedBtn = document.getElementById("closeBannedBtn");
+    const closeProfileViewRequestsBtn = document.getElementById("closeProfileViewRequestsBtn");
+    const viewNotificationsBtn = document.getElementById("viewNotificationsBtn");
+    const closeNotificationsBtn = document.getElementById("closeNotificationsBtn");
+    const clearNotificationsBtn = document.getElementById("clearNotificationsBtn");
+    const refreshPostsBtn = document.getElementById("refreshPostsBtn");
+    const editNameBtn = document.getElementById("editNameBtn");
+    const viewCommunitiesBtn = document.getElementById("viewCommunitiesBtn");
+    const viewSavedPostsBtn = document.getElementById("viewSavedPostsBtn");
+    const viewChatsBtn = document.getElementById("viewChatsBtn");
+    const postSearchInput = document.getElementById("postSearch");
+    const pasteSearchBtn = document.getElementById("pasteSearchBtn");
+    const clearSearchBtn = document.getElementById("clearSearchBtn");
+    const viewMyFollowersBtn = document.getElementById("viewMyFollowersBtn");
+
+    if (postIdSearch) {
+      postIdSearch.addEventListener("input", debounce((e) => {
+        searchPostsById(e.target.value);
+      }, 300));
+    }
+    pasteSearchBtn.addEventListener("click", async () => {
+      try {
+        const clipboardText = await navigator.clipboard.readText();
+        postSearchInput.value = clipboardText;
+        searchPostsById(clipboardText);
+      } catch (error) {
+        console.error("Paste failed:", error);
+        alert("Couldn’t paste—check clipboard permissions!");
+      }
+    });
+
+    clearSearchBtn.addEventListener("click", () => {
+      postSearchInput.value = "";
+      searchPostsById("");
+    });
+    if (categoryFilter) {
+      categoryFilter.addEventListener("change", () => {
+        loadPosts(communityId, true);
+        carouselIndex = 0;
+        loadCarouselPosts(communityId);
+      });
+    }
+    if (lookingForFilter) {
+      lookingForFilter.addEventListener("change", () => {
+        loadPosts(communityId, true);
+        carouselIndex = 0;
+        loadCarouselPosts(communityId);
+      });
+    }
+    if (offeringFilter) {
+      offeringFilter.addEventListener("change", () => {
+        loadPosts(communityId, true);
+        carouselIndex = 0;
+        loadCarouselPosts(communityId);
+      });
+    }
+    if (carouselPrevBtn) carouselPrevBtn.addEventListener("click", () => slideCarousel(-1));
+    if (carouselNextBtn) carouselNextBtn.addEventListener("click", () => slideCarousel(1));
+    if (copyCommunityIdBtn) copyCommunityIdBtn.addEventListener("click", copyCommunityId);
+    if (createPostBtn) createPostBtn.addEventListener("click", createPost);
+    if (viewMembersBtn) viewMembersBtn.addEventListener("click", () => viewMembers(communityId));
+    if (viewBannedBtn) viewBannedBtn.addEventListener("click", () => viewBannedUsers(communityId));
+    if (deleteCommunityBtn) deleteCommunityBtn.addEventListener("click", () => deleteCommunity(communityId));
+    if (leaveCommunityBtn) leaveCommunityBtn.addEventListener("click", () => leaveCommunity(communityId));
+    if (viewProfileViewRequestsBtn) viewProfileViewRequestsBtn.addEventListener("click", () => viewProfileViewRequests(user.uid));
+    if (closeProfileBtn) closeProfileBtn.addEventListener("click", () => closeModal("viewProfileModal"));
+    if (closeMembersBtn) closeMembersBtn.addEventListener("click", () => closeModal("viewMembersModal"));
+    if (closeBannedBtn) closeBannedBtn.addEventListener("click", () => closeModal("viewBannedModal"));
+    if (closeProfileViewRequestsBtn) closeProfileViewRequestsBtn.addEventListener("click", () => closeModal("viewProfileViewRequestsModal"));
+    if (viewNotificationsBtn) viewNotificationsBtn.addEventListener("click", () => openNotificationsModal(user.uid));
+    if (closeNotificationsBtn) closeNotificationsBtn.addEventListener("click", () => closeModal("notificationsModal"));
+    if (clearNotificationsBtn) clearNotificationsBtn.addEventListener("click", clearNotifications);
+    if (refreshPostsBtn) refreshPostsBtn.addEventListener("click", () => loadPosts(communityId, true));
+    if (editNameBtn) editNameBtn.addEventListener("click", () => editCommunityName(communityId));
+    if (viewCommunitiesBtn) viewCommunitiesBtn.addEventListener("click", () => viewCommunities(user.uid));
+    if (viewSavedPostsBtn) viewSavedPostsBtn.addEventListener("click", () => viewSavedPosts(user.uid));
+    if (viewChatsBtn) {
+      viewChatsBtn.removeEventListener("click", handleViewChatsClick);
+      viewChatsBtn.addEventListener("click", handleViewChatsClick);
+    }
+    if (viewMyFollowersBtn) {
+      viewMyFollowersBtn.addEventListener("click", () => viewFollowers(user.uid));
+    }   
+
+    async function handleViewChatsClick() {
+      await updateChatBadge(user.uid, true);
+      await window.viewChats(communityId);
+      await updateChatBadge(user.uid);
+    }
+
+    setupLocationAutocomplete();
+    setupCommunitySelection();
+    loadYourPosts(user.uid);
+    loadPosts(communityId, false);
+    loadCarouselPosts(communityId);
     updateNotificationBadge(user.uid);
-    updateChatBadge(user.uid);
-  } else {
-    console.log("User is away from screen, stopping updates.");
-  }
-});
-
-document.getElementById("communityName").textContent = commData.name;
-const createdAt = commData.createdAt 
-    ? new Date(commData.createdAt.toDate()).toLocaleString('en-US', { 
-        month: 'long', 
-        day: 'numeric', 
-        year: 'numeric' 
-    }) 
-    : "N/A";
-document.getElementById("createdAt").textContent = createdAt;
-const creatorData = await fetchUserData(commData.creatorId);
-document.getElementById("creatorName").textContent = creatorData.name || "Unknown";
-document.getElementById("creatorName").addEventListener("click", () => viewProfile(commData.creatorId));
-
-document.getElementById("communityId").textContent = `ID: ${communityId}`;
-document.getElementById("totalUsers").textContent = commData.memberCount || commData.members.length;
-document.getElementById("bannedUsers").textContent = (commData.bannedUsers || []).length;
-
-const actions = document.getElementById("communityActions");
-let profileViewRequestCount = 0;
-if (user.uid) {
-  const profileViewRequestsQ = query(
-    collection(db, "profileRequests"),
-    where("targetId", "==", user.uid),
-    where("status", "==", "pending")
-  );
-  try {
-    const profileViewRequestsSnapshot = await getDocs(profileViewRequestsQ);
-    profileViewRequestCount = profileViewRequestsSnapshot.size;
-  } catch (error) {
-    console.error("Failed to fetch profile view requests:", error);
-  }
-} else {
-  console.error("User UID is undefined, skipping profile requests query!");
-}
-
-actions.innerHTML = `
-  ${commData.creatorId === user.uid ? `<button class="delete-btn" id="deleteCommunityBtn">Delete (Community)</button>` : ""}
-  ${commData.members.includes(user.uid) && commData.creatorId !== user.uid ? `<button class="leave-btn" id="leaveCommunityBtn">Leave Community</button>` : ""}
-  ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="editNameBtn">Edit Name (Community)</button>` : ""}
-  <br><br>
-  <button id="viewMembersBtn">Members</button>
-  ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="viewBannedBtn">Banned</button>` : ""}
-  <button id="viewProfileViewRequestsBtn">Profile Requests ${profileViewRequestCount > 0 ? `<span class="request-badge">${profileViewRequestCount}</span>` : ''}</button>
-  <button id="viewSavedPostsBtn">Saved Posts</button>
-  <button id="viewChatsBtn">💬 Chats</button>
-  <button id="viewMyFollowersBtn">Followers</button>
-`;
-
-await new Promise(resolve => setTimeout(resolve, 0));
-if (user.uid) {
-  await updateProfileRequestsUI(user.uid);
-} else {
-  console.error("Skipping updateProfileRequestsUI due to undefined UID");
-}
-
-const postIdSearch = document.getElementById("postSearch");
-const categoryFilter = document.getElementById("categoryFilter");
-const lookingForFilter = document.getElementById("lookingForFilter");
-const offeringFilter = document.getElementById("offeringFilter");
-const carouselPrevBtn = document.getElementById("carouselPrevBtn");
-const carouselNextBtn = document.getElementById("carouselNextBtn");
-const copyCommunityIdBtn = document.getElementById("copyCommunityIdBtn");
-const createPostBtn = document.getElementById("createPostBtn");
-const viewMembersBtn = document.getElementById("viewMembersBtn");
-const viewBannedBtn = document.getElementById("viewBannedBtn");
-const deleteCommunityBtn = document.getElementById("deleteCommunityBtn");
-const leaveCommunityBtn = document.getElementById("leaveCommunityBtn");
-const viewProfileViewRequestsBtn = document.getElementById("viewProfileViewRequestsBtn");
-const closeProfileBtn = document.getElementById("closeProfileBtn");
-const closeMembersBtn = document.getElementById("closeMembersBtn");
-const closeBannedBtn = document.getElementById("closeBannedBtn");
-const closeProfileViewRequestsBtn = document.getElementById("closeProfileViewRequestsBtn");
-const viewNotificationsBtn = document.getElementById("viewNotificationsBtn");
-const closeNotificationsBtn = document.getElementById("closeNotificationsBtn");
-const clearNotificationsBtn = document.getElementById("clearNotificationsBtn");
-const refreshPostsBtn = document.getElementById("refreshPostsBtn");
-const editNameBtn = document.getElementById("editNameBtn");
-const viewCommunitiesBtn = document.getElementById("viewCommunitiesBtn");
-const viewSavedPostsBtn = document.getElementById("viewSavedPostsBtn");
-const viewChatsBtn = document.getElementById("viewChatsBtn");
-const postSearchInput = document.getElementById("postSearch");
-const pasteSearchBtn = document.getElementById("pasteSearchBtn");
-const clearSearchBtn = document.getElementById("clearSearchBtn");
-const viewMyFollowersBtn = document.getElementById("viewMyFollowersBtn");
-
-if (postIdSearch) {
-  postIdSearch.addEventListener("input", debounce((e) => {
-    searchPostsById(e.target.value);
-  }, 300));
-}
-pasteSearchBtn.addEventListener("click", async () => {
-  try {
-    const clipboardText = await navigator.clipboard.readText();
-    postSearchInput.value = clipboardText;
-    searchPostsById(clipboardText);
-  } catch (error) {
-    console.error("Paste failed:", error);
-    alert("Couldn’t paste—check clipboard permissions!");
-  }
-});
-
-clearSearchBtn.addEventListener("click", () => {
-  postSearchInput.value = "";
-  searchPostsById("");
-});
-if (categoryFilter) {
-  categoryFilter.addEventListener("change", () => {
-    loadPosts(communityId, true);
-    carouselIndex = 0;
-    loadCarouselPosts(communityId);
+    await updateChatBadge(user.uid);
+    await loadAdminReportSummary(user.uid);
   });
-}
-if (lookingForFilter) {
-  lookingForFilter.addEventListener("change", () => {
-    loadPosts(communityId, true);
-    carouselIndex = 0;
-    loadCarouselPosts(communityId);
-  });
-}
-if (offeringFilter) {
-  offeringFilter.addEventListener("change", () => {
-    loadPosts(communityId, true);
-    carouselIndex = 0;
-    loadCarouselPosts(communityId);
-  });
-}
-if (carouselPrevBtn) carouselPrevBtn.addEventListener("click", () => slideCarousel(-1));
-if (carouselNextBtn) carouselNextBtn.addEventListener("click", () => slideCarousel(1));
-if (copyCommunityIdBtn) copyCommunityIdBtn.addEventListener("click", copyCommunityId);
-if (createPostBtn) createPostBtn.addEventListener("click", createPost);
-if (viewMembersBtn) viewMembersBtn.addEventListener("click", () => viewMembers(communityId));
-if (viewBannedBtn) viewBannedBtn.addEventListener("click", () => viewBannedUsers(communityId));
-if (deleteCommunityBtn) deleteCommunityBtn.addEventListener("click", () => deleteCommunity(communityId));
-if (leaveCommunityBtn) leaveCommunityBtn.addEventListener("click", () => leaveCommunity(communityId));
-if (viewProfileViewRequestsBtn) viewProfileViewRequestsBtn.addEventListener("click", () => viewProfileViewRequests(user.uid));
-if (closeProfileBtn) closeProfileBtn.addEventListener("click", () => closeModal("viewProfileModal"));
-if (closeMembersBtn) closeMembersBtn.addEventListener("click", () => closeModal("viewMembersModal"));
-if (closeBannedBtn) closeBannedBtn.addEventListener("click", () => closeModal("viewBannedModal"));
-if (closeProfileViewRequestsBtn) closeProfileViewRequestsBtn.addEventListener("click", () => closeModal("viewProfileViewRequestsModal"));
-if (viewNotificationsBtn) viewNotificationsBtn.addEventListener("click", () => openNotificationsModal(user.uid));
-if (closeNotificationsBtn) closeNotificationsBtn.addEventListener("click", () => closeModal("notificationsModal"));
-if (clearNotificationsBtn) clearNotificationsBtn.addEventListener("click", clearNotifications);
-if (refreshPostsBtn) refreshPostsBtn.addEventListener("click", () => loadPosts(communityId, true));
-if (editNameBtn) editNameBtn.addEventListener("click", () => editCommunityName(communityId));
-if (viewCommunitiesBtn) viewCommunitiesBtn.addEventListener("click", () => viewCommunities(user.uid));
-if (viewSavedPostsBtn) viewSavedPostsBtn.addEventListener("click", () => viewSavedPosts(user.uid));
-if (viewChatsBtn) {
-  viewChatsBtn.removeEventListener("click", handleViewChatsClick);
-  viewChatsBtn.addEventListener("click", handleViewChatsClick);
-}
-if (viewMyFollowersBtn) {
-  viewMyFollowersBtn.addEventListener("click", () => viewFollowers(user.uid));
-}   
-
-async function handleViewChatsClick() {
-  await updateChatBadge(user.uid, true);
-  await window.viewChats(communityId);
-  await updateChatBadge(user.uid);
-}
-
-setupLocationAutocomplete();
-setupCommunitySelection();
-loadYourPosts(user.uid);
-loadPosts(communityId, false);
-loadCarouselPosts(communityId);
-updateNotificationBadge(user.uid);
-await updateChatBadge(user.uid);
-await loadAdminReportSummary(user.uid);
-});
 });
 
 async function initializeUserSwapInfo() {
@@ -3256,393 +3262,7 @@ img.src = photoUrls[currentIndex];
 });
 }
 
-async function viewProfile(uid) {
-  const modal = document.getElementById("viewProfileModal");
-  const nameEl = document.getElementById("profileName");
-  const photoEl = document.getElementById("profilePhoto");
-  const detailsEl = document.getElementById("profileDetails");
-  const actionsEl = document.getElementById("profileActions");
 
-  actionsEl.innerHTML = '<div class="loading">⏳ Loading...</div>';
-  detailsEl.innerHTML = '';
-  nameEl.textContent = '';
-  photoEl.src = "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y";
-  document.querySelectorAll(".modal:not(#viewProfileModal)").forEach(m => m.style.display = "none");
-  modal.style.display = "flex";
-  modal.classList.remove("hidden");
-
-  if (typeof auth === "undefined") {
-    console.error("Firebase auth is not defined. Ensure Firebase is initialized.");
-    actionsEl.innerHTML = "<p>Error: Authentication system not loaded.</p>";
-    return;
-  }
-
-  const currentUser = await new Promise((resolve) => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      unsubscribe();
-      resolve(user);
-    });
-  });
-
-  if (!currentUser) {
-    console.error("No authenticated user found. User must be signed in.");
-    actionsEl.innerHTML = "<p>Please sign in to view profiles.</p>";
-    return;
-  }
-
-  const userData = await fetchUserData(uid);
-  const commData = await getCommData();
-  const isCreator = commData.creatorId === auth.currentUser.uid;
-  const isAdmin = commData.admins?.includes(auth.currentUser.uid);
-  const isSelf = uid === auth.currentUser.uid;
-  const isProfileAdmin = commData.admins?.includes(uid) || commData.creatorId === uid;
-
-  // Check for verified status
-  const userRef = doc(db, "users", uid);
-  const userDoc = await getDoc(userRef);
-  const userDocData = userDoc.data();
-  const isVerified = userDocData && 
-    userDocData.username && userDocData.username.trim() !== "" &&
-    userDocData.name && userDocData.name.trim() !== "" &&
-    userDocData.city && userDocData.city.trim() !== "" &&
-    userDocData.phone && userDocData.phone.trim() !== "" &&
-    userDocData.profilePhoto && userDocData.profilePhoto.trim() !== "" &&
-    userDocData.email && userDocData.email.trim() !== "";
-  
-  nameEl.innerHTML = `${userData.name} (🤝 ${userData.swaps || 0} swaps)${isVerified ? ' <span title="Users verified have completed their profile checks." class="verified-badge"> Verified</span>' : ''}`;
-  photoEl.src = userData.profilePhoto || "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y";
-
-  // Add click to enlarge profile photo
-  photoEl.style.cursor = "pointer"; // Hint it’s clickable
-  photoEl.addEventListener("click", () => {
-    // Create overlay if it doesn’t exist
-    let overlay = document.getElementById("profilePhotoOverlay");
-    if (!overlay) {
-      overlay = document.createElement("div");
-      overlay.id = "profilePhotoOverlay";
-      overlay.className = "photo-overlay";
-      document.body.appendChild(overlay);
-    }
-
-    // Set up the enlarged image
-    overlay.innerHTML = `<img src="${photoEl.src}" alt="Enlarged Profile Photo" class="enlarged-photo">`;
-    overlay.style.display = "flex";
-
-    // Click to dismiss
-    overlay.addEventListener("click", () => {
-      overlay.style.display = "none";
-    });
-  });
-
-  const followerCount = userDocData?.followerCount || 0;
-  const followingCount = userDocData?.followingCount || 0;
-  const joinedAt = userDocData?.joinedAt ? new Date(userDocData.joinedAt.toDate()).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : "N/A";
-
-  const followersRef = collection(db, "users", uid, "followers");
-  const followingQuery = query(followersRef, where("followerId", "==", currentUser.uid));
-  let followingSnapshot;
-  try {
-    followingSnapshot = await getDocs(followingQuery);
-  } catch (error) {
-    console.error("Error fetching follow status:", error);
-    if (error.name === "BloomFilterError") {
-      console.warn("BloomFilter error, retrying with default:", error);
-      followingSnapshot = await getDocs(followingQuery);
-    } else {
-      throw error;
-    }
-  }
-  const isFollowing = !followingSnapshot.empty;
-  console.log(`Is following ${uid}? ${isFollowing}`);
-
-  detailsEl.innerHTML = `
-    <p id="followerCount">Followers: ${followerCount} / Following: ${followingCount}</p>
-    <p>Member since: ${joinedAt}</p>
-    ${isProfileAdmin ? '<span class="admin-tag">Admin</span>' : ''}
-  `;
-  actionsEl.innerHTML = "";
-
-  if (!isSelf) {
-    actionsEl.innerHTML += `
-      <button id="followBtn" class="${isFollowing ? 'unfollow' : 'follow'}" data-uid="${uid}">
-        ${isFollowing ? 'Unfollow' : 'Follow'}
-      </button>
-    `;
-  }
-
-  const requestsRef = collection(db, "users", uid, "profileRequests");
-  const requestQ = query(requestsRef, where("requesterId", "==", auth.currentUser.uid));
-  const requestSnapshot = await getDocs(requestQ);
-  const request = requestSnapshot.docs[0]?.data();
-  const requestId = requestSnapshot.docs[0]?.id;
-
-  if (isSelf || (request && request.status === "accepted") || isCreator || isAdmin) {
-    detailsEl.innerHTML += `
-      <p>Email: ${userData.email || "Not set"}</p>
-      <p>City: ${userData.city || "Not set"}</p>
-      <p>Phone: ${userData.phone || "Not set"}</p>
-    `;
-    if (request && request.status === "accepted" && !isSelf && !isAdmin && !isCreator) {
-      actionsEl.innerHTML += `<button class="revoke-btn" id="revokeProfileBtn" data-request-id="${requestId}">Revoke Profile Access</button>`;
-    }
-    actionsEl.innerHTML += `<button id="chatBtn" data-uid="${uid}">Chat</button>`;
-  } else if (request && request.status === "pending") {
-    actionsEl.innerHTML = `<button class="request-btn pending" id="requestProfileBtn" data-request-id="${requestId}" disabled>Pending...</button>`;
-  } else if (!isSelf) {
-    actionsEl.innerHTML += `<button class="request-btn" id="requestProfileBtn">Ask to see full profile</button>`;
-  }
-
-  if (isCreator) {
-    if (commData.members.includes(uid) && !commData.admins?.includes(uid) && uid !== commData.creatorId) {
-      actionsEl.innerHTML += `<button class="admin-btn" id="makeAdminBtn">Make Admin</button>`;
-    }
-    if (commData.members.includes(uid) && commData.admins?.includes(uid) && uid !== commData.creatorId) {
-      actionsEl.innerHTML += `<button class="remove-admin-btn" id="removeAdminBtn">Remove Admin</button>`;
-    }
-    if (commData.members.includes(uid) && uid !== commData.creatorId) {
-      actionsEl.innerHTML += `<button class="ban-btn" id="banUserBtn">Ban User</button>`;
-    }
-  } else if (isAdmin && uid !== commData.creatorId) {
-    if (commData.members.includes(uid)) {
-      actionsEl.innerHTML += `<button class="ban-btn" id="banUserBtn">Ban User</button>`;
-    }
-  }
-
-  const requestBtn = document.getElementById("requestProfileBtn");
-  if (requestBtn && !requestBtn.disabled) {
-    requestBtn.addEventListener("click", () => requestProfileAccess(uid));
-  }
-  if (document.getElementById("makeAdminBtn")) {
-    document.getElementById("makeAdminBtn").addEventListener("click", async () => {
-      await makeAdmin(communityId, uid);
-      await viewProfile(uid);
-    });
-  }
-  if (document.getElementById("removeAdminBtn")) {
-    document.getElementById("removeAdminBtn").addEventListener("click", async () => {
-      await removeAdmin(communityId, uid);
-      await viewProfile(uid);
-    });
-  }
-  if (document.getElementById("banUserBtn")) {
-    document.getElementById("banUserBtn").addEventListener("click", () => banUser(communityId, uid));
-  }
-  if (document.getElementById("revokeProfileBtn")) {
-    document.getElementById("revokeProfileBtn").addEventListener("click", () => revokeProfileAccess(uid, document.getElementById("revokeProfileBtn").dataset.requestId));
-  }
-  const chatBtn = document.getElementById("chatBtn");
-  if (chatBtn) {
-    chatBtn.addEventListener("click", () => {
-      if (typeof window.openChat === "function") {
-        closeModal("viewProfileModal");
-        window.openChat(uid, communityId);
-      } else {
-        console.error("Chat functionality not loaded yet!");
-        alert("Chat system isn’t ready. Try again in a sec.");
-      }
-    });
-  }
-  const followBtn = document.getElementById("followBtn");
-  if (followBtn) {
-    followBtn.addEventListener("click", async () => {
-      console.log("Follow button clicked for UID:", uid);
-      await toggleFollow(uid, followBtn);
-      // Refresh UI with updated counts
-      //await viewProfile(uid);
-    });
-  }
-}
-
-async function toggleFollow(targetUid, button) {
-console.log("toggleFollow called with targetUid:", targetUid, "button:", button);
-
-const currentUser = auth.currentUser;
-if (!currentUser) {
-console.error("No current user found in toggleFollow!");
-alert("You must be signed in to follow/unfollow.");
-return;
-}
-console.log("Current user:", currentUser);
-
-const followersRef = collection(db, "users", targetUid, "followers");
-const followerDocRef = doc(followersRef, currentUser.uid);
-const followingRef = collection(db, "users", currentUser.uid, "following");
-const followingDocRef = doc(followingRef, targetUid);
-const followerCountEl = document.getElementById("followerCount");
-
-if (!followerCountEl) {
-console.error("Follower count element not found in DOM!");
-return;
-}
-
-const currentCountText = followerCountEl.textContent.match(/\d+/)?.[0] || "0";
-let currentFollowerCount = parseInt(currentCountText, 10);
-console.log("Current follower count from UI:", currentFollowerCount);
-
-let followingSnapshot;
-try {
-followingSnapshot = await getDoc(followingDocRef);
-} catch (error) {
-console.error("Error fetching following snapshot:", error);
-alert("Failed to check follow status. Try again.");
-return;
-}
-const isFollowing = followingSnapshot.exists();
-console.log("Is following?", isFollowing);
-
-try {
-if (isFollowing) {
-  console.log("Unfollowing...");
-  await Promise.all([
-    deleteDoc(followerDocRef),
-    deleteDoc(followingDocRef)
-  ]);
-  button.textContent = "Follow";
-  button.classList.remove("unfollow");
-  button.classList.add("follow");
-  currentFollowerCount = Math.max(0, currentFollowerCount - 1);
-  followerCountEl.textContent = `Followers: ${currentFollowerCount}`;
-  console.log("Unfollowed, UI updated");
-} else if (button.textContent === "Unfollow") {
-  console.log("User already unfollowed, correcting UI...");
-  alert("You already unfollowed this user.");
-  button.textContent = "Follow";
-  button.classList.remove("unfollow");
-  button.classList.add("follow");
-} else {
-  console.log("Following...");
-  let currentUserData;
-  try {
-    currentUserData = await fetchCurrentUserData();
-  } catch (error) {
-    console.error("Error fetching current user data:", error);
-    currentUserData = { name: "Someone", username: "Unknown" };
-  }
-  const followData = {
-    followerId: currentUser.uid,
-    username: currentUserData.username || currentUserData.name || "Unknown",
-    followedAt: new Date(),
-  };
-  await Promise.all([
-    setDoc(followerDocRef, followData),
-    setDoc(followingDocRef, {
-      followingId: targetUid,
-      username: (await fetchUserData(targetUid))?.username || "Unknown",
-      followedAt: new Date(),
-    })
-  ]);
-  button.textContent = "Unfollow";
-  button.classList.remove("follow");
-  button.classList.add("unfollow");
-  currentFollowerCount += 1;
-  followerCountEl.textContent = `Followers: ${currentFollowerCount}`;
-  console.log("Followed, UI updated");
-
-  console.log("Sending notification to:", targetUid);
-  try {
-    await addDoc(collection(db, "users", targetUid, "notifications"), {
-      type: "follow",
-      message: `${currentUserData.name || "Someone"} followed you!`,
-      followerId: currentUser.uid,
-      timestamp: new Date(),
-      seen: false,
-    });
-    const targetRef = doc(db, "users", targetUid);
-    await runTransaction(db, async (transaction) => {
-      const targetDoc = await transaction.get(targetRef);
-      const currentCount = targetDoc.exists() ? targetDoc.data().unseenCount || 0 : 0;
-      transaction.set(targetRef, { unseenCount: currentCount + 1, lastUpdated: new Date() }, { merge: true });
-    });
-    console.log("Notification sent and unseenCount incremented");
-    setTimeout(() => updateNotificationBadge(targetUid, true), 1000);
-  } catch (error) {
-    console.error("Error sending notification:", error);
-  }
-}
-} catch (error) {
-console.error("Error in follow/unfollow operation:", error);
-alert("Failed to update follow status. Please try again.");
-button.textContent = isFollowing ? "Unfollow" : "Follow";
-button.classList.toggle("follow", !isFollowing);
-button.classList.toggle("unfollow", isFollowing);
-followerCountEl.textContent = `Followers: ${currentCountText}`;
-return;
-}
-}
-
-async function makeAdmin(communityId, uid) {
-const commData = await getCommData(true); // Force fresh fetch
-const commRef = doc(db, "communities", communityId);
-const admins = commData.admins || [];
-const members = commData.members || []; // Ensure members is defined
-
-if (!admins.includes(uid) && members.includes(uid) && uid !== commData.creatorId) {
-admins.push(uid);
-await updateDoc(commRef, { admins });
-resetCommDataCache();
-alert("User is now an admin!");
-} else {
-alert("User not found, already an admin, or is the creator!");
-}
-}
-
-async function removeAdmin(communityId, uid) {
-const commData = await getCommData(true); // Force fresh fetch
-const commRef = doc(db, "communities", communityId);
-const admins = commData.admins || [];
-
-if (admins.includes(uid) && uid !== commData.creatorId) {
-const updatedAdmins = admins.filter(a => a !== uid);
-await updateDoc(commRef, { admins: updatedAdmins });
-resetCommDataCache();
-alert("User admin status removed!");
-} else {
-alert("User not an admin or is the creator!");
-}
-}
-
-async function requestProfileAccess(targetId) {
-const user = auth.currentUser;
-const requestBtn = document.getElementById("requestProfileBtn");
-
-requestBtn.textContent = "Pending...";
-requestBtn.classList.add("pending");
-requestBtn.disabled = true;
-
-const requesterData = await fetchCurrentUserData();
-
-// Add request to target's profileRequests subcollection
-const requestsRef = collection(db, "users", targetId, "profileRequests");
-const requestDoc = await addDoc(requestsRef, {
-requesterId: user.uid,
-status: "pending",
-createdAt: new Date()
-});
-
-requestBtn.dataset.requestId = requestDoc.id;
-
-// Write notification to target's subcollection
-await addDoc(collection(db, "users", targetId, "notifications"), {
-type: "profile_request",
-message: `${requesterData.name || "Someone"} wants to see your full profile!`,
-requestId: requestDoc.id,
-communityId: communityId,
-timestamp: new Date(),
-seen: false
-});
-
-// Force unseenCount increment, create if doesn’t exist
-const targetRef = doc(db, "users", targetId);
-await runTransaction(db, async (transaction) => {
-const targetDoc = await transaction.get(targetRef);
-const currentCount = targetDoc.exists() ? targetDoc.data().unseenCount || 0 : 0;
-transaction.set(targetRef, { unseenCount: currentCount + 1, lastUpdated: new Date() }, { merge: true });
-console.log(`Client: Incremented unseenCount for ${targetId} to ${currentCount + 1}`);
-});
-
-setTimeout(() => updateNotificationBadge(targetId, true), 1000); // Shorter delay since we’re doing it client-side
-alert("Profile access requested!");
-}
 
 async function acceptProfileRequest(requestId, userId) {
 const requestRef = doc(db, "users", userId, "profileRequests", requestId);
@@ -3780,82 +3400,6 @@ btn.addEventListener("click", () => declineProfileRequest(btn.dataset.requestId,
 grantedList.querySelectorAll(".revoke-btn").forEach(btn => {
 btn.addEventListener("click", () => revokeProfileAccessFromModal(btn.dataset.requestId, userId));
 });
-}
-
-async function banUser(communityId, uid) {
-const commRef = doc(db, "communities", communityId);
-const memberRef = doc(db, "communities", communityId, "members", uid);
-
-const commDoc = await getDoc(commRef);
-const commData = commDoc.data();
-const bannedUsers = commData.bannedUsers || [];
-
-if (!bannedUsers.includes(uid) && uid !== commData.creatorId) {
-const banReason = prompt("Please enter a reason for banning this user (e.g., 'Posting illegal things...'):");
-if (banReason === null || banReason.trim() === "") {
-  alert("Ban canceled - no reason provided.");
-  return;
-}
-
-const batch = writeBatch(db);
-// Remove from members subcollection
-batch.delete(memberRef);
-// Add to bannedUsers
-bannedUsers.push(uid);
-// Remove from admins if applicable
-const admins = commData.admins ? commData.admins.filter(a => a !== uid) : [];
-// Update main doc
-batch.update(commRef, {
-  bannedUsers,
-  admins,
-  [`banReasons.${uid}`]: banReason.trim()
-});
-
-await batch.commit();
-resetCommDataCache();
-alert("User banned!");
-closeModal("viewProfileModal");
-} else {
-alert("User not found, already banned, or is the creator!");
-}
-}
-
-async function unbanUser(communityId, uid) {
-const commRef = doc(db, "communities", communityId);
-const memberRef = doc(db, "communities", communityId, "members", uid);
-
-await runTransaction(db, async (transaction) => {
-const commDoc = await transaction.get(commRef);
-if (!commDoc.exists()) {
-  throw new Error("Community not found!");
-}
-
-const commData = commDoc.data();
-const bannedUsers = commData.bannedUsers || [];
-
-if (!bannedUsers.includes(uid)) {
-  alert("User not banned!");
-  return;
-}
-
-const updatedBannedUsers = bannedUsers.filter(b => b !== uid);
-const updateData = {
-  bannedUsers: updatedBannedUsers
-};
-
-if (!updatedBannedUsers.includes(uid)) {
-  updateData[`banReasons.${uid}`] = deleteField();
-}
-
-// Add user back to members subcollection
-transaction.set(memberRef, { joinedAt: new Date() }, { merge: true });
-// Update main doc (remove from bannedUsers)
-transaction.update(commRef, updateData);
-});
-
-alert("User unbanned!");
-closeModal("viewBannedModal");
-viewBannedUsers(communityId);
 }
 
 let currentMembers = []; // Still used for search, but populated differently
@@ -4111,285 +3655,6 @@ if (totalFiltered > 0) {
 
 await loadSearchBatch(true);
 
-}
-
-
-
-
-
-async function viewBannedUsers(communityId) {
-const modal = document.getElementById("viewBannedModal");
-const bannedList = document.getElementById("bannedList");
-const bannedSearch = document.getElementById("bannedSearch");
-
-lastBannedDoc = null;
-bannedList.innerHTML = '<div class="loading">⏳ Loading...</div>';
-modal.style.display = "flex";
-modal.classList.remove("hidden");
-
-const commRef = doc(db, "communities", communityId);
-const commDoc = await getDoc(commRef);
-const commData = commDoc.data();
-const bannedUsers = commData.bannedUsers || [];
-console.log("Total banned users:", bannedUsers.length);
-
-const messagesDiv = modal.querySelector("#bannedMessages") || document.createElement("div");
-if (!modal.querySelector("#bannedMessages")) {
-messagesDiv.id = "bannedMessages";
-messagesDiv.className = "banned-messages";
-bannedList.before(messagesDiv);
-}
-const appealsRef = collection(db, "communities", communityId, "banAppeals");
-const appealsSnapshot = await getDocs(appealsRef);
-if (!appealsSnapshot.empty) {
-messagesDiv.innerHTML = "<h3>Appeal Messages (Bans/Posts)</h3>";
-for (const doc of appealsSnapshot.docs) {
-  const appeal = doc.data();
-  const userData = await fetchUserData(appeal.userId);
-  const displayName = `${userData.name || "Unknown"} (${appeal.username || "unknown"})`;
-  messagesDiv.innerHTML += `
-    <div class="appeal-item" data-appeal-id="${doc.id}">
-      <p><strong>${displayName}:</strong> ${appeal.message}</p>
-      <span>${new Date(appeal.timestamp.toDate()).toLocaleString()}</span>
-      <button class="delete-appeal-btn" data-appeal-id="${doc.id}">Delete</button>
-    </div>
-  `;
-}
-messagesDiv.querySelectorAll(".delete-appeal-btn").forEach(btn => {
-  btn.addEventListener("click", async () => {
-    if (confirm("Delete this appeal?")) {
-      await deleteDoc(doc(db, "communities", communityId, "banAppeals", btn.dataset.appealId));
-      messagesDiv.querySelector(`.appeal-item[data-appeal-id="${btn.dataset.appealId}"]`).remove();
-      if (!messagesDiv.querySelector(".appeal-item")) messagesDiv.innerHTML = "<p>No appeals yet.</p>";
-    }
-  });
-});
-} else {
-messagesDiv.innerHTML = "<p>No appeals yet.</p>";
-}
-
-await loadBannedBatch(bannedUsers, true);
-
-bannedSearch.oninput = debounce((e) => searchBanned(bannedUsers, e.target.value), 300);
-modal.querySelector("#closeBannedBtn").addEventListener("click", () => closeModal("viewBannedModal"));
-}
-
-async function loadBannedBatch(bannedUsers, reset = false) {
-const bannedList = document.getElementById("bannedList");
-const ITEMS_PER_PAGE = 10;
-
-if (reset) {
-bannedList.innerHTML = "";
-lastBannedDoc = null;
-}
-
-const startIndex = lastBannedDoc ? bannedList.querySelectorAll(".user-item").length : 0;
-const batch = bannedUsers.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-
-console.log("Loading banned batch:", { startIndex, batchSize: batch.length });
-
-if (batch.length === 0) {
-if (startIndex === 0) {
-  bannedList.innerHTML = "<p>No banned users.</p>";
-}
-updateBannedButtons(bannedUsers.length, startIndex);
-return;
-}
-
-const q = query(collection(db, "users"), where("__name__", "in", batch));
-const snapshot = await getDocs(q);
-console.log("Fetched banned users:", snapshot.docs.length);
-
-snapshot.docs.forEach(doc => {
-const userData = doc.data();
-const itemId = `banned-${doc.id}`;
-if (!document.getElementById(itemId)) {
-  const bannedDiv = document.createElement("div");
-  bannedDiv.className = "user-item";
-  bannedDiv.id = itemId;
-  bannedDiv.innerHTML = `
-    <img loading="lazy" src="${userData.profilePhoto || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}" alt="Profile">
-    <span class="username" data-uid="${doc.id}">${userData.name}</span>
-    <button class="remove-member-btn" data-uid="${doc.id}">Remove as Member</button>
-    <button class="unban-btn" data-uid="${doc.id}">Unban</button>
-  `;
-  bannedList.appendChild(bannedDiv);
-  bannedDiv.querySelector(`.username[data-uid="${doc.id}"]`).addEventListener("click", () => viewProfile(doc.id));
-  bannedDiv.querySelector(`.remove-member-btn`).addEventListener("click", () => removeAsMember(communityId, doc.id));
-  bannedDiv.querySelector(`.unban-btn`).addEventListener("click", () => unbanUser(communityId, doc.id));
-}
-});
-
-lastBannedDoc = snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1] : null;
-const loadedCount = bannedList.querySelectorAll(".user-item").length;
-console.log("Loaded banned count:", loadedCount);
-
-updateBannedButtons(bannedUsers.length, loadedCount);
-}
-
-function updateBannedButtons(totalBanned, loadedCount) {
-const bannedList = document.getElementById("bannedList");
-const ITEMS_PER_PAGE = 10;
-
-// Always remove old buttons to avoid duplicates
-const existingMoreBtn = bannedList.querySelector("#seeMoreBannedBtn");
-const existingLessBtn = bannedList.querySelector("#seeLessBannedBtn");
-if (existingMoreBtn) existingMoreBtn.remove();
-if (existingLessBtn) existingLessBtn.remove();
-
-console.log("Updating banned buttons:", { totalBanned, loadedCount });
-
-if (totalBanned > 0) {
-const seeMore = document.createElement("button");
-seeMore.id = "seeMoreBannedBtn";
-seeMore.textContent = "See More";
-seeMore.className = "see-more-btn";
-// Only show if total exceeds 10 AND not all are loaded
-seeMore.style.display = (totalBanned > ITEMS_PER_PAGE && loadedCount < totalBanned) ? "block" : "none";
-seeMore.onclick = () => loadBannedBatch(bannedUsers);
-
-const seeLess = document.createElement("button");
-seeLess.id = "seeLessBannedBtn";
-seeLess.textContent = "See Less";
-seeLess.className = "see-less-btn";
-seeLess.style.display = (loadedCount > ITEMS_PER_PAGE) ? "block" : "none";
-seeLess.onclick = () => loadBannedBatch(bannedUsers, true);
-
-bannedList.appendChild(seeMore);
-bannedList.appendChild(seeLess);
-
-console.log("See More banned display:", seeMore.style.display);
-}
-}
-
-async function searchBanned(bannedUsers, searchTerm) {
-const bannedList = document.getElementById("bannedList");
-const ITEMS_PER_PAGE = 10;
-let startIndex = 0; // Track where we are in the filtered list
-
-// Clear the list and remove old buttons
-bannedList.innerHTML = '<div class="loading">⏳ Searching...</div>';
-
-if (!searchTerm) {
-lastBannedDoc = null;
-return loadBannedBatch(bannedUsers, true); // Reset to full list if search is empty
-}
-
-// Filter all banned users client-side
-const filteredBanned = bannedUsers.filter(uid => {
-const user = userDataCache[uid];
-return user && (
-  user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-  user.username.toLowerCase().includes(searchTerm.toLowerCase())
-);
-});
-console.log(`Search filtered banned: ${filteredBanned.length} matches for "${searchTerm}"`);
-
-async function loadSearchBatch(reset = false) {
-if (reset) {
-  startIndex = 0;
-  bannedList.innerHTML = "";
-}
-
-const batch = filteredBanned.slice(startIndex, startIndex + ITEMS_PER_PAGE);
-console.log(`Loading banned search batch: startIndex=${startIndex}, batchSize=${batch.length}`);
-
-if (batch.length === 0) {
-  if (startIndex === 0) {
-    bannedList.innerHTML = "<p>No matching banned users found.</p>";
-  }
-  updateSearchButtons(filteredBanned.length, startIndex);
-  return;
-}
-
-const q = query(collection(db, "users"), where("__name__", "in", batch));
-const snapshot = await getDocs(q);
-
-if (startIndex === 0) bannedList.innerHTML = ""; // Clear only on first batch
-snapshot.docs.forEach(doc => {
-  const userData = doc.data();
-  const itemId = `banned-${doc.id}`;
-  if (!document.getElementById(itemId)) {
-    const bannedDiv = document.createElement("div");
-    bannedDiv.className = "user-item";
-    bannedDiv.id = itemId;
-    bannedDiv.innerHTML = `
-      <img loading="lazy" src="${userData.profilePhoto || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}" alt="Profile">
-      <span class="username" data-uid="${doc.id}">${userData.name}</span>
-      <button class="unban-btn" id="unban-${doc.id}">Unban</button>
-    `;
-    bannedList.appendChild(bannedDiv);
-    bannedDiv.querySelector(`.username[data-uid="${doc.id}"]`).addEventListener("click", () => viewProfile(doc.id));
-    document.getElementById(`unban-${doc.id}`).addEventListener("click", () => unbanUser(communityId, doc.id));
-  }
-});
-
-const loadedCount = bannedList.querySelectorAll(".user-item").length;
-updateSearchButtons(filteredBanned.length, loadedCount);
-}
-
-function updateSearchButtons(totalFiltered, loadedCount) {
-const existingMoreBtn = bannedList.querySelector("#seeMoreSearchBannedBtn");
-const existingLessBtn = bannedList.querySelector("#seeLessSearchBannedBtn");
-if (existingMoreBtn) existingMoreBtn.remove();
-if (existingLessBtn) existingLessBtn.remove();
-
-console.log(`Search banned buttons: totalFiltered=${totalFiltered}, loadedCount=${loadedCount}`);
-
-if (totalFiltered > 0) {
-  const seeMore = document.createElement("button");
-  seeMore.id = "seeMoreSearchBannedBtn";
-  seeMore.textContent = "See More";
-  seeMore.className = "see-more-btn";
-  seeMore.style.display = (totalFiltered > loadedCount) ? "block" : "none";
-  seeMore.onclick = () => {
-    startIndex += ITEMS_PER_PAGE;
-    loadSearchBatch();
-  };
-
-  const seeLess = document.createElement("button");
-  seeLess.id = "seeLessSearchBannedBtn";
-  seeLess.textContent = "See Less";
-  seeLess.className = "see-less-btn";
-  seeLess.style.display = (loadedCount > ITEMS_PER_PAGE) ? "block" : "none";
-  seeLess.onclick = () => loadSearchBatch(true);
-
-  bannedList.appendChild(seeMore);
-  bannedList.appendChild(seeLess);
-}
-}
-
-await loadSearchBatch(true);
-}
-
-async function removeAsMember(communityId, uid) {
-const commRef = doc(db, "communities", communityId);
-const commDoc = await getDoc(commRef);
-const commData = commDoc.data();
-const bannedUsers = commData.bannedUsers || [];
-
-if (bannedUsers.includes(uid)) {
-const updatedBanned = bannedUsers.filter(b => b !== uid);
-await updateDoc(commRef, { bannedUsers: updatedBanned });
-
-// Update user's communityIds
-const userRef = doc(db, "users", uid);
-const userDoc = await getDoc(userRef);
-const userData = userDoc.data();
-const updatedCommunityIds = (userData.communityIds || []).filter(id => id !== communityId);
-await updateDoc(userRef, { communityIds: updatedCommunityIds });
-
-alert("User removed as member (no longer banned)!");
-closeModal("viewBannedModal");
-viewBannedUsers(communityId); // Refresh banned list
-
-// If this is the current user, refresh their community list
-if (uid === auth.currentUser.uid && typeof loadYourCommunities === "function") {
-  loadYourCommunities({ ...userData, communityIds: updatedCommunityIds });
-}
-} else {
-alert("User not banned!");
-}
 }
 
 async function viewCommunities(userId) {
@@ -5048,11 +4313,9 @@ function debounce(func, wait) {
 }
 
 window.getCommData = getCommData;
-window.viewProfile = viewProfile;
 window.closeModal = closeModal;
 window.debounce = debounce;
 window.communitySearchPostsById = searchPostsById;
-window.communityViewProfile = viewProfile;
 window.renderPosts = renderPosts;
 window.searchPostsById = searchPostsById;
 window.fetchUserData = fetchUserData;
@@ -5062,3 +4325,4 @@ window.fetchCurrentUserData = fetchCurrentUserData;
 window.leaveCommunity = leaveCommunity;
 window.debouncedLoadAdminReportSummary = debouncedLoadAdminReportSummary;
 window.delay = delay;
+window.resetCommDataCache = resetCommDataCache;

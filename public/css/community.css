@@ -1051,7 +1051,7 @@ background-color: #ccc; /* Or whatever fits your vibe */
   background-color: #45a049;
 }
 
-.ban-message, .not-member-message {
+.ban-message {
   text-align: center;
   padding: 20px;
   background-color: #f8d7da;
@@ -1060,8 +1060,60 @@ background-color: #ccc; /* Or whatever fits your vibe */
   margin: 20px;
 }
 
-.ban-message h2, .not-member-message h2 {
+.not-member-message {
+  background: #000000;
+  border-radius: 20px;
+  border: 2px solid #555;
+}
+
+.ban-message textarea {
+  background: #fff;
+}
+
+.ban-message h2 {
   color: #721c24;
+}
+
+.not-member-message h2 {
+  color: rgba(172, 255, 47, 0.881);
+}
+
+.not-member-message p {
+  color: #fff;
+}
+
+.ban-items {
+  display: flex;
+  align-items: center;
+  background-color: #555;
+  box-shadow: inset -5px 5px 9px rgba(0, 0, 0, 0.5);
+  border: 1px solid #444;
+  gap: 8px;
+  padding: 5px 0;
+  flex-direction: column;
+  justify-content: center;
+  border-radius: 20px;
+}
+
+span.ban-status {
+  background: #000000;
+  box-shadow: inset -2px 3px 10px rgb(255 255 255 / 30%);
+  padding: 8px;
+  border-radius: 20px;
+}
+
+.ban-actions2 {
+  display: flex;
+}
+
+.ban-actions2 button {
+  font-size: 0.9em;
+}
+
+.ban-items img {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
 }
 
 .ban-message a, .not-member-message a {
@@ -1180,6 +1232,10 @@ background-color: #ccc; /* Or whatever fits your vibe */
   padding: 5px 0;
 }
 
+button#reinstateBanBtn {
+  background: #dc3545;
+}
+
 .remove-member-btn, .delete-appeal-btn {
   padding: 5px 10px;
   background-color: #dc3545;
@@ -1189,7 +1245,7 @@ background-color: #ccc; /* Or whatever fits your vibe */
   margin-left: 5px;
 }
 
-.remove-member-btn:hover, .delete-appeal-btn:hover {
+.remove-member-btn:hover, .delete-appeal-btn:hover, button#reinstateBanBtn:hover {
   background-color: #c82333;
 }
 
