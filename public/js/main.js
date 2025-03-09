@@ -261,11 +261,11 @@ if (user.uid) {
 
 actions.innerHTML = `
   ${commData.creatorId === user.uid ? `<button class="delete-btn" id="deleteCommunityBtn">Delete (Community)</button>` : ""}
+  ${commData.members.includes(user.uid) && commData.creatorId !== user.uid ? `<button class="leave-btn" id="leaveCommunityBtn">Leave Community</button>` : ""}
   ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="editNameBtn">Edit Name (Community)</button>` : ""}
   <br><br>
   <button id="viewMembersBtn">Members</button>
   ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="viewBannedBtn">Banned</button>` : ""}
-  ${commData.members.includes(user.uid) && commData.creatorId !== user.uid ? `<button class="leave-btn" id="leaveCommunityBtn">Leave Community</button>` : ""}
   <button id="viewProfileViewRequestsBtn">Profile Requests ${profileViewRequestCount > 0 ? `<span class="request-badge">${profileViewRequestCount}</span>` : ''}</button>
   <button id="viewSavedPostsBtn">Saved Posts</button>
   <button id="viewChatsBtn">💬 Chats</button>

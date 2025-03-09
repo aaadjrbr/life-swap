@@ -80,10 +80,6 @@ span#createdAt {
   cursor: pointer;
 }
 
-#edit-name-form button:hover {
-  background-color: #ddd;
-}
-
 /* Top Bar */
 .top-bar {
   display: flex;
@@ -274,6 +270,7 @@ button:disabled {
 
 .leave-btn {
   background: #ccc;
+  color: #111;
 }
 
 .leave-btn:hover {
@@ -834,6 +831,11 @@ button#viewRequestsBtn {
 
 div#edit-name-form {
   width: 80%;
+}
+
+div#edit-name-form {
+  background: #111 !important;
+  border-radius: 20px;
 }
 
 #viewProfileModal {
