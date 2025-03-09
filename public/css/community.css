@@ -1894,14 +1894,15 @@ background: none;
 }
 
 .search-message {
-padding: 10px;
-background-color: #f0f0f0;
-border-bottom: 1px solid #ddd;
-text-align: center;
+  padding: 10px;
+  background-color: #333;
+  border-bottom: 1px solid #ddd;
+  text-align: center;
+  border-radius: 20px;
 }
 
 .search-message button {
-background-color: #007bff;
+background-color: #f39c12;
 color: white;
 border: none;
 padding: 5px 10px;
@@ -1910,7 +1911,7 @@ border-radius: 3px;
 }
 
 .search-message button:hover {
-background-color: #0056b3;
+background-color: #f39d12e1;
 }
 
 .notification-item {
