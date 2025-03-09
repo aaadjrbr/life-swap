@@ -1165,7 +1165,7 @@ span.ban-status {
 }
 
 .ban-appeal-form textarea:focus {
-  background: #b8b8b8;
+  background: #edecec;
   color: #000;
 }
 
@@ -1176,14 +1176,14 @@ span.ban-status {
 .ban-appeal-form button {
   align-self: flex-start;
   padding: 5px 10px;
-  background-color: #007bff;
+  background-color: #e74958;
   color: white;
   border: none;
   cursor: pointer;
 }
 
 .ban-appeal-form button:hover {
-  background-color: #0056b3;
+  background-color: #e74959ca;
 }
 
 .appeal-item {
