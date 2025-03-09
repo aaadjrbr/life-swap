@@ -2435,7 +2435,7 @@ postDiv.innerHTML = `
   <p class="post-id">Post ID: ${postId} <button class="copy-btn" data-post-id="${postId}">Copy</button></p>
   <button class="like-btn" data-post-id="${postId}">${(post.likedBy || []).includes(auth.currentUser.uid) ? '💔 Unlike' : '❤️ Like'} (${post.likes || 0})</button>
   <button class="save-toggle-btn" data-post-id="${postId}" data-community-id="${communityId}">${isSaved ? "🗑️ Unsave" : "💾 Save"}</button>
-  <button class="report-btn" id="reportPost-${postId}">🚩 Report Post</button>
+  <button class="report-btn" id="reportPost-${postId}">Report Post</button>
   <br><br>
   ${post.userId === auth.currentUser.uid || isAdmin ? `<button class="delete-btn" id="deletePost-${postId}">Delete Post</button>` : ""}
   ${reportStatus?.isOwner && reportStatus.reportCount === 1 ? `
@@ -2487,7 +2487,7 @@ likeBtn.addEventListener("click", async () => {
     addLikedPref(postData.category, postData.offering);
   }
   await updateDoc(postRef, { likes: newLikes, likedBy: newLikedBy });
-  likeBtn.textContent = `${likedBy.includes(userId) ? 'Like' : 'Unlike'} (${newLikes})`;
+  likeBtn.textContent = `${likedBy.includes(userId) ? '❤️ Like' : '💔 Unlike'} (${newLikes})`;
   const cachedPosts = getCachedPosts();
   cachedPosts.set(postId, { id: postId, data: { ...postData, likes: newLikes, likedBy: newLikedBy, communityId } });
   setCachedPosts(cachedPosts);
@@ -3109,7 +3109,7 @@ postsDiv.innerHTML = `
     <p>Posted: ${timestamp}</p>
     <p>Post ID: ${actualPostId} <button class="copy-btn" data-post-id="${actualPostId}">Copy</button></p>
     <button class="like-btn" data-post-id="${actualPostId}">${(post.likedBy || []).includes(currentUser.uid) ? '💔 Unlike' : '❤️ Like'} (${post.likes || 0})</button>
-    <button class="report-btn" id="reportPost-${actualPostId}">🚩 Report Post</button>
+    <button class="report-btn" id="reportPost-${actualPostId}">Report Post</button>
     <br><br>
     ${(isOwner || isAdmin) ? `<button class="delete-btn" id="deletePost-${actualPostId}">Delete Post</button>` : ""}
     ${reportStatus.isOwner && reportStatus.reportCount === 1 ? `
@@ -3203,7 +3203,7 @@ likeBtn.addEventListener("click", async () => {
       likes: newLikes,
       likedBy: newLikedBy
     });
-    likeBtn.textContent = `Unlike (${newLikes})`;
+    likeBtn.textContent = `💔 Unlike (${newLikes})`;
     addLikedPref(postData.category, postData.offering); // Track prefs on like
   }
 
