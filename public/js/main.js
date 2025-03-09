@@ -2742,45 +2742,44 @@ try {
 }
 
 async function updateButtons() {
-const existingMoreBtn = yourPostsList.querySelector("#seeMoreYourPostsBtn");
-const existingLessBtn = yourPostsList.querySelector("#seeLessYourPostsBtn");
-if (existingMoreBtn) existingMoreBtn.remove();
-if (existingLessBtn) existingLessBtn.remove();
+  const existingMoreBtn = yourPostsList.querySelector("#seeMoreYourPostsBtn");
+  const existingLessBtn = yourPostsList.querySelector("#seeLessYourPostsBtn");
+  if (existingMoreBtn) existingMoreBtn.remove();
+  if (existingLessBtn) existingLessBtn.remove();
 
-const buttonContainer = document.createElement("div");
-buttonContainer.id = "yourPostsButtons";
-buttonContainer.style.cssText = "margin-top: 10px; text-align: center; display: block !important; visibility: visible !important;";
+  const buttonContainer = document.createElement("div");
+  buttonContainer.id = "yourPostsButtons";
+  buttonContainer.style.cssText = "margin-top: 10px; text-align: center; display: block !important; visibility: visible !important;";
 
-const seeMoreBtn = document.createElement("button");
-seeMoreBtn.id = "seeMoreYourPostsBtn";
-seeMoreBtn.textContent = "See More";
-seeMoreBtn.className = "see-more-btn";
-seeMoreBtn.style.cssText = "display: block !important; margin: 5px auto; padding: 5px 10px; visibility: visible !important; opacity: 1 !important; position: relative !important;";
-seeMoreBtn.addEventListener("click", () => fetchYourPosts());
+  const seeMoreBtn = document.createElement("button");
+  seeMoreBtn.id = "seeMoreYourPostsBtn";
+  seeMoreBtn.textContent = "See More";
+  seeMoreBtn.className = "see-more-btn";
+  seeMoreBtn.style.cssText = "display: none !important; margin: 5px auto; padding: 5px 10px; visibility: hidden !important; opacity: 0 !important;"; // Start hidden
+  seeMoreBtn.addEventListener("click", () => fetchYourPosts());
 
-const seeLessBtn = document.createElement("button");
-seeLessBtn.id = "seeLessYourPostsBtn";
-seeLessBtn.textContent = "See Less";
-seeLessBtn.className = "see-less-btn";
-seeLessBtn.style.cssText = "display: none !important; margin: 5px auto; padding: 5px 10px; visibility: hidden !important; opacity: 0 !important; position: relative !important;";
-seeLessBtn.addEventListener("click", async () => {
-  await fetchYourPosts(true);
-});
+  const seeLessBtn = document.createElement("button");
+  seeLessBtn.id = "seeLessYourPostsBtn";
+  seeLessBtn.textContent = "See Less";
+  seeLessBtn.className = "see-less-btn";
+  seeLessBtn.style.cssText = "display: none !important; margin: 5px auto; padding: 5px 10px; visibility: hidden !important; opacity: 0 !important;";
+  seeLessBtn.addEventListener("click", async () => {
+    await fetchYourPosts(true);
+  });
 
-buttonContainer.appendChild(seeMoreBtn);
-buttonContainer.appendChild(seeLessBtn);
-yourPostsList.appendChild(buttonContainer);
+  buttonContainer.appendChild(seeMoreBtn);
+  buttonContainer.appendChild(seeLessBtn);
+  yourPostsList.appendChild(buttonContainer);
 
-// Use cached totalYourPosts
-if (shownPostIds.size >= totalYourPosts) {
-  seeMoreBtn.style.cssText = "display: none !important; margin: 5px auto; padding: 5px 10px; visibility: hidden !important; opacity: 0 !important;";
-  seeLessBtn.style.cssText = "display: block !important; margin: 5px auto; padding: 5px 10px; visibility: visible !important; opacity: 1 !important; position: relative !important;";
-} else {
-  seeMoreBtn.style.cssText = "display: block !important; margin: 5px auto; padding: 5px 10px; visibility: visible !important; opacity: 1 !important; position: relative !important;";
-  seeLessBtn.style.cssText = shownPostIds.size > 2 
-    ? "display: block !important; margin: 5px auto; padding: 5px 10px; visibility: visible !important; opacity: 1 !important; position: relative !important;" 
-    : "display: none !important; margin: 5px auto; padding: 5px 10px; visibility: hidden !important; opacity: 0 !important;";
-}
+  // Show "See More" only if there are more posts to load (total > shown and total > 2)
+  if (totalYourPosts > shownPostIds.size && totalYourPosts > 2) {
+    seeMoreBtn.style.cssText = "display: block !important; margin: 5px auto; padding: 5px 10px; visibility: visible !important; opacity: 1 !important; position: relative !important;";
+  }
+
+  // Show "See Less" only if more than 2 posts are shown
+  if (shownPostIds.size > 2) {
+    seeLessBtn.style.cssText = "display: block !important; margin: 5px auto; padding: 5px 10px; visibility: visible !important; opacity: 1 !important; position: relative !important;";
+  }
 }
 
 await fetchYourPosts();
