@@ -1103,7 +1103,7 @@ span.ban-status {
 }
 
 .ban-actions2 {
-  display: flex;
+  display: flex !important;
 }
 
 .ban-actions2 button {
@@ -1127,6 +1127,8 @@ span.ban-status {
   background-color: #f8d7da;
   border: 1px solid #f5c6cb;
   border-radius: 5px;
+  overflow: auto;
+  max-height: 200px;
 }
 
 .banned-messages p {
@@ -1151,6 +1153,14 @@ span.ban-status {
   height: 60px;
   padding: 5px;
   resize: vertical;
+}
+
+.ban-appeal-form textarea:focus {
+  background: #fff;
+}
+
+#bannedMessages h3 {
+  color: #333;
 }
 
 .ban-appeal-form button {

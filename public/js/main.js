@@ -35,7 +35,7 @@ if (err.code === "failed-precondition") {
 });
 
 export let communityId; // At the top
-let userDataCache = {};
+export let userDataCache = {};
 
 // Cache control settings for user data
 const USER_CACHE_TTL = 60 * 60 * 1000; // 1 hour in milliseconds

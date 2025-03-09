@@ -1,5 +1,5 @@
 import { auth, doc, setDoc, getDoc, updateDoc, addDoc, runTransaction, deleteField, collection, query, limit, getDocs, deleteDoc, where, orderBy, startAfter, db, writeBatch } from './firebaseConfig.js';
-import { communityId } from './main.js';
+import { communityId, userDataCache } from './main.js';
 export { liftBan, removeBanHistory }; // Export new function
 
 let lastBannedDoc = null;
