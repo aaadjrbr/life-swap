@@ -787,7 +787,7 @@ return cachedData;
 }
 
 async function fetchUserData(uids) {
-if (!uids) return { name: "Unknown", username: "unknown", profilePhoto: "https://via.placeholder.com/40", uid: "unknown" };
+if (!uids) return { name: "Unknown", username: "unknown", profilePhoto: "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y", uid: "unknown" };
 const uidArray = Array.isArray(uids) ? uids : [uids];
 
 // Check cache first, only fetch what’s missing
@@ -806,7 +806,7 @@ for (const batch of batches) {
     userDataCache[doc.id] = {
       name: data.name || "Unknown",
       username: data.username || "unknown",
-      profilePhoto: data.profilePhoto || "https://via.placeholder.com/40",
+      profilePhoto: data.profilePhoto || "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y",
       email: data.email || null,
       city: data.city || null,
       phone: data.phone || null,
@@ -819,7 +819,7 @@ for (const batch of batches) {
   // Fallback for any UIDs not found in this batch
   batch.forEach(uid => {
     if (!userDataCache[uid]) {
-      userDataCache[uid] = { name: "Unknown", username: "unknown", profilePhoto: "https://via.placeholder.com/40", uid };
+      userDataCache[uid] = { name: "Unknown", username: "unknown", profilePhoto: "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y", uid };
     }
   });
 }
@@ -1862,7 +1862,7 @@ return;
 
 if (photoUrls.length === 0) {
 //console.warn(`No photos for ${postId} in Your Posts, using fallback`);
-photoUrls = ["https://via.placeholder.com/300?text=Photo+1", "https://via.placeholder.com/300?text=Photo+2"];
+photoUrls = ["https://firebasestorage.googleapis.com/v0/b/life-swap-6065e.firebasestorage.app/o/static%2Fno-image.webp?alt=media&token=6a974dce-aa63-4d94-b889-a86f626fb430", "https://firebasestorage.googleapis.com/v0/b/life-swap-6065e.firebasestorage.app/o/static%2Fno-image.webp?alt=media&token=6a974dce-aa63-4d94-b889-a86f626fb430"];
 }
 
 img.src = photoUrls[0];
@@ -1913,7 +1913,7 @@ return;
 
 if (photoUrls.length === 0) {
 //console.warn(`No photos for ${postId} in Community, using fallback`);
-photoUrls = ["https://via.placeholder.com/300?text=Photo+1", "https://via.placeholder.com/300?text=Photo+2"];
+photoUrls = ["https://firebasestorage.googleapis.com/v0/b/life-swap-6065e.firebasestorage.app/o/static%2Fno-image.webp?alt=media&token=6a974dce-aa63-4d94-b889-a86f626fb430", "https://firebasestorage.googleapis.com/v0/b/life-swap-6065e.firebasestorage.app/o/static%2Fno-image.webp?alt=media&token=6a974dce-aa63-4d94-b889-a86f626fb430"];
 }
 
 img.src = photoUrls[0];
@@ -2395,7 +2395,7 @@ if (post.communityId && post.communityId !== communityId) {
 PaginationState.displayedPostIds.add(postId);
 loadedPostIds.add(postId);
 
-const userData = userDataCache[post.userId] || { profilePhoto: 'https://via.placeholder.com/40', name: 'Unknown', username: 'unknown' };
+const userData = userDataCache[post.userId] || { profilePhoto: 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y', name: 'Unknown', username: 'unknown' };
 const isPostAdmin = commData?.admins?.includes(post.userId) || commData?.creatorId === post.userId;
 const commentsQ = query(collection(db, "communities", communityId, "posts", postId, "comments"), orderBy("createdAt", "desc"));
 const commentsSnapshot = await getDocs(commentsQ);
@@ -2425,7 +2425,7 @@ postDiv.innerHTML = `
   <p class="post-description">${post.description || ''}</p>
   <div class="photo-carousel" id="carousel-${postId}-community" data-photos='${JSON.stringify(photoUrls)}'>
     ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${postId}-community"><</button>` : ''}
-    <img loading="lazy" src="${photoUrls[0] || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}" alt="Post photo" class="carousel-image" data-index="0">
+    <img loading="lazy" src="${photoUrls[0] || 'https://firebasestorage.googleapis.com/v0/b/life-swap-6065e.firebasestorage.app/o/static%2Fno-image.webp?alt=media&token=6a974dce-aa63-4d94-b889-a86f626fb430'}" alt="Post photo" class="carousel-image" data-index="0">
     ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${postId}-community">></button>` : ''}
   </div>
   <p>Location: ${post.location?.name || 'N/A'}</p>
@@ -2685,14 +2685,14 @@ try {
     postDiv.id = `post-${doc.id}`;
     postDiv.innerHTML = `
       <div class="post-header">
-        <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/40'}" class="profile-photo" alt="Profile">
+        <img loading="lazy" src="${userData.profilePhoto || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}" class="profile-photo" alt="Profile">
         <h3><span class="username" data-uid="${post.userId}">${userData.name}</span> <span class="at-user">@${userData.username}</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
       </div>
       <h3>${post.title}</h3>
       <p class="post-description">${post.description}</p>
       <div class="photo-carousel" id="carousel-${doc.id}-your" data-photos='${JSON.stringify(photoUrls)}'>
         ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${doc.id}-your"><</button>` : ''}
-        <img loading="lazy" src="${photoUrls[0] || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}" alt="Post photo" class="carousel-image" data-index="0">
+        <img loading="lazy" src="${photoUrls[0] || 'https://firebasestorage.googleapis.com/v0/b/life-swap-6065e.firebasestorage.app/o/static%2Fno-image.webp?alt=media&token=6a974dce-aa63-4d94-b889-a86f626fb430'}" alt="Post photo" class="carousel-image" data-index="0">
         ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${doc.id}-your">></button>` : ''}
       </div>
       <p>Location: ${post.location.name}</p>
@@ -3099,7 +3099,7 @@ postsDiv.innerHTML = `
     <p class="post-description">${post.description || "No Description"}</p>
     <div class="photo-carousel" id="carousel-${actualPostId}-search" data-photos='${JSON.stringify(photoUrls)}'>
       ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${actualPostId}-search"><</button>` : ""}
-      <img loading="lazy" src="${photoUrls[0] || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}" alt="Post photo" class="carousel-image">
+      <img loading="lazy" src="${photoUrls[0] || 'https://firebasestorage.googleapis.com/v0/b/life-swap-6065e.firebasestorage.app/o/static%2Fno-image.webp?alt=media&token=6a974dce-aa63-4d94-b889-a86f626fb430'}" alt="Post photo" class="carousel-image">
       ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${actualPostId}-search">></button>` : ""}
     </div>
     <p>By: <span class="username" data-uid="${post.userId || 'unknown'}">${userData.name || "Unknown"} (${userData.username || "unknown"})</span></p>
@@ -3266,7 +3266,7 @@ async function viewProfile(uid) {
   actionsEl.innerHTML = '<div class="loading">⏳ Loading...</div>';
   detailsEl.innerHTML = '';
   nameEl.textContent = '';
-  photoEl.src = "https://via.placeholder.com/40";
+  photoEl.src = "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y";
   document.querySelectorAll(".modal:not(#viewProfileModal)").forEach(m => m.style.display = "none");
   modal.style.display = "flex";
   modal.classList.remove("hidden");
@@ -3310,7 +3310,7 @@ async function viewProfile(uid) {
     userDocData.email && userDocData.email.trim() !== "";
   
   nameEl.innerHTML = `${userData.name} (🤝 ${userData.swaps || 0} swaps)${isVerified ? ' <span title="Users verified have completed their profile checks." class="verified-badge"> Verified</span>' : ''}`;
-  photoEl.src = userData.profilePhoto || "https://via.placeholder.com/40";
+  photoEl.src = userData.profilePhoto || "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y";
 
   // Add click to enlarge profile photo
   photoEl.style.cursor = "pointer"; // Hint it’s clickable
@@ -3939,7 +3939,7 @@ if (!document.getElementById(itemId)) {
   memberDiv.className = "user-item";
   memberDiv.id = itemId;
   memberDiv.innerHTML = `
-    <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" alt="Profile">
+    <img loading="lazy" src="${userData.profilePhoto || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}" alt="Profile">
     <span class="username" data-uid="${doc.id}">${userData.name}</span>
   `;
   membersList.appendChild(memberDiv);
@@ -4066,7 +4066,7 @@ snapshot.docs.forEach(doc => {
     memberDiv.className = "user-item";
     memberDiv.id = itemId;
     memberDiv.innerHTML = `
-      <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" alt="Profile">
+      <img loading="lazy" src="${userData.profilePhoto || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}" alt="Profile">
       <span class="username" data-uid="${doc.id}">${userData.name}</span>
     `;
     membersList.appendChild(memberDiv);
@@ -4208,7 +4208,7 @@ if (!document.getElementById(itemId)) {
   bannedDiv.className = "user-item";
   bannedDiv.id = itemId;
   bannedDiv.innerHTML = `
-    <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" alt="Profile">
+    <img loading="lazy" src="${userData.profilePhoto || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}" alt="Profile">
     <span class="username" data-uid="${doc.id}">${userData.name}</span>
     <button class="remove-member-btn" data-uid="${doc.id}">Remove as Member</button>
     <button class="unban-btn" data-uid="${doc.id}">Unban</button>
@@ -4314,7 +4314,7 @@ snapshot.docs.forEach(doc => {
     bannedDiv.className = "user-item";
     bannedDiv.id = itemId;
     bannedDiv.innerHTML = `
-      <img loading="lazy" src="${userData.profilePhoto || 'https://via.placeholder.com/30'}" alt="Profile">
+      <img loading="lazy" src="${userData.profilePhoto || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}" alt="Profile">
       <span class="username" data-uid="${doc.id}">${userData.name}</span>
       <button class="unban-btn" id="unban-${doc.id}">Unban</button>
     `;
