@@ -1051,6 +1051,14 @@ background-color: #ccc; /* Or whatever fits your vibe */
   background-color: #45a049;
 }
 
+.admin-menu {
+  background: #333;
+  padding: 10px;
+  border-radius: 20px;
+  box-shadow: inset -5px 5px 9px rgba(0, 0, 0, 0.5);
+  border-bottom: 2px solid #555;
+}
+
 .ban-message {
   text-align: center;
   padding: 20px;
