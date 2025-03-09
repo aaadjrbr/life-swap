@@ -1217,14 +1217,14 @@ span.ban-status {
 .ban-appeal-form button {
   align-self: flex-start;
   padding: 5px 10px;
-  background-color: #007bff;
+  background-color: #dc3545;
   color: white;
   border: none;
   cursor: pointer;
 }
 
 .ban-appeal-form button:hover {
-  background-color: #0056b3;
+  background-color: #c82333;
 }
 
 .ban-message {
