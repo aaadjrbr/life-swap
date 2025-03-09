@@ -1723,9 +1723,14 @@ margin-top: 10px;
   border-radius: 8px;
 }
 
+.report-item p {
+  color: #222;
+}
+
 .report-item textarea {
   background-color: #fff;
   color: #000;
+  max-width: 100%;
 }
 
 .report-item textarea:focus {
