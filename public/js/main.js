@@ -267,10 +267,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     actions.innerHTML = `
     <div class="admin-menu">
-      ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<h2>Admin:</h2>` : ""}
+      ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<h3>Admin:</h3>` : ""}
       ${commData.creatorId === user.uid ? `<button class="delete-btn" id="deleteCommunityBtn">Delete (Community)</button>` : ""}
-      ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="viewBannedBtn">Banned (Users/Appeals)</button>` : ""}
       ${commData.members.includes(user.uid) && commData.creatorId !== user.uid ? `<button class="leave-btn" id="leaveCommunityBtn">Leave Community</button>` : ""}
+      ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="viewBannedBtn">Banned (Users/Appeals)</button>` : ""}
       ${(commData.admins && commData.admins.includes(user.uid)) || commData.creatorId === user.uid ? `<button id="editNameBtn">Edit Name (Community)</button>` : ""}
     </div>
       <br><br>
