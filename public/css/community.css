@@ -1734,6 +1734,7 @@ align-items: center;
 .admin-report-summary summary::before {
 content: "▶ "; /* Small arrow when closed */
 display: inline-block;
+margin-right: 5px;
 transition: transform 0.2s;
 }
 
