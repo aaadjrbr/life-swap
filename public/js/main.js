@@ -2425,7 +2425,7 @@ postDiv.innerHTML = `
   <p class="post-description">${post.description || ''}</p>
   <div class="photo-carousel" id="carousel-${postId}-community" data-photos='${JSON.stringify(photoUrls)}'>
     ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${postId}-community"><</button>` : ''}
-    <img loading="lazy" src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image" data-index="0">
+    <img loading="lazy" src="${photoUrls[0] || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}" alt="Post photo" class="carousel-image" data-index="0">
     ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${postId}-community">></button>` : ''}
   </div>
   <p>Location: ${post.location?.name || 'N/A'}</p>
@@ -2692,7 +2692,7 @@ try {
       <p class="post-description">${post.description}</p>
       <div class="photo-carousel" id="carousel-${doc.id}-your" data-photos='${JSON.stringify(photoUrls)}'>
         ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${doc.id}-your"><</button>` : ''}
-        <img loading="lazy" src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image" data-index="0">
+        <img loading="lazy" src="${photoUrls[0] || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}" alt="Post photo" class="carousel-image" data-index="0">
         ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${doc.id}-your">></button>` : ''}
       </div>
       <p>Location: ${post.location.name}</p>
@@ -3099,7 +3099,7 @@ postsDiv.innerHTML = `
     <p class="post-description">${post.description || "No Description"}</p>
     <div class="photo-carousel" id="carousel-${actualPostId}-search" data-photos='${JSON.stringify(photoUrls)}'>
       ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${actualPostId}-search"><</button>` : ""}
-      <img loading="lazy" src="${photoUrls[0] || 'https://via.placeholder.com/300?text=No+Image'}" alt="Post photo" class="carousel-image">
+      <img loading="lazy" src="${photoUrls[0] || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}" alt="Post photo" class="carousel-image">
       ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${actualPostId}-search">></button>` : ""}
     </div>
     <p>By: <span class="username" data-uid="${post.userId || 'unknown'}">${userData.name || "Unknown"} (${userData.username || "unknown"})</span></p>
@@ -3238,7 +3238,7 @@ let currentIndex = 0;
 if (!prevBtn || !nextBtn || !img) return;
 
 if (photoUrls.length === 0) {
-photoUrls = ["https://via.placeholder.com/300?text=No+Image"];
+photoUrls = ["https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y"];
 }
 
 img.src = photoUrls[0];
