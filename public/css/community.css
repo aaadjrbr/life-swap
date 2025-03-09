@@ -1161,10 +1161,12 @@ span.ban-status {
   height: 60px;
   padding: 5px;
   resize: vertical;
+  color: #000;
 }
 
 .ban-appeal-form textarea:focus {
-  background: #fff;
+  background: #b8b8b8;
+  color: #000;
 }
 
 #bannedMessages h3 {
@@ -1283,21 +1285,22 @@ button#reinstateBanBtn {
 .appeal-item {
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid #ddd;
+  border-bottom: 2px solid #555;
   padding: 10px;
   align-items: flex-start;
-  background: #ffff0080;
+  background: #111;
   border-radius: 8px;
   margin-bottom: 12px;
 }
 
 .appeal-item p {
   margin: 0;
+  color: #fff;
 }
 
 .appeal-item span {
   font-size: 0.8em;
-  color: #666;
+  color: #ffffff;
 }
 
 .report-btn {
