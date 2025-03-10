@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="./leaf-solid.svg" type="image/x-icon">
+  <title>Life Swap</title>
+  <!-- Google Figtree Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&display=swap" rel="stylesheet" />
+  <!-- FontAwesome Icons -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/js/all.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
+
+  <!-- Animate.css -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+  <link rel="stylesheet" href="./css/index.css">
+</head>
+<body>
+  <header>
+    <div class="logo"><i class="fa-solid fa-leaf" style="font-size: 40px; color: rgba(172, 255, 47, 0.881);"></i> <span style="color: rgba(172, 255, 47, 0.881);">Life</span> Swap</div>
+    <nav>
+      <ul>
+        <li><a href="#home">Home</a></li>
+        <li><a href="#about">About</a></li>
+        <li><a href="#features">Features</a></li>
+
+        <li class="hide-in-insta"><a href="./loading.html">Members</a></li>
+      </ul>
+    </nav>
+  </header>
+  <br/><br/>
+  
+  <section class="hero" id="home">
+    <div class="hero-content">
+      <h1 class="animate__animated animate__fadeInDown"><span style="color: rgba(172, 255, 47, 0.881);">Swap</span> your way, no money, just value.</h1>
+      <p class="animate__animated animate__fadeInUp">Swap things you don’t need for things you do need.</p>
+      <a href="./login.html" class="hide-in-insta btn animate__animated animate__fadeInUp">Get Started</a>
+    </div>
+  </section>
+  
+  <section id="about">
+    <h2>About Life Swap</h2>
+    <p>Life Swap is more than a platform—it’s a community-driven movement.
+        Here, individuals exchange items they no longer need for things they do,
+        fostering connections over transactions. It’s not about money; it’s about
+        building meaningful relationships through sharing. In a society focused
+        on possession, Life Swap encourages giving, growth, and collaboration,
+        creating a network that thrives on mutual support, one swap at a time.</p>
+  </section>
+  
+  <section id="features">
+    <h2>How It Works</h2>
+    <div class="features">
+      <div class="feature-item">
+        <i class="fas fa-handshake" style="font-size: 2em; color: #f39c12;"></i>
+        <h3>Connect</h3>
+        <p>
+          Meet like-minded people from all over who are ready to trade. No money, just the genuine desire to exchange skills, time, and items.
+        </p>
+      </div>
+      <div class="feature-item">
+        <i class="fas fa-sync-alt" style="font-size: 2em; color: #f39c12;"></i>
+        <h3>Swap</h3>
+        <p>
+          Exchange what you don't need for what you do—be it skills, experiences, or tangible items. It’s a true barter system.
+        </p>
+      </div>
+      <div class="feature-item">
+        <i class="fas fa-smile" style="font-size: 2em; color: #f39c12;"></i>
+        <h3>Thrive</h3>
+        <p>
+          Enjoy a richer life full of new experiences and valuable connections. Grow and thrive through a community built on mutual support.
+        </p>
+      </div>
+    </div>
+  </section>  
+  
+  <section id="contact">
+    <h2>Stay in Touch</h2>
+    <p>Have questions? Reach out to us and start your life swap journey today!</p>
+    <br>
+    <a href="mailto:help@joinlifeswap.com" class="btn">Contact Us</a>
+  </section>
+
+  <div id="insta-warning">
+    <div class="insta-message">
+      <h2>🚀 Open in Chrome or Safari!</h2>
+      <p>To create an account, open this page in a real browser.</p>      
+      <button onclick="dismissWarning()">Got It</button>
+    </div>
+  </div>
+  
+  <script>
+    function isInstagramBrowser() {
+      return navigator.userAgent.includes("Instagram");
+    }
+  
+    function dismissWarning() {
+      document.getElementById("insta-warning").style.display = "none";
+    }
+  
+    if (isInstagramBrowser()) {
+      document.getElementById("insta-warning").style.display = "flex";
+    }
+
+    if (isInstagramBrowser()) {
+    document.body.classList.add("insta-browser");
+    }
+  </script>
+
+
+<div id="cookie-consent" class="hidden-2">
+  <br/>
+  <div>
+      <img src="" style="width: 120px; height: auto;"> 
+      <br/>
+      <p>Life Swap uses cookies 🍪 to ensure you get the best experience on our website. <a href="./legal/cookies.html" target="_blank">Learn more in our Cookie Policy</a>.</p>
+      <br/><br/>
+      <div class="toggle-container">
+          <span>Track only necessary info</span>
+          <div id="tracking-toggle" class="toggle"></div>
+      </div>
+  </div>
+  <br/>
+  <button class="btn-accept" id="accept-cookies">Accept</button>
+  <br/><br/>
+</div>
+
+<script>
+  // Check if user has already accepted cookies
+  const consentBanner = document.getElementById('cookie-consent');
+  const hasConsent = localStorage.getItem('cookieConsent');
+  
+  if (!hasConsent) {
+      consentBanner.classList.remove('hidden-2');
+  }
+
+  // Accept Button Click Event
+  document.getElementById('accept-cookies').addEventListener('click', function() {
+      localStorage.setItem('cookieConsent', 'accepted');
+      consentBanner.classList.add('hidden-2');
+  });
+
+  // Toggle Switch
+  const toggle = document.getElementById('tracking-toggle');
+  let trackingEnabled = true;  // By default, tracking is enabled
+
+  toggle.addEventListener('click', function() {
+      toggle.classList.toggle('active');
+      trackingEnabled = !trackingEnabled; // Toggle tracking preference
+      if (trackingEnabled) {
+          console.log("Tracking all info.");
+      } else {
+          console.log("Tracking only necessary info.");
+      }
+  });
+</script>
+  
+  <footer>
+    &copy; 2025 Life Swap. All rights reserved.
+    <br/>
+    <a href="./legal/privacy.html">Privacy Policy</a> | <a href="./legal/terms.html">Terms of Service</a> | <a href="./legal/cookies.html">Cookie Policy</a> | <a href="./contact.html">Contact Us</a>
+  <br/><br/>
+  </footer>
+</body>
+</html>
