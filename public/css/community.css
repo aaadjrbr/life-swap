@@ -1078,6 +1078,7 @@ background-color: #ccc; /* Or whatever fits your vibe */
   background: #000000;
   border-radius: 20px;
   border: 2px solid #555;
+  padding: 20px;
 }
 
 .ban-message textarea {
