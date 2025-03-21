@@ -191,6 +191,10 @@ h2 {
   max-height: 100px;
 }
 
+.chat-form textarea:focus {
+  color: #fff;
+}
+
 textarea:focus {
   color: #333;
 }

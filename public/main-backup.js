@@ -1698,6 +1698,19 @@ async function deletePost(postId) {
     swapUsername.focus();
   };
 
+  async function getUserByUsername(username) {
+    const cleanUsername = username.replace(/^@/, ""); // Remove leading "@" if present
+    const usersRef = collection(db, "users");
+    const q = query(usersRef, where("username", "==", cleanUsername));
+    const querySnapshot = await getDocs(q);
+    
+    if (!querySnapshot.empty) {
+      const userDoc = querySnapshot.docs[0];
+      return { uid: userDoc.id, ...userDoc.data() };
+    }
+    return null; // User not found
+  }
+
   // Validate username
   validateSwapBtn.onclick = async () => {
     const username = swapUsername.value.trim();
@@ -1705,12 +1718,12 @@ async function deletePost(postId) {
       swapValidationResult.textContent = "Please enter a username.";
       return;
     }
-
+  
     swapValidationResult.textContent = "Checking...";
-    const userData = await getUserByUsername(username);
+    const userData = await getUserByUsername(username); // Works with or without "@"
     if (userData) {
       swapPartnerUid = userData.uid;
-      swapPartner.textContent = username;
+      swapPartner.textContent = username; // Keep the original input for display
       swapValidationResult.textContent = "";
       swapConfirmed.classList.remove("hidden");
       proceedSwapBtn.classList.remove("hidden");
@@ -1772,8 +1785,32 @@ async function deletePost(postId) {
     }
   };
 
-  // Close modal
-  closeDeleteModalBtn.onclick = () => closeModal("deletePostModal");
+  // Reset modal state function
+  function resetModal() {
+    swapDetails.classList.add("hidden");
+    swapSuccess.classList.add("hidden");
+    swapValidationResult.textContent = "";
+    swapConfirmed.classList.add("hidden");
+    proceedSwapBtn.classList.add("hidden");
+    justDeleteBtn.style.display = "block"; // Reset to visible
+    swappedBtn.style.display = "block";   // Reset to visible
+    swapUsername.disabled = false;
+    validateSwapBtn.disabled = false;
+    swapUsername.value = "";
+    closeDeleteModalBtn.textContent = "Cancel"; // Reset button text
+    swapPartnerUid = null; // Clear swap partner
+  }
+
+  // Show the modal and reset state
+  modal.style.display = "flex";
+  modal.classList.remove("hidden");
+  resetModal(); // Reset state on open
+
+  // Close modal with reset
+  closeDeleteModalBtn.onclick = () => {
+    closeModal("deletePostModal");
+    resetModal(); // Reset state on close
+  };
 }
 
 // Helper: Delete post and cleanup efficiently (straight from your old code)
