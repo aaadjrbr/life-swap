@@ -18,7 +18,7 @@
       <div class="community-info">
         <h2 id="communityName"></h2>
         <p id="communityMeta">Created: <span id="createdAt"></span> by <span id="creatorName"></span></p>
-        <h3 class="life-swap"><i class="fa-solid fa-leaf" style="font-size: 20px; color: rgba(172, 255, 47, 0.881);"></i> <span style="color: rgba(172, 255, 47, 0.742);">Life</span> Swap. No money, just value.<br/> <a href="#" style="text-decoration: none; color: rgb(255, 255, 255); text-decoration: underline;">Donate</a> 💙</h3>
+        <h3 style="background: #111111da; padding: 8px; border-radius: 5px; box-shadow: inset -2px 3px 5px rgba(255, 255, 255, 0.1);" class="life-swap"><i class="fa-solid fa-leaf" style="font-size: 20px; color: rgba(172, 255, 47, 0.881);"></i> <span style="color: rgba(172, 255, 47, 0.881);">Life</span> <span style="color: #fff;">Swap</span><span style="color: #ffffff;">. No money, just value.</span><br/> <a href="https://www.paypal.com/paypalme/lifeswapdonation?country.x=US&locale.x=en_US" target="_blank" style="text-decoration: none; color: rgb(255, 255, 255); text-decoration: underline;">Donate</a> <i class="fas fa-heart" style="color: rgba(172, 255, 47, 0.742);"></i></h3>
       </div>
       <button id="viewCommunitiesBtn">Your Communities</button>
       <button id="viewNotificationsBtn"><i class="fas fa-bell"></i> Notifications <span id="notificationCount" class="notification-badge"></span></button>
@@ -249,11 +249,9 @@
     </div>
     <div id="swapSuccess" class="hidden">
       <p id="swapSuccessMessage"></p>
-      <form action="https://www.paypal.com/donate" method="post" target="_blank">
-        <input type="hidden" name="business" value="YOUR_PAYPAL_EMAIL_OR_ID">
-        <input type="hidden" name="currency_code" value="USD">
-        <button type="submit" id="donateBtn">Tip Us via PayPal</button>
-      </form>
+      <a href="https://www.paypal.com/paypalme/lifeswapdonation?country.x=US&locale.x=en_US" target="_blank">
+        <button id="donateBtn">Tip Us via PayPal</button>
+      </a>
     </div>
     <button id="closeDeleteModalBtn">Cancel</button>
     <!-- Added Loading Overlay -->

@@ -536,7 +536,7 @@ async function openChat(targetUid, communityId = null) {
         const tipMsg = {
           senderId: "system",
           receiverId: targetUid,
-          text: 'Hey there! Sorry to interrupt, but if you’re enjoying Life Swap, consider helping us stay free with a small donation. Every bit helps! <a href="https://www.paypal.com/donate?business=YOUR_PAYPAL_EMAIL_OR_ID¤cy_code=USD" target="_blank">Donate via PayPal</a>',
+          text: 'Hey there! Sorry to interrupt, but if you’re enjoying Life Swap, consider helping us stay free with a small donation. Every bit helps! <a href="https://www.paypal.com/paypalme/lifeswapdonation?country.x=US&locale.x=en_US" target="_blank">Donate via PayPal</a>',
           timestamp: new Date(),
           seen: false
         };
