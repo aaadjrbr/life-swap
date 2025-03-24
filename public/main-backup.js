@@ -277,7 +277,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <button id="viewMembersBtn">Members</button>
       <button id="viewProfileViewRequestsBtn">Profile Requests ${profileViewRequestCount > 0 ? `<span class="request-badge">${profileViewRequestCount}</span>` : ''}</button>
       <button id="viewSavedPostsBtn">Saved Posts</button>
-      <button id="viewChatsBtn">💬 Chats</button>
+      <button id="viewChatsBtn"><i class="fas fa-comments"></i> Chats</button>
       <button id="viewMyFollowersBtn">Followers</button>
     `;
 
@@ -508,7 +508,7 @@ console.log("Cleared unread flags for chats:", snapshot.size);
 
 const hasUnreadChats = clearUnread ? false : snapshot.size > 0;
 if (viewChatsBtn) {
-viewChatsBtn.innerHTML = `💬 Chats ${hasUnreadChats ? '<span class="chat-badge">(new)</span>' : ''}`;
+viewChatsBtn.innerHTML = `<i class="fas fa-comments"></i> Chats ${hasUnreadChats ? '<span class="chat-badge">(new)</span>' : ''}`;
 }
 }
 
@@ -2149,7 +2149,7 @@ postDiv.innerHTML = `
   <h4>${post.title || "Untitled"}</h4>
   <p class="highlight">Looking For: ${post.lookingFor || "N/A"}</p>
   <p class="highlight">Offering: ${post.offering || "N/A"}</p>
-  <p>❤️ Likes: ${post.likes || 0}</p>
+  <p><i class="fas fa-heart"></i> Likes: ${post.likes || 0}</p>
   <p>By: <span class="username" data-uid="${post.userId}">${userData.name || "Unknown"}</span></p>
   <button class="copy-btn" data-post-id="${post.id}">Copy Post ID</button>
 `;
@@ -2420,171 +2420,210 @@ document.getElementById("lookingForFilter")?.addEventListener("change", () => lo
 document.getElementById("offeringFilter")?.addEventListener("change", () => loadPosts(communityId, true));
 
 async function renderPosts(snapshot, postsDiv, savedPostIds) {
-const commData = await getCommData();
-const isAdmin = commData?.admins?.includes(auth.currentUser.uid) || commData?.creatorId === auth.currentUser.uid;
+  const commData = await getCommData();
+  const isAdmin = commData?.admins?.includes(auth.currentUser.uid) || commData?.creatorId === auth.currentUser.uid;
 
-const uids = [...new Set(snapshot.docs.map(doc => doc.data().userId).filter(Boolean))];
-await fetchUserData(uids);
+  const uids = [...new Set(snapshot.docs.map(doc => doc.data().userId).filter(Boolean))];
+  await fetchUserData(uids);
 
-for (const postDoc of snapshot.docs) {
-const postId = postDoc.id;
-if (PaginationState.displayedPostIds.has(postId)) continue;
-if (PaginationState.displayedPostIds.size >= PaginationState.POSTS_PER_PAGE) break;
+  for (const postDoc of snapshot.docs) {
+    const postId = postDoc.id;
+    if (PaginationState.displayedPostIds.has(postId)) continue;
+    if (PaginationState.displayedPostIds.size >= PaginationState.POSTS_PER_PAGE) break;
 
-const post = postCache.get(postId)?.data || postDoc.data();
+    const post = postCache.get(postId)?.data || postDoc.data();
 
-if (post.communityId && post.communityId !== communityId) {
-  console.log(`Skipping post ${postId}—belongs to ${post.communityId}, not ${communityId}`);
-  continue;
-}
+    if (post.communityId && post.communityId !== communityId) {
+      console.log(`Skipping post ${postId}—belongs to ${post.communityId}, not ${communityId}`);
+      continue;
+    }
 
-PaginationState.displayedPostIds.add(postId);
-loadedPostIds.add(postId);
+    PaginationState.displayedPostIds.add(postId);
+    loadedPostIds.add(postId);
 
-const userData = userDataCache[post.userId] || { profilePhoto: 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y', name: 'Unknown', username: 'unknown' };
-const isPostAdmin = commData?.admins?.includes(post.userId) || commData?.creatorId === post.userId;
-const commentsQ = query(collection(db, "communities", communityId, "posts", postId, "comments"), orderBy("createdAt", "desc"));
-const commentsSnapshot = await getDocs(commentsQ);
-const commentCount = commentsSnapshot.size;
-const timestamp = post.createdAt ? new Date(post.createdAt).toLocaleString() : "N/A";
-const photoUrls = post.photoUrls || [];
-const photoCount = photoUrls.length;
-const reportStatus = await getPostReportStatus(postId);
-const isSaved = savedPostIds.has(postId);
-const displayCategory = categoryDisplayMap[post.category] || post.category;
+    const userData = userDataCache[post.userId] || { profilePhoto: 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y', name: 'Unknown', username: 'unknown' };
+    const isPostAdmin = commData?.admins?.includes(post.userId) || commData?.creatorId === post.userId;
+    const commentsQ = query(collection(db, "communities", communityId, "posts", postId, "comments"), orderBy("createdAt", "desc"));
+    const commentsSnapshot = await getDocs(commentsQ);
+    const commentCount = commentsSnapshot.size;
+    const timestamp = post.createdAt ? new Date(post.createdAt).toLocaleString() : "N/A";
+    const photoUrls = post.photoUrls || [];
+    const photoCount = photoUrls.length;
+    const reportStatus = await getPostReportStatus(postId);
+    const isSaved = savedPostIds.has(postId);
+    const displayCategory = categoryDisplayMap[post.category] || post.category;
 
-if (reportStatus?.isHidden) {
-  PaginationState.displayedPostIds.delete(postId);
-  loadedPostIds.delete(postId);
-  continue;
-}
+    if (reportStatus?.isHidden) {
+      PaginationState.displayedPostIds.delete(postId);
+      loadedPostIds.delete(postId);
+      continue;
+    }
 
-const postDiv = document.createElement("div");
-postDiv.className = "post";
-postDiv.id = `post-${postId}`;
-postDiv.innerHTML = `
-  <div class="post-header">
-    <img loading="lazy" src="${userData.profilePhoto}" class="profile-photo" alt="Profile">
-    <h3><span class="username" data-uid="${post.userId}">${userData.name}</span> <span class="at-user">@${userData.username}</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
-  </div>
-  <h3>${post.title || 'Untitled'}</h3>
-  <p class="post-description">${post.description || ''}</p>
-  <div class="photo-carousel" id="carousel-${postId}-community" data-photos='${JSON.stringify(photoUrls)}'>
-    ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${postId}-community"><</button>` : ''}
-    <img loading="lazy" src="${photoUrls[0] || 'https://firebasestorage.googleapis.com/v0/b/life-swap-6065e.firebasestorage.app/o/static%2Fno-image.webp?alt=media&token=6a974dce-aa63-4d94-b889-a86f626fb430'}" alt="Post photo" class="carousel-image" data-index="0">
-    ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${postId}-community">></button>` : ''}
-  </div>
-  <p>Location: ${post.location?.name || 'N/A'}</p>
-  <p>Category: ${displayCategory}</p>
-  <p class="highlight">Looking For: ${post.lookingFor || 'N/A'} | Offering: ${post.offering || 'N/A'}</p>
-  <p class="timestamp">${timestamp}</p>
-  <p class="post-id">Post ID: ${postId} <button class="copy-btn" data-post-id="${postId}">Copy</button></p>
-  <button class="like-btn" data-post-id="${postId}">${(post.likedBy || []).includes(auth.currentUser.uid) ? '💔 Unlike' : '❤️ Like'} (${post.likes || 0})</button>
-  <button class="save-toggle-btn" data-post-id="${postId}" data-community-id="${communityId}">${isSaved ? "🗑️ Unsave" : "💾 Save"}</button>
-  <button class="report-btn" id="reportPost-${postId}">Report Post</button>
-  <br><br>
-  ${post.userId === auth.currentUser.uid || isAdmin ? `<button class="delete-btn" id="deletePost-${postId}">Delete Post</button>` : ""}
-  ${reportStatus?.isOwner && reportStatus.reportCount === 1 ? `
-    <div class="report-warning" id="warning-${postId}">
-      This post has 1 report. One more hides it—check summary!
-    </div>` : ""}
-  ${reportStatus?.isOwner && reportStatus.reportCount >= 2 ? `
-    <div class="report-warning" id="warning-${postId}">
-      This post has ${reportStatus.reportCount} reports and is hidden. Appeal above!
-    </div>` : ""}
-  ${isAdmin && reportStatus?.reportCount > 0 ? `
-    <div class="admin-report-controls" id="admin-controls-${postId}">
-      This post has ${reportStatus.reportCount} report${reportStatus.reportCount > 1 ? 's' : ''}.
-      <button class="remove-post-btn" data-post-id="${postId}">Remove Post</button>
-      <button class="clear-reports-btn" data-post-id="${postId}">Clear Reports</button>
-    </div>` : ""}
-  <div class="comments-section">
-    <a href="#" class="comment-count" id="toggleComments-${postId}">${commentCount} comments</a>
-    <div class="comments-thread" id="comments-${postId}" style="display: none;"></div>
-    <form id="commentForm-${postId}" class="comment-form">
-      <textarea placeholder="Add a comment..." required></textarea>
-      <div id="tagSuggestions-${postId}" class="suggestions hidden"></div>
-      <button type="submit">Comment</button>
-    </form>
-  </div>
-`;
+    const postDiv = document.createElement("div");
+    postDiv.className = "post";
+    postDiv.id = `post-${postId}`;
+    postDiv.innerHTML = `
+      <div class="post-header">
+        <img loading="lazy" src="${userData.profilePhoto}" class="profile-photo" alt="Profile">
+        <h3><span class="username" data-uid="${post.userId}">${userData.name}</span> <span class="at-user">@${userData.username}</span> ${isPostAdmin ? '<span class="admin-tag">Admin</span>' : ''}</h3>
+      </div>
+      <h3>${post.title || 'Untitled'}</h3>
+      <p class="post-description">${post.description || ''}</p>
+      <div class="photo-carousel" id="carousel-${postId}-community" data-photos='${JSON.stringify(photoUrls)}'>
+        ${photoCount > 1 ? `<button class="carousel-prev" data-post-id="${postId}-community"><</button>` : ''}
+        <img loading="lazy" src="${photoUrls[0] || 'https://firebasestorage.googleapis.com/v0/b/life-swap-6065e.firebasestorage.app/o/static%2Fno-image.webp?alt=media&token=6a974dce-aa63-4d94-b889-a86f626fb430'}" alt="Post photo" class="carousel-image" data-index="0">
+        ${photoCount > 1 ? `<button class="carousel-next" data-post-id="${postId}-community">></button>` : ''}
+      </div>
+      <p>Location: ${post.location?.name || 'N/A'}</p>
+      <p>Category: ${displayCategory}</p>
+      <p class="highlight">Looking For: ${post.lookingFor || 'N/A'} | Offering: ${post.offering || 'N/A'}</p>
+      <p class="timestamp">${timestamp}</p>
+      <p class="post-id">Post ID: ${postId} <button class="copy-btn" data-post-id="${postId}">Copy</button></p>
+      <button class="like-btn" data-post-id="${postId}">${(post.likedBy || []).includes(auth.currentUser.uid) ? '<i class="fas fa-heart-broken"></i> Unlike' : '<i class="fas fa-heart"></i> Like'} (${post.likes || 0})</button>
+      <button class="save-toggle-btn" data-post-id="${postId}" data-community-id="${communityId}">${isSaved ? '<i class="fas fa-trash"></i> Unsave' : '<i class="fas fa-save"></i> Save'}</button>
+      <button class="report-btn" id="reportPost-${postId}">Report Post</button>
+      <br><br>
+      ${post.userId === auth.currentUser.uid || isAdmin ? `<button class="delete-btn" id="deletePost-${postId}">Delete Post</button>` : ""}
+      ${reportStatus?.isOwner && reportStatus.reportCount === 1 ? `
+        <div class="report-warning" id="warning-${postId}">
+          This post has 1 report. One more hides it—check summary!
+        </div>` : ""}
+      ${reportStatus?.isOwner && reportStatus.reportCount >= 2 ? `
+        <div class="report-warning" id="warning-${postId}">
+          This post has ${reportStatus.reportCount} reports and is hidden. Appeal above!
+        </div>` : ""}
+      ${isAdmin && reportStatus?.reportCount > 0 ? `
+        <div class="admin-report-controls" id="admin-controls-${postId}">
+          This post has ${reportStatus.reportCount} report${reportStatus.reportCount > 1 ? 's' : ''}.
+          <button class="remove-post-btn" data-post-id="${postId}">Remove Post</button>
+          <button class="clear-reports-btn" data-post-id="${postId}">Clear Reports</button>
+        </div>` : ""}
+      <div class="comments-section">
+        <a href="#" class="comment-count" id="toggleComments-${postId}">${commentCount} comments</a>
+        <div class="comments-thread" id="comments-${postId}" style="display: none;"></div>
+        <form id="commentForm-${postId}" class="comment-form">
+          <textarea placeholder="Add a comment..." required></textarea>
+          <div id="tagSuggestions-${postId}" class="suggestions hidden"></div>
+          <button type="submit">Comment</button>
+        </form>
+      </div>
+    `;
 
-postsDiv.appendChild(postDiv);
+    postsDiv.appendChild(postDiv);
 
-const likeBtn = postDiv.querySelector(`.like-btn[data-post-id="${postId}"]`);
-likeBtn.addEventListener("click", async () => {
-  const postRef = doc(db, "communities", communityId, "posts", postId);
-  const postSnapshot = await getDoc(postRef);
-  if (!postSnapshot.exists()) {
-    alert("Post not found—might’ve been deleted!");
-    return;
+    const likeBtn = postDiv.querySelector(`.like-btn[data-post-id="${postId}"]`);
+    likeBtn.addEventListener("click", async () => {
+      const postRef = doc(db, "communities", communityId, "posts", postId);
+      const postSnapshot = await getDoc(postRef);
+      if (!postSnapshot.exists()) {
+        alert("Post not found—might’ve been deleted!");
+        return;
+      }
+      const postData = normalizePostData(postSnapshot.data());
+      const userId = auth.currentUser.uid;
+      const likedBy = postData.likedBy || [];
+      let newLikes = postData.likes || 0;
+      let newLikedBy = [...likedBy];
+      if (likedBy.includes(userId)) {
+        newLikedBy = newLikedBy.filter(id => id !== userId);
+        newLikes = Math.max(0, newLikes - 1);
+      } else {
+        newLikedBy.push(userId);
+        newLikes += 1;
+        addLikedPref(postData.category, postData.offering);
+      }
+      await updateDoc(postRef, { likes: newLikes, likedBy: newLikedBy });
+      likeBtn.innerHTML = `${likedBy.includes(userId) ? '<i class="fas fa-heart"></i> Like' : '<i class="fas fa-heart-broken"></i> Unlike'} (${newLikes})`;
+      const cachedPosts = getCachedPosts();
+      cachedPosts.set(postId, { id: postId, data: { ...postData, likes: newLikes, likedBy: newLikedBy, communityId } });
+      setCachedPosts(cachedPosts);
+    });
+
+    const saveToggleBtn = postDiv.querySelector(`.save-toggle-btn[data-post-id="${postId}"]`);
+    let isProcessing = false;
+    saveToggleBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      if (isProcessing) return;
+      isProcessing = true;
+      await toggleSavePost(postId, communityId, saveToggleBtn);
+      isProcessing = false;
+    });
+
+    postDiv.querySelector(`.username[data-uid="${post.userId}"]`)?.addEventListener("click", () => viewProfile(post.userId));
+    postDiv.querySelector(`#toggleComments-${postId}`)?.addEventListener("click", (e) => {
+      e.preventDefault();
+      toggleComments(postId);
+    });
+    postDiv.querySelector(`#commentForm-${postId}`)?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      addComment(postId, post.userId);
+    });
+    postDiv.querySelector(`#deletePost-${postId}`)?.addEventListener("click", () => deletePost(postId));
+    postDiv.querySelector(`#reportPost-${postId}`)?.addEventListener("click", () => reportPost(postId));
+    postDiv.querySelector(`.copy-btn[data-post-id="${postId}"]`)?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      copyPostId(postId);
+    });
+    if (isAdmin) {
+      postDiv.querySelector(`.remove-post-btn[data-post-id="${postId}"]`)?.addEventListener("click", () => deletePost(postId));
+      postDiv.querySelector(`.clear-reports-btn[data-post-id="${postId}"]`)?.addEventListener("click", () => clearReports(postId));
+    }
+    const textarea = postDiv.querySelector(`#commentForm-${postId} textarea`);
+    if (textarea) {
+      if (textarea._debouncedInput) textarea.removeEventListener("input", textarea._debouncedInput);
+      textarea._debouncedInput = debounce((e) => showTagSuggestions(e.target, postId), 500);
+      textarea.addEventListener("input", textarea._debouncedInput);
+    }
+    if (photoCount > 1) setupCommunityCarousel(postId);
   }
-  const postData = normalizePostData(postSnapshot.data());
-  const userId = auth.currentUser.uid;
-  const likedBy = postData.likedBy || [];
-  let newLikes = postData.likes || 0;
-  let newLikedBy = [...likedBy];
-  if (likedBy.includes(userId)) {
-    newLikedBy = newLikedBy.filter(id => id !== userId);
-    newLikes = Math.max(0, newLikes - 1);
+}
+
+// Include the toggleSavePost function
+async function toggleSavePost(postId, communityId, button) {
+  console.log(`toggleSavePost called for postId: ${postId}`);
+  const user = auth.currentUser;
+  const userRef = doc(db, "users", user.uid);
+  const savedPostsRef = collection(userRef, "savedPosts");
+  const savedPostsQ = query(savedPostsRef, where("postId", "==", postId), where("communityId", "==", communityId));
+  const savedPostsSnapshot = await getDocs(savedPostsQ);
+
+  if (savedPostsSnapshot.empty) {
+    // Post is not saved, so save it
+    const modal = document.getElementById("savePostModal");
+    const noteInput = document.getElementById("savePostNote");
+    const confirmBtn = document.getElementById("confirmSavePostBtn");
+    const cancelBtn = document.getElementById("cancelSavePostBtn");
+
+    noteInput.value = "";
+    modal.style.display = "flex";
+    modal.classList.remove("hidden");
+
+    confirmBtn.dataset.postId = postId;
+    confirmBtn.dataset.communityId = communityId;
+
+    confirmBtn.onclick = async () => {
+      const note = noteInput.value.trim();
+      await addDoc(savedPostsRef, {
+        postId,
+        communityId,
+        note: note || "",
+        savedAt: new Date()
+      });
+      button.innerHTML = '<i class="fas fa-trash"></i> Unsave';
+      alert("Post saved!");
+      closeModal("savePostModal");
+    };
+
+    cancelBtn.onclick = () => closeModal("savePostModal");
   } else {
-    newLikedBy.push(userId);
-    newLikes += 1;
-    addLikedPref(postData.category, postData.offering);
+    // Post is saved, so unsave it
+    if (confirm("Are you sure you want to unsave this post?")) {
+      const savedDoc = savedPostsSnapshot.docs[0];
+      await deleteDoc(doc(db, "users", user.uid, "savedPosts", savedDoc.id));
+      button.innerHTML = '<i class="fas fa-save"></i> Save';
+      alert("Post unsaved!");
+    }
   }
-  await updateDoc(postRef, { likes: newLikes, likedBy: newLikedBy });
-  likeBtn.textContent = `${likedBy.includes(userId) ? '❤️ Like' : '💔 Unlike'} (${newLikes})`;
-  const cachedPosts = getCachedPosts();
-  cachedPosts.set(postId, { id: postId, data: { ...postData, likes: newLikes, likedBy: newLikedBy, communityId } });
-  setCachedPosts(cachedPosts);
-});
-
-const saveToggleBtn = postDiv.querySelector(`.save-toggle-btn[data-post-id="${postId}"]`);
-saveToggleBtn.replaceWith(saveToggleBtn.cloneNode(true));
-const newSaveToggleBtn = postDiv.querySelector(`.save-toggle-btn[data-post-id="${postId}"]`);
-let isProcessing = false;
-newSaveToggleBtn.addEventListener("click", (e) => {
-  e.preventDefault();
-  if (isProcessing) return;
-  isProcessing = true;
-  if (newSaveToggleBtn.textContent === "Unsave") {
-    deleteSavedPostFromPost(postId, communityId, newSaveToggleBtn)
-      .then(() => isProcessing = false)
-      .catch(() => isProcessing = false);
-  } else {
-    savePost(postId, communityId, newSaveToggleBtn)
-      .then(() => isProcessing = false)
-      .catch(() => isProcessing = false);
-  }
-});
-
-postDiv.querySelector(`.username[data-uid="${post.userId}"]`)?.addEventListener("click", () => viewProfile(post.userId));
-postDiv.querySelector(`#toggleComments-${postId}`)?.addEventListener("click", (e) => {
-  e.preventDefault();
-  toggleComments(postId);
-});
-postDiv.querySelector(`#commentForm-${postId}`)?.addEventListener("submit", (e) => {
-  e.preventDefault();
-  addComment(postId, post.userId);
-});
-postDiv.querySelector(`#deletePost-${postId}`)?.addEventListener("click", () => deletePost(postId));
-postDiv.querySelector(`#reportPost-${postId}`)?.addEventListener("click", () => reportPost(postId));
-postDiv.querySelector(`.copy-btn[data-post-id="${postId}"]`)?.addEventListener("click", (e) => {
-  e.stopPropagation();
-  copyPostId(postId);
-});
-if (isAdmin) {
-  postDiv.querySelector(`.remove-post-btn[data-post-id="${postId}"]`)?.addEventListener("click", () => deletePost(postId));
-  postDiv.querySelector(`.clear-reports-btn[data-post-id="${postId}"]`)?.addEventListener("click", () => clearReports(postId));
-}
-const textarea = postDiv.querySelector(`#commentForm-${postId} textarea`);
-if (textarea) {
-  if (textarea._debouncedInput) textarea.removeEventListener("input", textarea._debouncedInput);
-  textarea._debouncedInput = debounce((e) => showTagSuggestions(e.target, postId), 500);
-  textarea.addEventListener("input", textarea._debouncedInput);
-}
-if (photoCount > 1) setupCommunityCarousel(postId);
-}
 }
 
 function addPaginationControls(postsDiv, totalPostsCount, communityId) {
@@ -2958,8 +2997,8 @@ if (savedPostsSnapshot.empty) {
         <p>Community: <a href="./community.html?id=${savedData.communityId}">${communityName}</a></p>
         <p class="saved-note">Note: <span data-doc-id="${savedDoc.id}">${savedData.note || "No note"}</span></p>
         <div class="post-card-actions">
-          <button class="edit-note-btn" data-doc-id="${savedDoc.id}">✏️ Edit Note</button>
-          <button class="delete-saved-btn" data-doc-id="${savedDoc.id}">🗑️ Unsave</button>
+          <button class="edit-note-btn" data-doc-id="${savedDoc.id}"><i class="fas fa-pencil-alt"></i> Edit Note</button>
+          <button class="delete-saved-btn" data-doc-id="${savedDoc.id}"><i class="fas fa-trash"></i> Unsave</button>
         </div>
       </div>
     `;
@@ -3153,7 +3192,7 @@ postsDiv.innerHTML = `
     <p class="highlight">Looking For: ${post.lookingFor || "N/A"} | Offering: ${post.offering || "N/A"}</p>
     <p>Posted: ${timestamp}</p>
     <p>Post ID: ${actualPostId} <button class="copy-btn" data-post-id="${actualPostId}">Copy</button></p>
-    <button class="like-btn" data-post-id="${actualPostId}">${(post.likedBy || []).includes(currentUser.uid) ? '💔 Unlike' : '❤️ Like'} (${post.likes || 0})</button>
+    <button class="like-btn" data-post-id="${actualPostId}">${(post.likedBy || []).includes(currentUser.uid) ? '<i class="fas fa-heart-broken"></i> Unlike' : '<i class="fas fa-heart"></i> Like'} (${post.likes || 0})</button>
     <button class="report-btn" id="reportPost-${actualPostId}">Report Post</button>
     <br><br>
     ${(isOwner || isAdmin) ? `<button class="delete-btn" id="deletePost-${actualPostId}">Delete Post</button>` : ""}
@@ -3248,7 +3287,7 @@ likeBtn.addEventListener("click", async () => {
       likes: newLikes,
       likedBy: newLikedBy
     });
-    likeBtn.textContent = `💔 Unlike (${newLikes})`;
+    likeBtn.textContent = `<i class="fas fa-heart-broken"></i> Unlike (${newLikes})`;
     addLikedPref(postData.category, postData.offering); // Track prefs on like
   }
 

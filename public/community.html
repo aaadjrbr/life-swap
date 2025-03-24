@@ -21,13 +21,13 @@
         <h3 class="life-swap"><i class="fa-solid fa-leaf" style="font-size: 20px; color: rgba(172, 255, 47, 0.881);"></i> <span style="color: rgba(172, 255, 47, 0.742);">Life</span> Swap. No money, just value.<br/> <a href="#" style="text-decoration: none; color: rgb(255, 255, 255); text-decoration: underline;">Donate</a> 💙</h3>
       </div>
       <button id="viewCommunitiesBtn">Your Communities</button>
-      <button id="viewNotificationsBtn">🔔 Notifications <span id="notificationCount" class="notification-badge"></span></button>
+      <button id="viewNotificationsBtn"><i class="fas fa-bell"></i> Notifications <span id="notificationCount" class="notification-badge"></span></button>
     </div>
     <p id="communityId"></p>
     <button class="copy-btn" id="copyCommunityIdBtn">Copy Community ID</button>
     <p style="color: #fff; text-align: center;">Total Users: <span id="totalUsers">0</span> | Banned Users: <span id="bannedUsers">0</span><span id="profileRequestsBtn"></span></p>
     <div id="userSwapInfo" class="user-swap-info">
-      Username: <span id="userNameCopy" class="clickable">⏳ Loading...</span> | 🤝 Your Swaps: <span id="swapCount">0</span>
+      <span style="display: flex; justify-content: center; gap: 5px;">Username: <span id="userNameCopy" class="clickable">⏳ Loading...</span> | <i class="fas fa-handshake" style="font-size: 20px; color: #f39c12"></i> Your Swaps: <span id="swapCount">0</span></span>
     </div>
     <div class="community-page">
     <h3>Menu</h3>
@@ -100,7 +100,7 @@
 
     <!-- Community Posts Carousel -->
 <div id="postsCarousel" class="posts-carousel">
-  <h3>Trending Posts <span>🔥</span></h3>
+  <h3>Trending Posts <span><i class="fas fa-fire" style="font-size: 20px; color: #f39c12"></i></span></h3>
   <button class="carousel-arrow prev" id="carouselPrevBtn">&lt;</button>
   <div class="carousel-track" id="carouselTrack">
     <!-- Posts populated dynamically -->
@@ -151,7 +151,7 @@
         <button type="button" id="clearSearchBtn" title="Clear search">Clear</button>
       </div>
       <div id="search-scrolldown"></div>
-      <button id="refreshPostsBtn">Refresh Posts 🔄</button>
+      <button id="refreshPostsBtn">Refresh Posts <i class="fas fa-sync-alt"></i></button>
       <div id="postList"></div>
       <div id="caughtUpMessage" class="caught-up" style="display: none;">You are all caught up!</div>
       <div id="sentinel" style="height: 1px;"></div>
