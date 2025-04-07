@@ -2861,75 +2861,6 @@ async function updateButtons() {
 await fetchYourPosts();
 }
 
-async function savePost(postId, communityId, button) {
-console.log(`savePost called for postId: ${postId}`);
-const modal = document.getElementById("savePostModal");
-const noteInput = document.getElementById("savePostNote");
-const confirmBtn = document.getElementById("confirmSavePostBtn");
-const cancelBtn = document.getElementById("cancelSavePostBtn");
-const user = auth.currentUser;
-
-noteInput.value = "";
-modal.style.display = "flex";
-modal.classList.remove("hidden");
-
-confirmBtn.dataset.postId = postId;
-confirmBtn.dataset.communityId = communityId;
-
-confirmBtn.onclick = async () => {
-const note = noteInput.value.trim();
-const userRef = doc(db, "users", user.uid);
-const savedPostsRef = collection(userRef, "savedPosts");
-
-const existingQ = query(savedPostsRef, where("postId", "==", postId), where("communityId", "==", communityId));
-const existingSnapshot = await getDocs(existingQ);
-if (!existingSnapshot.empty) {
-  alert("You’ve already saved this post!");
-  closeModal("savePostModal");
-  return;
-}
-
-await addDoc(savedPostsRef, {
-  postId,
-  communityId,
-  note: note || "",
-  savedAt: new Date()
-});
-
-if (button) button.textContent = "Unsave";
-alert("Post saved!");
-closeModal("savePostModal");
-};
-
-cancelBtn.onclick = () => closeModal("savePostModal");
-}
-
-async function deleteSavedPostFromPost(postId, communityId, button) {
-console.log(`deleteSavedPostFromPost called for postId: ${postId}`);
-const user = auth.currentUser;
-const userRef = doc(db, "users", user.uid);
-const savedPostsQ = query(
-collection(userRef, "savedPosts"),
-where("postId", "==", postId),
-where("communityId", "==", communityId)
-);
-const savedPostsSnapshot = await getDocs(savedPostsQ);
-
-if (savedPostsSnapshot.empty) {
-console.log(`Post ${postId} not found in savedPosts`);
-alert("Post already unsaved!");
-if (button) button.textContent = "Save";
-return;
-}
-
-if (confirm("Are you sure you want to unsave this post?")) {
-const savedDoc = savedPostsSnapshot.docs[0];
-await deleteDoc(doc(db, "users", user.uid, "savedPosts", savedDoc.id));
-if (button) button.textContent = "Save";
-alert("Post unsaved!");
-}
-}
-
 async function viewSavedPosts(userId) {
 const modal = document.getElementById("viewSavedPostsModal");
 const savedPostsList = document.getElementById("savedPostsList");
@@ -3028,67 +2959,77 @@ closeBtn.onclick = () => closeModal("viewSavedPostsModal");
 }
 
 async function editSavedNote(docId, currentNote) {
-const modal = document.getElementById("savePostModal");
-const noteInput = document.getElementById("savePostNote");
-const confirmBtn = document.getElementById("confirmSavePostBtn");
-const cancelBtn = document.getElementById("cancelSavePostBtn");
+  const modal = document.getElementById("savePostModal");
+  const noteInput = document.getElementById("savePostNote");
+  const confirmBtn = document.getElementById("confirmSavePostBtn");
+  const cancelBtn = document.getElementById("cancelSavePostBtn");
 
-modal.querySelector("h2").textContent = "Edit Note";
-noteInput.value = currentNote;
-modal.style.display = "flex";
-modal.classList.remove("hidden");
+  modal.querySelector("h2").textContent = "Edit Note";
+  noteInput.value = currentNote;
+  modal.style.display = "flex";
+  modal.classList.remove("hidden");
 
-confirmBtn.onclick = async () => {
-const newNote = noteInput.value.trim();
-const user = auth.currentUser;
-const savedPostRef = doc(db, "users", user.uid, "savedPosts", docId);
+  confirmBtn.onclick = async () => {
+    const newNote = noteInput.value.trim();
+    const user = auth.currentUser;
+    const savedPostRef = doc(db, "users", user.uid, "savedPosts", docId);
 
-try {
-  await updateDoc(savedPostRef, { note: newNote || "" });
-  document.querySelector(`.saved-note[data-doc-id="${docId}"]`).textContent = newNote || "No note";
-  closeModal("savePostModal");
-  modal.querySelector("h2").textContent = "Save Post";
-} catch (error) {
-  console.error("Error updating note:", error);
-  alert("Failed to update note. Try again.");
-}
-};
+    try {
+      await updateDoc(savedPostRef, { note: newNote || "" });
+      const noteElement = document.querySelector(`.saved-note span[data-doc-id="${docId}"]`); // Target the span
+      if (noteElement) {
+        noteElement.textContent = newNote || "No note";
+      } else {
+        console.warn(`Note element with data-doc-id="${docId}" not found`);
+        await viewSavedPosts(auth.currentUser.uid); // Fallback: reload saved posts
+      }
+      closeModal("savePostModal");
+      modal.querySelector("h2").textContent = "Save Post";
+    } catch (error) {
+      console.error("Error updating note:", error);
+      alert("Failed to update note. Try again.");
+    }
+  };
 
-cancelBtn.onclick = () => {
-closeModal("savePostModal");
-modal.querySelector("h2").textContent = "Save Post";
-};
+  cancelBtn.onclick = () => {
+    closeModal("savePostModal");
+    modal.querySelector("h2").textContent = "Save Post";
+  };
 }
 
 async function deleteSavedPost(docId, userId) {
-if (confirm("Are you sure you want to unsave this post?")) {
-const user = auth.currentUser;
-const savedPostRef = doc(db, "users", user.uid, "savedPosts", docId);
-const savedPostsList = document.getElementById("savedPostsList");
-const postCard = savedPostsList.querySelector(`.saved-post-card[data-doc-id="${docId}"]`);
+  if (confirm("Are you sure you want to unsave this post?")) {
+    const user = auth.currentUser;
+    const savedPostRef = doc(db, "users", user.uid, "savedPosts", docId);
+    const savedPostsList = document.getElementById("savedPostsList");
+    const postCard = savedPostsList.querySelector(`.saved-post-card[data-doc-id="${docId}"]`);
 
-try {
-  // Fade out before deleting
-  if (postCard) {
-    postCard.style.transition = "opacity 0.3s ease";
-    postCard.style.opacity = "0";
-    await new Promise(resolve => setTimeout(resolve, 300)); // Wait for fade-out
+    try {
+      const savedPostDoc = await getDoc(savedPostRef);
+      const communityId = savedPostDoc.exists() ? savedPostDoc.data().communityId : null;
+
+      if (postCard) {
+        postCard.style.transition = "opacity 0.3s ease";
+        postCard.style.opacity = "0";
+        await new Promise(resolve => setTimeout(resolve, 300));
+      }
+
+      await deleteDoc(savedPostRef);
+
+      if (postCard) postCard.remove();
+      if (!savedPostsList.querySelector(".saved-post-card")) {
+        savedPostsList.innerHTML = "<p class='no-posts-message'>No saved posts yet!</p>";
+      }
+
+      if (communityId) await loadPosts(communityId, true); // Reload community feed
+
+      alert("Post unsaved!");
+    } catch (error) {
+      console.error("Error deleting saved post:", error);
+      if (postCard) postCard.style.opacity = "1";
+      alert("Failed to unsave post. Try again.");
+    }
   }
-
-  await deleteDoc(savedPostRef);
-
-  if (postCard) postCard.remove();
-  if (!savedPostsList.querySelector(".saved-post-card")) {
-    savedPostsList.innerHTML = "<p class='no-posts-message'>No saved posts yet!</p>";
-  }
-
-  alert("Post unsaved!");
-} catch (error) {
-  console.error("Error deleting saved post:", error);
-  if (postCard) postCard.style.opacity = "1"; // Restore if failed
-  alert("Failed to unsave post. Try again.");
-}
-}
 }
 
 //There is a deployed Cloud Function for keeping postCount live "onPostChange"
